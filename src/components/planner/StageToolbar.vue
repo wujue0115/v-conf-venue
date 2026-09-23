@@ -85,7 +85,7 @@ async function onFile(e: Event) {
         </button>
       </div>
       <div class="grp">
-        <button class="btn" @click="editor?.undo()">復原 <kbd>⌘Z</kbd></button>
+        <button class="btn" title="復原 (⌘Z)" @click="editor?.undo()">復原</button>
         <button class="btn" @click="download">匯出</button>
         <button class="btn" @click="fileInput?.click()">匯入</button>
         <button class="btn danger" @click="clearAll">清空</button>

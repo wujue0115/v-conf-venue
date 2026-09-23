@@ -14,8 +14,8 @@ const tiles = FURNITURE_TYPES.map((type) => {
 })
 // Rented from the venue vs. brought by us (not charged)
 const sections = [
-  { id: 'venue', title: '場地家具', note: '拖曳放置', tiles: tiles.filter((t) => t.price) },
-  { id: 'own', title: '自備物件', note: '不計費', tiles: tiles.filter((t) => !t.price) },
+  { id: 'venue', title: '場地家具', tiles: tiles.filter((t) => t.price) },
+  { id: 'own', title: '自備物件', tiles: tiles.filter((t) => !t.price) },
 ]
 
 function onPointerDown(e: PointerEvent, type: FurnitureType) {
@@ -28,7 +28,6 @@ function onPointerDown(e: PointerEvent, type: FurnitureType) {
     v-for="sec in sections"
     :key="sec.id"
     :title="sec.title"
-    :note="sec.note"
     :storage-key="`vueconf26-palette-${sec.id}-collapsed`"
   >
     <div class="palette">

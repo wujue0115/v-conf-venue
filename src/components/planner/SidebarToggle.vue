@@ -30,14 +30,14 @@ const label = computed(() => (collapsed.value ? '展開側邊欄' : '收合側�
 
 <style scoped>
 .toggle {
-  width: 20px;
-  height: 56px;
+  width: 28px;
+  height: 50px;
   padding: 0;
   display: grid;
   place-items: center;
   border: 1px solid var(--line);
   border-left: 0;
-  border-radius: 0 10px 10px 0;
+  border-radius: 0 8px 8px 0;
   background: #fff;
   color: var(--muted);
   cursor: pointer;
