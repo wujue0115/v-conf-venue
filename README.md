@@ -5,13 +5,14 @@
 </p>
 
 <p align="center">
-  <a href="https://v-conf.vue.tw/">V-CONF Taiwan</a>
+  <a href="https://v-conf.vue.tw/">V-CONF Taiwan</a> ·
+  <a href="https://cpbae.nccu.edu.tw/cpbae-service-nx2/space/introduction">NCCU CPBAE</a>
 </p>
 
 ## About
 
 `v-conf-venue` is a planning tool built for V-CONF Taiwan 2026 (10/17). It
-models the second floor of Building A at NCCU CPBAE (政大公企) in 3D, covering
+models the second floor of Building A at [NCCU CPBAE](https://cpbae.nccu.edu.tw/cpbae-service-nx2/space/introduction) (政大公企) in 3D, covering
 A201, A215, the A223 VIP lounge, and the A2 international conference hall.
 The team can furnish the space and check the rental cost as they go.
 
