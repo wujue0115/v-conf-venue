@@ -289,7 +289,13 @@ export class VenueEditor {
 
   /** Begin drag-placing a new object from the palette (call from a pointerdown). */
   startPlace(e: PointerEvent, type: FurnitureType) {
-    e.preventDefault()
+    // Touch: let the browser keep vertical panning (the palette uses touch-action: pan-y);
+    // if it takes the gesture over as a scroll we get pointercancel and abort below.
+    if (e.pointerType !== 'touch') e.preventDefault()
+    // Touch pointers are implicitly captured by the tile; release so move/up events
+    // target whatever is under the finger (needed for the over-canvas check).
+    const src = e.target as Element | null
+    if (src?.hasPointerCapture?.(e.pointerId)) src.releasePointerCapture(e.pointerId)
     this.placing = { type, obj: null, sx: e.clientX, sy: e.clientY }
     document.body.classList.add('placing')
     const mv = (ev: PointerEvent) => {
@@ -308,11 +314,20 @@ export class VenueEditor {
         }
       } else if (pl.obj) pl.obj.visible = false
     }
-    const up = (ev: PointerEvent) => {
+    const end = () => {
       removeEventListener('pointermove', mv)
       removeEventListener('pointerup', up)
+      removeEventListener('pointercancel', cancel)
       document.body.classList.remove('placing')
       this.grid.visible = false
+    }
+    const cancel = () => {
+      end()
+      if (this.placing?.obj) this.placed.remove(this.placing.obj)
+      this.placing = null
+    }
+    const up = (ev: PointerEvent) => {
+      end()
       const pl = this.placing
       this.placing = null
       if (!pl) return
@@ -337,6 +352,7 @@ export class VenueEditor {
     }
     addEventListener('pointermove', mv)
     addEventListener('pointerup', up)
+    addEventListener('pointercancel', cancel)
   }
 
   // ---------------- Internals ----------------

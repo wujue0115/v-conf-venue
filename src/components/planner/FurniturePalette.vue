@@ -49,7 +49,8 @@ function onPointerDown(e: PointerEvent, type: FurnitureType) {
   padding: 6px 6px 8px;
   cursor: grab;
   user-select: none;
-  touch-action: none;
+  /* vertical swipes scroll the palette; sideways drags place furniture */
+  touch-action: pan-y;
   transition:
     border-color 0.15s,
     box-shadow 0.15s;
