@@ -5,8 +5,7 @@
 </p>
 
 <p align="center">
-  <a href="https://v-conf.vue.tw/">V-CONF Taiwan</a> ·
-  <a href="https://cpbae.nccu.edu.tw/cpbae-service-nx2/space/introduction">NCCU CPBAE</a>
+  <a href="https://v-conf.vue.tw/">V-CONF Taiwan</a>
 </p>
 
 ## About
