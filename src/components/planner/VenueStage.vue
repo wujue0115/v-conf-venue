@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, useTemplateRef, watch } from 'vue'
 import SelectionBar from './SelectionBar.vue'
+import StageHelp from './StageHelp.vue'
 import StageToast from './StageToast.vue'
 import StageToolbar from './StageToolbar.vue'
 import VenueLabels from './VenueLabels.vue'
@@ -43,10 +44,7 @@ watch([editor, () => store.showLabels], ([ed, on]) => ed?.setLabelsVisible(on), 
     <StageToolbar />
     <StageToast />
     <SelectionBar />
-    <div class="help">
-      左鍵拖曳：前後左右移動 · 右鍵：旋轉 · 滾輪：縮放 · WASD／方向鍵移動（Shift 加速）·
-      拖曳物件可移動
-    </div>
+    <StageHelp />
   </main>
 </template>
 
@@ -63,22 +61,5 @@ canvas {
   height: 100%;
   display: block;
   outline: none;
-}
-.help {
-  position: absolute;
-  left: calc(var(--stage-inset, 0px) + 14px);
-  bottom: calc(14px + env(safe-area-inset-bottom, 0px));
-  font-size: 11.5px;
-  color: #6b6e75;
-  background: rgba(255, 255, 255, 0.85);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 6px 10px;
-  pointer-events: none;
-}
-@media (max-width: 1100px) {
-  .help {
-    display: none;
-  }
 }
 </style>
