@@ -69,10 +69,10 @@ async function onFile(e: Event) {
           v-if="store.editing"
           class="btn"
           :class="{ on: store.snap }"
-          title="格點吸附 0.25m"
+          title="移動時對齊 25 公分格線"
           @click="store.snap = !store.snap"
         >
-          吸附
+          對齊格線
         </button>
         <button
           class="btn"
