@@ -25,10 +25,18 @@ export const clampPosterSize = (n: unknown, fallback: number) =>
 export const isImageDataUrl = (s: unknown): s is string =>
   typeof s === 'string' && s.startsWith('data:image/')
 
+/**
+ * The face plane sits only a fraction of a millimetre in front of its backing panel — at
+ * some camera distances that gap isn't enough depth-buffer precision to keep the two apart,
+ * and they flicker (z-fight). `polygonOffset` biases the face forward in depth terms instead
+ * of world space, so it stays robust regardless of the poster's size or viewing distance.
+ */
+const FACE_OFFSET = { polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }
 const blankFace = new THREE.MeshStandardMaterial({
   color: '#f6e7b8',
   roughness: 0.8,
   name: 'poster_blank',
+  ...FACE_OFFSET,
 })
 /** Upload choice: reshape the poster to the image's proportions, or keep the poster's and crop */
 export type PosterFit = 'image' | 'poster'
@@ -80,7 +88,11 @@ function dressFace(face: THREE.Mesh, img: string | undefined, w: number, h: numb
   if (face.userData.img !== img || old === blankFace) {
     if (old !== blankFace) disposeFace(old)
     // a clone shares the decoded image but has its own crop (repeat / offset)
-    m = new THREE.MeshStandardMaterial({ map: source(img).tex.clone(), roughness: 0.7 })
+    m = new THREE.MeshStandardMaterial({
+      map: source(img).tex.clone(),
+      roughness: 0.7,
+      ...FACE_OFFSET,
+    })
     face.material = m
     face.userData.img = img
   }
@@ -98,6 +110,23 @@ function dressFace(face: THREE.Mesh, img: string | undefined, w: number, h: numb
 function disposeFace(m: THREE.MeshStandardMaterial) {
   m.map?.dispose()
   m.dispose()
+}
+
+/**
+ * The face's current bottom edge, in the owning group's local y. Bottom-anchored items keep
+ * this fixed as h changes (it's their `ref`); centre-anchored ones (posters) don't have a
+ * fixed edge, so it's derived from the centre (`ref`) and the current h instead.
+ */
+export function faceBottomY(g: THREE.Object3D): number {
+  const anchor = (g.userData.faceAnchor as 'center' | 'bottom' | undefined) ?? 'center'
+  const ref = (g.userData.faceRef as number | undefined) ?? 0
+  if (anchor === 'bottom') return ref
+  return ref - ((g.userData.h as number | undefined) ?? 0) / 2
+}
+
+/** The face's current centre, in the owning group's local y. */
+export function faceCenterY(g: THREE.Object3D): number {
+  return faceBottomY(g) + ((g.userData.h as number | undefined) ?? 0) / 2
 }
 
 /**
@@ -119,17 +148,20 @@ export function buildFace(
 ) {
   g.userData.faceAnchor = anchor
   g.userData.faceRef = ref
-  const y = anchor === 'bottom' ? ref + h / 2 : ref
+  g.userData.w = w
+  g.userData.h = h
+  const y = faceCenterY(g)
   const panel = mesh(new THREE.BoxGeometry(1, 1, THICK), FM.white, g, 0, y, z + THICK / 2, {
     e: EF,
   })
   panel.name = 'panel'
+  // the decal doesn't need its own shadow: it sits flush on the panel, which already casts one
   const face = mesh(new THREE.PlaneGeometry(1, 1), blankFace, g, 0, y, z + THICK + 0.0005, {
     e: null,
+    cast: false,
+    recv: false,
   })
   face.name = 'face'
-  g.userData.w = w
-  g.userData.h = h
   for (const m of [panel, face]) m.scale.set(w, h, 1)
 }
 
@@ -155,9 +187,7 @@ export function applyPoster(
 ) {
   g.userData.w = w
   g.userData.h = h
-  const anchor = (g.userData.faceAnchor as 'center' | 'bottom' | undefined) ?? 'center'
-  const ref = (g.userData.faceRef as number | undefined) ?? 0
-  const y = anchor === 'bottom' ? ref + h / 2 : ref
+  const y = faceCenterY(g)
   for (const name of ['panel', 'face']) {
     const m = g.getObjectByName(name)
     if (!m) continue

@@ -12,7 +12,15 @@ import {
 } from './furniture'
 import type { LayoutItem } from './layout'
 import { B, FM, YEL } from './materials'
-import { POSTER_MIN, applyPoster, clampPosterSize, setFaceImage, type PosterFit } from './poster'
+import {
+  POSTER_MIN,
+  applyPoster,
+  clampPosterSize,
+  faceBottomY,
+  faceCenterY,
+  setFaceImage,
+  type PosterFit,
+} from './poster'
 import type { CameraView, Vec3 } from './places'
 import { bearing, linkPosts, withoutCutToward, type Post } from './stanchions'
 
@@ -669,14 +677,15 @@ export class VenueEditor {
   /** Position the resize handles on the selected poster's corners, sized for the current zoom. */
   private updHandles() {
     const s = this.selected
-    this.handles.visible = !!s && onWall(s)
+    this.handles.visible = !!s && resizable(s)
     if (!s || !this.handles.visible) return
     s.updateMatrixWorld()
     const w = s.userData.w as number
     const h = s.userData.h as number
+    const cy = faceCenterY(s)
     for (const hd of this.handles.children) {
       const { sx, sy } = hd.userData as { sx: number; sy: number }
-      hd.position.copy(s.localToWorld(new THREE.Vector3((sx * w) / 2, (sy * h) / 2, 0.01)))
+      hd.position.copy(s.localToWorld(new THREE.Vector3((sx * w) / 2, cy + (sy * h) / 2, 0.01)))
       hd.quaternion.copy(s.quaternion)
       const k = THREE.MathUtils.clamp(
         this.camera.position.distanceTo(hd.position) * 0.012,
@@ -699,25 +708,48 @@ export class VenueEditor {
     if (!r) return
     const { o } = r
     const normal = new THREE.Vector3(0, 0, 1).applyQuaternion(o.quaternion)
-    const right = new THREE.Vector3(1, 0, 0).applyQuaternion(o.quaternion)
     this.setRay(e)
-    const p = this.ray.ray.intersectPlane(
-      new THREE.Plane().setFromNormalAndCoplanarPoint(normal, r.anchor),
-      new THREE.Vector3(),
-    )
-    if (!p) return
-    const d = p.sub(r.anchor)
-    let w = clampPosterSize(r.sx * d.dot(right), POSTER_MIN)
-    let h = clampPosterSize(r.sy * d.y, POSTER_MIN)
-    if (e.shiftKey || lockedAspect(o)) {
-      if (w / h > r.aspect) h = clampPosterSize(w / r.aspect, POSTER_MIN)
-      else w = clampPosterSize(h * r.aspect, POSTER_MIN)
+    let w: number
+    let h: number
+    if (onWall(o)) {
+      // a poster's own centre moves: the dragged corner follows the pointer, the opposite
+      // corner (the fixed `anchor`) stays put
+      const right = new THREE.Vector3(1, 0, 0).applyQuaternion(o.quaternion)
+      const p = this.ray.ray.intersectPlane(
+        new THREE.Plane().setFromNormalAndCoplanarPoint(normal, r.anchor),
+        new THREE.Vector3(),
+      )
+      if (!p) return
+      const d = p.sub(r.anchor)
+      w = clampPosterSize(r.sx * d.dot(right), POSTER_MIN)
+      h = clampPosterSize(r.sy * d.y, POSTER_MIN)
+      if (e.shiftKey || lockedAspect(o)) {
+        if (w / h > r.aspect) h = clampPosterSize(w / r.aspect, POSTER_MIN)
+        else w = clampPosterSize(h * r.aspect, POSTER_MIN)
+      }
+      applyPoster(o, { w, h, img: o.userData.img as string | undefined })
+      o.position
+        .copy(r.anchor)
+        .addScaledVector(right, (r.sx * w) / 2)
+        .add(new THREE.Vector3(0, (r.sy * h) / 2, 0))
+    } else {
+      // floor-standing: the object never moves — width grows symmetrically about its own
+      // centre-line, height grows from its fixed base. This is a live preview of the face
+      // only; on release its hardware is rebuilt to match (see the pointerup handler)
+      const p = this.ray.ray.intersectPlane(
+        new THREE.Plane().setFromNormalAndCoplanarPoint(normal, o.position),
+        new THREE.Vector3(),
+      )
+      if (!p) return
+      const local = o.worldToLocal(p)
+      w = clampPosterSize(Math.abs(local.x) * 2, POSTER_MIN)
+      h = clampPosterSize(local.y - faceBottomY(o), POSTER_MIN)
+      if (e.shiftKey || lockedAspect(o)) {
+        if (w / h > r.aspect) h = clampPosterSize(w / r.aspect, POSTER_MIN)
+        else w = clampPosterSize(h * r.aspect, POSTER_MIN)
+      }
+      applyPoster(o, { w, h, img: o.userData.img as string | undefined })
     }
-    applyPoster(o, { w, h, img: o.userData.img as string | undefined })
-    o.position
-      .copy(r.anchor)
-      .addScaledVector(right, (r.sx * w) / 2)
-      .add(new THREE.Vector3(0, (r.sy * h) / 2, 0))
     this.updSel()
   }
 
@@ -973,7 +1005,8 @@ export class VenueEditor {
           const { sx, sy } = hd.userData as { sx: number; sy: number }
           const w = s.userData.w as number
           const h = s.userData.h as number
-          const anchor = s.localToWorld(new THREE.Vector3((-sx * w) / 2, (-sy * h) / 2, 0))
+          const cy = faceCenterY(s)
+          const anchor = s.localToWorld(new THREE.Vector3((-sx * w) / 2, cy - (sy * h) / 2, 0))
           this.resizing = { o: s, sx, sy, anchor, aspect: w / h, moved: false }
           this.controls.enabled = false
           return
@@ -1057,7 +1090,12 @@ export class VenueEditor {
     })
     this.listen(window, 'pointerup', (e) => {
       if (this.resizing) {
-        if (this.resizing.moved) this.commit()
+        const { o, moved } = this.resizing
+        if (moved) {
+          // a floor item's hardware wasn't kept in sync during the live drag; rebuild it now
+          if (!onWall(o)) this.select(this.rebuild(o, {}))
+          this.commit()
+        }
         this.resizing = null
         this.controls.enabled = true
         this.downPt = null
