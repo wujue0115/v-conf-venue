@@ -66,9 +66,9 @@ async function onFile(e: Event) {
     <div class="bar tools" data-stage-ui>
       <div class="grp">
         <button
-          v-if="store.editing"
           class="btn"
           :class="{ on: store.snap }"
+          :disabled="!store.editing"
           title="移動時對齊 25 公分格線"
           @click="store.snap = !store.snap"
         >
@@ -91,14 +91,12 @@ async function onFile(e: Event) {
         </button>
       </div>
       <div class="grp">
-        <button v-if="store.editing" class="btn" title="復原 (⌘Z)" @click="editor?.undo()">
+        <button class="btn" title="復原 (⌘Z)" :disabled="!store.editing" @click="editor?.undo()">
           復原
         </button>
         <button class="btn" @click="download">匯出</button>
-        <template v-if="store.editing">
-          <button class="btn" @click="fileInput?.click()">匯入</button>
-          <button class="btn danger" @click="clearAll">清空</button>
-        </template>
+        <button class="btn" :disabled="!store.editing" @click="fileInput?.click()">匯入</button>
+        <button class="btn danger" :disabled="!store.editing" @click="clearAll">清空</button>
       </div>
       <div class="grp mode" :class="{ edit: store.editing }" role="radiogroup" aria-label="模式">
         <span class="thumb" aria-hidden="true"></span>

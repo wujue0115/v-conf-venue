@@ -26,6 +26,8 @@ body {
   /* Full-screen app: the page itself never scrolls or rubber-bands; panels scroll inside */
   overflow: hidden;
   overscroll-behavior: none;
+  /* no grey/blue flash on tap in mobile browsers; buttons show their own :active / .on states */
+  -webkit-tap-highlight-color: transparent;
 }
 
 a {
@@ -72,6 +74,17 @@ button {
 .btn.danger:hover {
   background: #fbe9e7;
   color: #a8321f;
+}
+.btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.btn:disabled:hover {
+  background: transparent;
+  color: inherit;
+}
+.btn.on:disabled:hover {
+  background: var(--yel);
 }
 .btn kbd {
   font: 500 10px var(--mono);
