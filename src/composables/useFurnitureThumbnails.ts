@@ -1,7 +1,8 @@
 import { onMounted, shallowRef } from 'vue'
-import { renderThumbnails, type FurnitureType } from '@/venue/furniture'
+import { renderThumbnails } from '@/venue/furniture'
 
-type Thumbs = Partial<Record<FurnitureType, string>>
+/** Keyed by `thumbKey(type, variant)` */
+type Thumbs = Record<string, string | undefined>
 
 // Rendering needs WebGL, so it happens once, lazily, after the first mount.
 const thumbs = shallowRef<Thumbs>({})

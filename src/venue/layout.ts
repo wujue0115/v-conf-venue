@@ -1,5 +1,11 @@
 import { readJSON, writeJSON } from './storage'
-import { FURNITURE, FURNITURE_TYPES, isFurnitureType, type FurnitureType } from './furniture'
+import {
+  FURNITURE,
+  FURNITURE_TYPES,
+  isFurnitureType,
+  resolveVariant,
+  type FurnitureType,
+} from './furniture'
 
 /** One placed object. `y` omitted → dropped onto the floor below (x, z). `r` is rotation around Y in radians. */
 export interface LayoutItem {
@@ -8,6 +14,10 @@ export interface LayoutItem {
   y?: number
   z: number
   r: number
+  /** Colour variant id, for types that have variants */
+  v?: string
+  /** Stanchions only: bearings (radians) of auto-linked belts the user removed at this post */
+  cut?: number[]
 }
 
 /** 0 = 自助搬運 (self-carry), 1 = 含搬運 (with carrying service) */
@@ -44,18 +54,31 @@ export function summarizeCost(items: readonly LayoutItem[], priceMode: PriceMode
 }
 
 /** Accepts either a bare item array or an exported `{ items: [...] }` file; drops unknown/invalid entries. */
+/** Types that were merged into one type with colour variants */
+const LEGACY: Record<string, { t: FurnitureType; v: string }> = {
+  shapeO: { t: 'shapeSofa', v: 'orange' },
+  shapeG: { t: 'shapeSofa', v: 'green' },
+}
+
 export function parseLayout(data: unknown): LayoutItem[] {
   const list = Array.isArray(data) ? data : (data as { items?: unknown } | null)?.items
   if (!Array.isArray(list)) throw new Error('Invalid layout')
   return list.flatMap((i): LayoutItem[] => {
-    if (!i || !isFurnitureType(i.t) || !Number.isFinite(i.x) || !Number.isFinite(i.z)) return []
+    const legacy = i && typeof i.t === 'string' ? LEGACY[i.t] : undefined
+    const t: unknown = legacy?.t ?? i?.t
+    if (!isFurnitureType(t) || !Number.isFinite(i.x) || !Number.isFinite(i.z)) return []
+    const v = resolveVariant(t, legacy?.v ?? i.v)
+    const cut: unknown[] = Array.isArray(i.cut) ? i.cut : []
+    const cuts = cut.filter((c): c is number => Number.isFinite(c))
     return [
       {
-        t: i.t,
+        t,
         x: i.x,
         y: Number.isFinite(i.y) ? i.y : undefined,
         z: i.z,
         r: Number.isFinite(i.r) ? i.r : 0,
+        ...(v ? { v } : {}),
+        ...(cuts.length ? { cut: cuts } : {}),
       },
     ]
   })

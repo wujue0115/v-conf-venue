@@ -3,8 +3,9 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { CENTER, buildArchitecture, type Architecture } from './architecture'
 import { FURNITURE, buildFurniture, isFurnitureType, type FurnitureType } from './furniture'
 import type { LayoutItem } from './layout'
-import { YEL } from './materials'
+import { B, FM, YEL } from './materials'
 import type { CameraView, Vec3 } from './places'
+import { bearing, linkPosts, withoutCutToward, type Post } from './stanchions'
 
 export interface SelectionInfo {
   type: FurnitureType
@@ -12,6 +13,10 @@ export interface SelectionInfo {
   z: number
   /** Rotation in whole degrees, 0–359 */
   deg: number
+  /** Stanchions only: auto-linked belts at this post that have been removed */
+  cutBelts: number
+  /** Colour variant id, for types that have variants */
+  variant?: string
 }
 
 export interface EditorCallbacks {
@@ -44,6 +49,17 @@ interface Fly {
 
 const UNDO_LIMIT = 60
 const UP = THREE.Object3D.DEFAULT_UP
+/** Height of the belt cassette on the stanchion post */
+const BELT_Y = 0.9
+const BELT_GEO = B(1, 0.05, 0.006)
+const X_AXIS = new THREE.Vector3(1, 0, 0)
+
+const isPost = (o: THREE.Object3D) => o.userData.type === 'stanchion'
+const toPost = (o: THREE.Object3D): Post => ({
+  x: o.position.x,
+  z: o.position.z,
+  cut: o.userData.cut as number[] | undefined,
+})
 
 /**
  * Owns the three.js scene: renderer, camera, architecture, placed furniture,
@@ -59,6 +75,8 @@ export class VenueEditor {
   private readonly controls: OrbitControls
   private readonly archi: Architecture
   private readonly placed = new THREE.Group()
+  /** Belts between stanchions, rebuilt from their positions (not part of the layout) */
+  private readonly belts = new THREE.Group()
   private readonly grid: THREE.GridHelper
   private readonly selBox = new THREE.Box3()
   private readonly selHelper: THREE.Box3Helper
@@ -131,7 +149,7 @@ export class VenueEditor {
 
     this.archi = buildArchitecture(scene)
     this.fixedSeats = this.archi.fixedSeats
-    scene.add(this.placed)
+    scene.add(this.placed, this.belts)
 
     const grid = (this.grid = new THREE.GridHelper(90, 180, '#cdbf9d', '#e4dccb'))
     grid.position.set(19, 0.015, 17.5)
@@ -166,13 +184,18 @@ export class VenueEditor {
   // ---------------- Public API ----------------
 
   serialize(): LayoutItem[] {
-    return this.placed.children.map((o) => ({
-      t: o.userData.type as FurnitureType,
-      x: +o.position.x.toFixed(3),
-      y: +o.position.y.toFixed(3),
-      z: +o.position.z.toFixed(3),
-      r: +o.rotation.y.toFixed(4),
-    }))
+    return this.placed.children.map((o) => {
+      const cut = o.userData.cut as number[] | undefined
+      return {
+        t: o.userData.type as FurnitureType,
+        x: +o.position.x.toFixed(3),
+        y: +o.position.y.toFixed(3),
+        z: +o.position.z.toFixed(3),
+        r: +o.rotation.y.toFixed(4),
+        ...(o.userData.variant ? { v: o.userData.variant as string } : {}),
+        ...(cut?.length ? { cut: cut.map((c) => +c.toFixed(3)) } : {}),
+      }
+    })
   }
 
   /** Replace the whole layout. Pass `record` to make it undoable. */
@@ -180,7 +203,7 @@ export class VenueEditor {
     if (record) this.pushUndo()
     this.select(null)
     this.placed.clear()
-    items.forEach((i) => this.add(i.t, i.x, i.y, i.z, i.r))
+    items.forEach((i) => this.add(i.t, i.x, i.y, i.z, i.r, i.cut, i.v))
     this.commit()
   }
 
@@ -250,6 +273,8 @@ export class VenueEditor {
       undefined,
       this.sn(s.position.z + off.z),
       s.rotation.y,
+      undefined,
+      s.userData.variant as string | undefined,
     )
     this.select(o)
     this.commit()
@@ -279,12 +304,48 @@ export class VenueEditor {
       for (let c = 0; c < cols; c++) {
         if (!r && !c) continue
         const v = new THREE.Vector3(c * dx, 0, -r * dz).applyAxisAngle(UP, s.rotation.y)
-        this.add(type, s.position.x + v.x, undefined, s.position.z + v.z, s.rotation.y)
+        this.add(
+          type,
+          s.position.x + v.x,
+          undefined,
+          s.position.z + v.z,
+          s.rotation.y,
+          undefined,
+          s.userData.variant as string | undefined,
+        )
       }
     this.commit()
     this.cb.onToast(
       `已產生 ${cols * rows - 1} 個「${FURNITURE[type].name}」（向右 ${cols} 個、向後 ${rows} 排）`,
     )
+  }
+
+  /** Rebuild the selected object in another colour variant, in the same spot. */
+  setVariant(v: string) {
+    const s = this.selected
+    if (!s || s.userData.variant === v) return
+    this.pushUndo()
+    const o = buildFurniture(s.userData.type as FurnitureType, v)
+    o.position.copy(s.position)
+    o.rotation.copy(s.rotation)
+    this.placed.remove(s)
+    this.placed.add(o)
+    this.select(o)
+    this.commit()
+  }
+
+  /** Re-link every belt removed at the selected stanchion. */
+  restoreBelts() {
+    const s = this.selected
+    if (!s || !isPost(s)) return
+    this.pushUndo()
+    s.userData.cut = []
+    const me = toPost(s)
+    for (const o of this.placed.children)
+      if (o !== s && isPost(o)) o.userData.cut = withoutCutToward(toPost(o), bearing(toPost(o), me))
+    this.commit()
+    this.updSel()
+    this.cb.onToast('已恢復紅帶連接')
   }
 
   /** Begin drag-placing a new object from the palette (call from a pointerdown). */
@@ -357,17 +418,63 @@ export class VenueEditor {
 
   // ---------------- Internals ----------------
 
-  private add(t: FurnitureType, x: number, y: number | undefined, z: number, r = 0) {
+  private add(
+    t: FurnitureType,
+    x: number,
+    y: number | undefined,
+    z: number,
+    r = 0,
+    cut?: readonly number[],
+    v?: string,
+  ) {
     if (!isFurnitureType(t)) return null
-    const o = buildFurniture(t)
+    const o = buildFurniture(t, v)
     o.position.set(x, y ?? this.floorY(x, z), z)
     o.rotation.y = r
+    if (cut?.length) o.userData.cut = [...cut]
     this.placed.add(o)
     return o
   }
 
   private commit() {
+    this.updateBelts()
     this.cb.onChange(this.serialize())
+  }
+
+  /** Redraw the belts between stanchion posts from their current positions. */
+  private updateBelts() {
+    this.belts.clear()
+    const posts = this.placed.children.filter(isPost)
+    for (const [i, j] of linkPosts(posts.map(toPost)).belts) {
+      const a = posts[i]!.position.clone().setY(posts[i]!.position.y + BELT_Y)
+      const b = posts[j]!.position.clone().setY(posts[j]!.position.y + BELT_Y)
+      const d = b.clone().sub(a)
+      const m = new THREE.Mesh(BELT_GEO, FM.belt)
+      m.castShadow = true
+      m.position.copy(a).add(b).multiplyScalar(0.5)
+      m.scale.x = d.length()
+      m.quaternion.setFromUnitVectors(X_AXIS, d.normalize())
+      m.userData.ends = [posts[i], posts[j]]
+      this.belts.add(m)
+    }
+  }
+
+  private pickBelt(e: PointerEvent) {
+    this.setRay(e)
+    return this.ray.intersectObjects(this.belts.children, false)[0]?.object ?? null
+  }
+
+  /** Remove an auto-linked belt; the cut is stored on its first post so it survives saves. */
+  private cutBelt(belt: THREE.Object3D) {
+    const [a, b] = belt.userData.ends as [THREE.Object3D, THREE.Object3D]
+    this.pushUndo()
+    a.userData.cut = [
+      ...((a.userData.cut as number[] | undefined) ?? []),
+      bearing(toPost(a), toPost(b)),
+    ]
+    this.commit()
+    this.updSel()
+    this.cb.onToast('已拆除紅帶，選取紅龍柱可恢復連接')
   }
 
   private pushUndo() {
@@ -387,7 +494,20 @@ export class VenueEditor {
     if (!s) return
     this.selBox.setFromObject(s)
     const deg = (Math.round(THREE.MathUtils.radToDeg(s.rotation.y) % 360) + 360) % 360
-    this.cb.onSelect({ type: s.userData.type, x: s.position.x, z: s.position.z, deg })
+    let cutBelts = 0
+    if (isPost(s)) {
+      const posts = this.placed.children.filter(isPost)
+      const me = posts.indexOf(s)
+      cutBelts = linkPosts(posts.map(toPost)).cut.filter((p) => p.includes(me)).length
+    }
+    this.cb.onSelect({
+      type: s.userData.type,
+      x: s.position.x,
+      z: s.position.z,
+      deg,
+      cutBelts,
+      variant: s.userData.variant,
+    })
   }
 
   private sn(v: number) {
@@ -565,12 +685,13 @@ export class VenueEditor {
           this.grid.visible = true
         }
         this.moveTo(d.o, p.x + d.dx, p.z + d.dz)
+        if (isPost(d.o)) this.updateBelts()
         this.updSel()
         return
       }
       if (this.placing) return
       if (e.target === canvas && e.buttons === 0)
-        canvas.style.cursor = this.pickObj(e) ? 'grab' : ''
+        canvas.style.cursor = this.pickObj(e) ? 'grab' : this.pickBelt(e) ? 'pointer' : ''
     })
     this.listen(window, 'pointerup', (e) => {
       if (this.drag) {
@@ -582,8 +703,11 @@ export class VenueEditor {
         return
       }
       const d = this.downPt
-      if (d && e.target === canvas && Math.hypot(e.clientX - d.x, e.clientY - d.y) < 4)
-        this.select(null)
+      if (d && e.target === canvas && Math.hypot(e.clientX - d.x, e.clientY - d.y) < 4) {
+        const belt = this.pickBelt(e)
+        if (belt) this.cutBelt(belt)
+        else this.select(null)
+      }
       this.downPt = null
     })
   }

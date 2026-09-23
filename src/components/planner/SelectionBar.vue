@@ -3,8 +3,9 @@ import { computed, shallowRef, watch } from 'vue'
 import { useFurnitureThumbnails } from '@/composables/useFurnitureThumbnails'
 import { useVenueEditor } from '@/composables/useVenueEditor'
 import { usePlannerStore } from '@/stores/planner'
-import { FURNITURE } from '@/venue/furniture'
+import { FURNITURE, thumbKey, variantsOf } from '@/venue/furniture'
 import { formatNT } from '@/venue/layout'
+import { BELT_MAX } from '@/venue/stanchions'
 
 const store = usePlannerStore()
 const editor = useVenueEditor()
@@ -17,6 +18,10 @@ const dz = shallowRef(1)
 
 const sel = computed(() => store.selection)
 const def = computed(() => (sel.value ? FURNITURE[sel.value.type] : null))
+const variants = computed(() => (sel.value ? variantsOf(sel.value.type) : []))
+const thumb = computed(() =>
+  sel.value ? thumbs.value[thumbKey(sel.value.type, sel.value.variant)] : '',
+)
 const price = computed(() => (def.value ? formatNT(def.value.price[store.priceMode]) : ''))
 const position = computed(() =>
   sel.value ? `x ${sel.value.x.toFixed(2)} · z ${sel.value.z.toFixed(2)} · ${sel.value.deg}°` : '',
@@ -42,7 +47,7 @@ const generate = () =>
 <template>
   <div v-if="sel && def" class="sel" data-stage-ui>
     <div class="head">
-      <img :src="thumbs[sel.type]" alt="" />
+      <img :src="thumb" alt="" />
       <div class="meta">
         <div class="title">
           <b>{{ def.name }}</b
@@ -54,6 +59,24 @@ const generate = () =>
     </div>
 
     <div class="rows">
+      <template v-if="variants.length">
+        <span class="lbl">顏色</span>
+        <div class="ctl swatches" role="radiogroup" aria-label="顏色">
+          <button
+            v-for="v in variants"
+            :key="v.id"
+            class="swatch"
+            :class="{ on: sel.variant === v.id }"
+            type="button"
+            role="radio"
+            :aria-checked="sel.variant === v.id"
+            @click="editor?.setVariant(v.id)"
+          >
+            <span class="dot" :style="{ background: v.swatch }"></span>{{ v.name }}
+          </button>
+        </div>
+      </template>
+
       <span class="lbl">旋轉</span>
       <div class="ctl">
         <button class="btn" title="逆時針 15° (Q)" @click="rotate(15)">⟲ 15°</button>
@@ -102,6 +125,16 @@ const generate = () =>
         </label>
         <button class="btn gen" @click="generate">產生</button>
       </div>
+
+      <template v-if="sel.type === 'stanchion'">
+        <span class="lbl">紅帶</span>
+        <div class="ctl belt">
+          <span class="hint">{{ BELT_MAX }}m 內自動連接，點紅帶可拆除</span>
+          <button v-if="sel.cutBelts" class="btn restore" @click="editor?.restoreBelts()">
+            恢復 {{ sel.cutBelts }} 條
+          </button>
+        </div>
+      </template>
     </div>
   </div>
 </template>
@@ -237,6 +270,46 @@ const generate = () =>
 }
 .ctl .gen:hover {
   background: #e3a817;
+}
+.swatches {
+  gap: 6px;
+}
+.swatch {
+  height: 30px;
+  padding: 0 10px 0 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  font-size: 12px;
+  cursor: pointer;
+}
+.swatch:hover {
+  background: var(--paper);
+}
+.swatch.on {
+  border-color: var(--ink);
+  box-shadow: inset 0 0 0 1px var(--ink);
+}
+.swatch:focus-visible {
+  outline: 2px solid var(--yel);
+  outline-offset: 1px;
+}
+.dot {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15);
+}
+.hint {
+  font-size: 12px;
+  line-height: 30px;
+  color: var(--muted);
+}
+.restore {
+  margin-left: auto;
 }
 
 /* Phones: a full-width sheet pinned above the bottom edge */

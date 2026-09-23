@@ -58,3 +58,37 @@ describe('helpers', () => {
     expect(formatNT(12345)).toBe('NT$ 12,345')
   })
 })
+
+describe('parseLayout cuts', () => {
+  it('keeps numeric stanchion cuts and drops empty or invalid ones', () => {
+    const [a, b] = parseLayout([
+      { t: 'stanchion', x: 0, z: 0, r: 0, cut: [1.571, 'x'] },
+      { t: 'stanchion', x: 1, z: 0, r: 0, cut: [] },
+    ])
+    expect(a?.cut).toEqual([1.571])
+    expect(b).not.toHaveProperty('cut')
+  })
+})
+
+describe('parseLayout variants', () => {
+  it('migrates the old per-colour sofa types', () => {
+    const items = parseLayout([
+      { t: 'shapeO', x: 0, z: 0, r: 0 },
+      { t: 'shapeG', x: 1, z: 0, r: 0 },
+    ])
+    expect(items.map((i) => [i.t, i.v])).toEqual([
+      ['shapeSofa', 'orange'],
+      ['shapeSofa', 'green'],
+    ])
+  })
+
+  it('keeps known variants, defaults unknown ones and drops them on plain types', () => {
+    const [a, b, c] = parseLayout([
+      { t: 'stoolHigh', x: 0, z: 0, r: 0, v: 'brown' },
+      { t: 'stoolHigh', x: 0, z: 0, r: 0, v: 'pink' },
+      { t: 'table2', x: 0, z: 0, r: 0, v: 'brown' },
+    ])
+    expect([a?.v, b?.v]).toEqual(['brown', 'grey'])
+    expect(c).not.toHaveProperty('v')
+  })
+})
