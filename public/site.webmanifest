@@ -1,0 +1,10 @@
+{
+  "name": "v-conf-venue · 政大公企 3D 場地規劃",
+  "short_name": "v-conf-venue",
+  "description": "v-conf Taiwan 2026 的互動 3D 場地規劃工具：拖曳擺放場地家具與海報，即時計算租借費用。",
+  "lang": "zh-Hant-TW",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f3f0e8",
+  "theme_color": "#f3f0e8"
+}
