@@ -42,3 +42,7 @@ test-results/
 playwright-report/
 
 !.vscode/settings.json
+
+# Cloudflare Wrangler
+.wrangler/
+.dev.vars*

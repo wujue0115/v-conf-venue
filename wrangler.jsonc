@@ -1,0 +1,10 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "v-conf-venue",
+  "compatibility_date": "2026-09-23",
+  "assets": {
+    "directory": "./dist",
+    // Serve index.html for unknown paths so Vue Router history mode works
+    "not_found_handling": "single-page-application"
+  }
+}
