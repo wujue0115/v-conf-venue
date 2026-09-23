@@ -14,7 +14,7 @@ const tiles = FURNITURE_TYPES.map((type) => {
 })
 // Rented from the venue vs. brought by us (not charged)
 const sections = [
-  { id: 'venue', title: '場地家具', tiles: tiles.filter((t) => t.price) },
+  { id: 'venue', title: '場地物件', tiles: tiles.filter((t) => t.price) },
   { id: 'own', title: '自備物件', tiles: tiles.filter((t) => !t.price) },
 ]
 
