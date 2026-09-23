@@ -25,9 +25,11 @@ onBeforeUnmount(() => clearTimeout(timer))
 <style scoped>
 .hint {
   position: absolute;
-  left: calc(50% + var(--stage-inset, 0px) / 2);
+  left: calc(var(--stage-inset, 0px) + 14px);
+  right: 14px;
+  width: fit-content;
+  margin-inline: auto;
   top: 64px;
-  transform: translateX(-50%);
   background: var(--ink);
   color: #fff;
   font-size: 12.5px;

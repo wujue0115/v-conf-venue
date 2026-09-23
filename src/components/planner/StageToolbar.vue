@@ -98,7 +98,7 @@ async function onFile(e: Event) {
 <style scoped>
 .topbars {
   position: absolute;
-  top: 14px;
+  top: calc(14px + env(safe-area-inset-top, 0px));
   left: calc(var(--stage-inset, 0px) + 14px);
   right: 14px;
   display: flex;

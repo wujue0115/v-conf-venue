@@ -29,6 +29,8 @@ const { sidebarCollapsed } = storeToRefs(usePlannerStore())
   --stage-inset: var(--side-w);
   position: relative;
   height: 100vh;
+  /* dvh = visible area on mobile (100vh includes the space under the browser toolbars) */
+  height: 100dvh;
   overflow: hidden;
 }
 .planner > .planner-stage {

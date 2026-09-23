@@ -51,20 +51,24 @@ const generate = () =>
       </div>
     </div>
     <div class="sep"></div>
-    <button class="btn" @click="rotate(15)">⟲ 15° <kbd>Q</kbd></button>
-    <button class="btn" @click="rotate(-15)">⟳ 15° <kbd>E</kbd></button>
-    <button class="btn" @click="rotate(-90)">90° <kbd>R</kbd></button>
-    <div class="sep"></div>
-    <button class="btn" @click="editor?.duplicate()">複製 <kbd>⌘D</kbd></button>
+    <div class="acts">
+      <button class="btn" @click="rotate(15)">⟲ 15° <kbd>Q</kbd></button>
+      <button class="btn" @click="rotate(-15)">⟳ 15° <kbd>E</kbd></button>
+      <button class="btn" @click="rotate(-90)">90° <kbd>R</kbd></button>
+      <div class="sep"></div>
+      <button class="btn" @click="editor?.duplicate()">複製 <kbd>⌘D</kbd></button>
+    </div>
     <div class="sep"></div>
     <div class="arr">
-      陣列 <input v-model.number="cols" type="number" min="1" title="每排數量" />×<input
+      <span>陣列</span>
+      <input v-model.number="cols" type="number" min="1" title="每排數量" />×<input
         v-model.number="rows"
         type="number"
         min="1"
         title="排數"
       />
-      間距 <input v-model.number="dx" type="number" step="0.05" title="左右間距 m" />/<input
+      <span>間距</span>
+      <input v-model.number="dx" type="number" step="0.05" title="左右間距 m" />/<input
         v-model.number="dz"
         type="number"
         step="0.05"
@@ -73,16 +77,19 @@ const generate = () =>
       m <button class="btn gen" @click="generate">產生</button>
     </div>
     <div class="sep"></div>
-    <button class="btn danger" @click="editor?.remove()">刪除 <kbd>Del</kbd></button>
+    <button class="btn danger del" @click="editor?.remove()">刪除 <kbd>Del</kbd></button>
   </div>
 </template>
 
 <style scoped>
 .sel {
   position: absolute;
-  left: calc(50% + var(--stage-inset, 0px) / 2);
-  bottom: 18px;
-  transform: translateX(-50%);
+  /* centred in the area right of the sidebar; left+right keep the full width available */
+  left: calc(var(--stage-inset, 0px) + 14px);
+  right: 14px;
+  width: fit-content;
+  margin-inline: auto;
+  bottom: calc(18px + env(safe-area-inset-bottom, 0px));
   background: #fff;
   border: 1px solid var(--line);
   border-radius: 14px;
@@ -93,7 +100,6 @@ const generate = () =>
   gap: 8px;
   flex-wrap: wrap;
   justify-content: center;
-  max-width: calc(100% - var(--stage-inset, 0px) - 28px);
 }
 .who {
   display: flex;
@@ -145,5 +151,68 @@ const generate = () =>
 }
 .gen {
   background: var(--paper);
+}
+.acts {
+  display: contents;
+}
+.arr span {
+  white-space: nowrap;
+}
+
+/* Phones: a compact full-width sheet pinned above the bottom edge */
+@media (max-width: 720px) {
+  .sel {
+    left: 10px;
+    right: 10px;
+    bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+    width: auto;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      'who del'
+      'acts acts'
+      'arr arr';
+    gap: 6px 8px;
+    padding: 8px 10px;
+  }
+  .sep,
+  kbd {
+    display: none;
+  }
+  .who {
+    grid-area: who;
+    min-width: 0;
+    padding: 0;
+  }
+  .who > div {
+    min-width: 0;
+  }
+  .who b,
+  .who i {
+    display: block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .del {
+    grid-area: del;
+  }
+  .acts {
+    grid-area: acts;
+    display: flex;
+    justify-content: space-between;
+    border-top: 1px solid #eee9de;
+    padding-top: 6px;
+  }
+  .arr {
+    grid-area: arr;
+    justify-content: space-between;
+    border-top: 1px solid #eee9de;
+    padding-top: 6px;
+  }
+  .arr input {
+    width: 40px;
+    min-width: 0;
+  }
 }
 </style>

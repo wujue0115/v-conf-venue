@@ -48,7 +48,9 @@ h1 {
 }
 .scroll {
   overflow: auto;
+  /* don't hand leftover scroll to the page when reaching the end */
+  overscroll-behavior: contain;
   flex: 1;
-  padding: 16px 16px 20px;
+  padding: 16px 16px calc(20px + env(safe-area-inset-bottom, 0px));
 }
 </style>

@@ -23,6 +23,9 @@ body {
   color: var(--ink);
   background: var(--bg);
   -webkit-font-smoothing: antialiased;
+  /* Full-screen app: the page itself never scrolls or rubber-bands; panels scroll inside */
+  overflow: hidden;
+  overscroll-behavior: none;
 }
 
 a {
