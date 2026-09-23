@@ -127,9 +127,9 @@ function onSlotsInput(e: Event) {
   padding: 4px 6px;
 }
 .sumbox {
-  margin-top: 10px;
-  background: var(--ink);
-  color: #fff;
+  margin-top: 12px;
+  background: #fdf7e6;
+  border: 1px solid rgba(237, 179, 42, 0.45);
   border-radius: 10px;
   padding: 12px 12px 10px;
 }
@@ -141,16 +141,21 @@ function onSlotsInput(e: Event) {
 }
 .sumbox span {
   font-size: 12.5px;
+  font-weight: 700;
+  color: var(--muted);
 }
 .sumbox b {
-  font: 500 18px var(--mono);
-  color: var(--yel);
+  font: 600 19px var(--mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
 }
 .sumbox i {
   display: block;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed rgba(237, 179, 42, 0.45);
   font-style: normal;
   font-size: 11px;
-  color: #b9bcc2;
-  margin-top: 4px;
+  color: #8a6a1c;
 }
 </style>
