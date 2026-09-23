@@ -17,16 +17,20 @@ The team can furnish the space and check the rental cost as they go.
 
 The floor plan is modelled in metres from the venue's official dimension
 drawings. The furniture catalogue follows the venue's rental price list
-(附件五 家具設備租借費用表).
+(附件五 家具設備租借費用表), and each 3D model is shaped and coloured after the
+photos in the rental chart (家具設備租借費用圖表). Both are kept in [`docs/`](docs/).
 
 ## Experience
 
 * Drag furniture from the sidebar straight into the 3D venue
 * Rotate, duplicate, delete, or lay out selected items in rows and columns
+* Pick a colour for pieces that come in more than one (high stool, shaped sofa)
+* Place stanchions and have belts link neighbouring posts automatically; click a belt to remove it
 * See the rental total update live, with self-carry or carrying-service pricing across multiple time slots
 * Jump between preset views: overview, top-down, A201, the A215 atrium, and the A2 hall
 * Toggle grid snapping, cut-away walls, and room labels
 * Move the camera with WASD or arrow keys, and undo with ⌘Z / Ctrl+Z
+* Open the `?` button in the corner for every mouse, touch, and keyboard control
 * Keep the layout saved in the browser automatically, and export or import it as JSON
 
 ## How It Works
@@ -56,15 +60,19 @@ src/
 ├── venue/                  # Three.js core, independent of Vue
 │   ├── VenueEditor.ts      # scene, interaction, undo
 │   ├── architecture.ts     # walls, floors, stairs, A2 fixed seating
-│   ├── furniture.ts        # catalogue: sizes, prices, 3D models, thumbnails
+│   ├── furniture.ts        # catalogue: sizes, prices, colours, 3D models, thumbnails
 │   ├── layout.ts           # layout format, pricing, import validation, storage
 │   ├── materials.ts        # materials and modelling helpers
-│   └── places.ts           # room / facility labels, camera views
+│   ├── places.ts           # room / facility labels, camera views
+│   └── stanchions.ts       # which stanchion posts get linked by belts
 ├── stores/planner.ts       # layout snapshot, selection, pricing, view toggles
 ├── composables/            # useVenueEditor, useFurnitureThumbnails
 ├── components/planner/     # sidebar, palette, cost summary, stage, toolbars
 └── views/PlannerView.vue
-docs/floorplans/            # source floor plans used for modelling
+docs/
+├── floorplans/             # source floor plans used for modelling
+├── 附件五_家具設備租借費用表_.pdf   # rental price list
+└── 家具設備租借費用圖表_.pdf        # rental chart with furniture photos
 ```
 
 ## Development
@@ -77,3 +85,7 @@ pnpm test:unit    # run unit tests with Vitest
 pnpm test:e2e     # run end-to-end tests with Playwright (run `npx playwright install` first)
 pnpm lint         # lint with oxlint and ESLint
 ```
+
+## License
+
+[MIT](LICENSE) Copyright (c) 2026-PRESENT Wujue.
