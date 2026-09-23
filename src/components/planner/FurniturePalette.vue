@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import SectionTitle from './SectionTitle.vue'
+import CollapsibleSection from './CollapsibleSection.vue'
 import { useFurnitureThumbnails } from '@/composables/useFurnitureThumbnails'
 import { useVenueEditor } from '@/composables/useVenueEditor'
 import { FURNITURE, FURNITURE_TYPES, priceOf, type FurnitureType } from '@/venue/furniture'
@@ -14,8 +14,8 @@ const tiles = FURNITURE_TYPES.map((type) => {
 })
 // Rented from the venue vs. brought by us (not charged)
 const sections = [
-  { title: '場地家具', note: '拖曳放置', tiles: tiles.filter((t) => t.price) },
-  { title: '自備物件', note: '不計費', tiles: tiles.filter((t) => !t.price) },
+  { id: 'venue', title: '場地家具', note: '拖曳放置', tiles: tiles.filter((t) => t.price) },
+  { id: 'own', title: '自備物件', note: '不計費', tiles: tiles.filter((t) => !t.price) },
 ]
 
 function onPointerDown(e: PointerEvent, type: FurnitureType) {
@@ -24,8 +24,13 @@ function onPointerDown(e: PointerEvent, type: FurnitureType) {
 </script>
 
 <template>
-  <template v-for="sec in sections" :key="sec.title">
-    <SectionTitle :title="sec.title" :note="sec.note" />
+  <CollapsibleSection
+    v-for="sec in sections"
+    :key="sec.id"
+    :title="sec.title"
+    :note="sec.note"
+    :storage-key="`vueconf26-palette-${sec.id}-collapsed`"
+  >
     <div class="palette">
       <div
         v-for="t in sec.tiles"
@@ -40,7 +45,7 @@ function onPointerDown(e: PointerEvent, type: FurnitureType) {
         <i v-if="t.price" class="pr">{{ t.price }}</i>
       </div>
     </div>
-  </template>
+  </CollapsibleSection>
 </template>
 
 <style scoped>
