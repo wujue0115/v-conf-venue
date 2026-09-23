@@ -1,35 +1,82 @@
-@import './base.css';
-
-#app {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
-  font-weight: normal;
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
 }
 
-a,
-.green {
-  text-decoration: none;
-  color: hsla(160, 100%, 37%, 1);
-  transition: 0.4s;
+:root {
+  --yel: #edb32a;
+  --ink: #1f2126;
+  --muted: #5d6068;
+  --faint: #8b8e95;
+  --line: #e3ded2;
+  --paper: #faf8f3;
+  --bg: #f3f0e8;
+  --mono: 'JetBrains Mono', monospace;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  font-family: 'Noto Sans TC', system-ui, sans-serif;
+  color: var(--ink);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: var(--ink);
+}
+a:hover {
+  color: #b07d0c;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+}
+
+/* Shared toolbar primitives (used by sidebar, stage toolbar and selection bar) */
+.grp {
+  display: flex;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 10px;
   padding: 3px;
+  gap: 2px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+.btn {
+  height: 30px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.btn:hover {
+  background: #f4f1ea;
+}
+.btn.on {
+  background: var(--yel);
+}
+.btn.danger:hover {
+  background: #fbe9e7;
+  color: #a8321f;
+}
+.btn kbd {
+  font: 500 10px var(--mono);
+  color: var(--faint);
 }
 
-@media (hover: hover) {
-  a:hover {
-    background-color: hsla(160, 100%, 37%, 0.2);
-  }
-}
-
-@media (min-width: 1024px) {
-  body {
-    display: flex;
-    place-items: center;
-  }
-
-  #app {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    padding: 0 2rem;
-  }
+/* Set by VenueEditor while dragging a new object from the palette */
+body.placing,
+body.placing * {
+  cursor: copy !important;
 }

@@ -1,75 +1,79 @@
-# v-conf-venue
+<h1 align="center">v-conf-venue</h1>
 
-This template should help get you started developing with Vue 3 in Vite.
+<p align="center">
+  Interactive 3D venue planner for V-CONF Taiwan 2026 at NCCU CPBAE, Building A, 2F.
+</p>
 
-## Recommended IDE Setup
+<p align="center">
+  <a href="https://v-conf.vue.tw/">V-CONF Taiwan</a>
+</p>
 
-[VS Code](https://code.visualstudio.com/) + [Vue (Official)](https://marketplace.visualstudio.com/items?itemName=Vue.volar) (and disable Vetur).
+## About
 
-This project replaces its workspace TypeScript package with [typescript-native-bridge](https://github.com/johnsoncodehk/typescript-native-bridge). Command-line tools use the bridge automatically. To use it in VS Code after installing dependencies, accept the prompt to use the workspace TypeScript version. If the prompt does not appear, run **TypeScript: Select TypeScript Version** and choose **Use Workspace Version**.
+`v-conf-venue` is a planning tool built for V-CONF Taiwan 2026 (10/17). It
+models the second floor of Building A at NCCU CPBAE (政大公企) in 3D, covering
+A201, A215, the A223 VIP lounge, and the A2 international conference hall.
+The team can furnish the space and check the rental cost as they go.
 
-## Recommended Browser Setup
+The floor plan is modelled in metres from the venue's official dimension
+drawings. The furniture catalogue follows the venue's rental price list
+(附件五 家具設備租借費用表).
 
-- Chromium-based browsers (Chrome, Edge, Brave, etc.):
-  - [Vue.js devtools](https://chromewebstore.google.com/detail/vuejs-devtools/nhdogjmejiglipccpnnnanhbledajbpd)
-  - [Turn on Custom Object Formatter in Chrome DevTools](http://bit.ly/object-formatters)
-- Firefox:
-  - [Vue.js devtools](https://addons.mozilla.org/en-US/firefox/addon/vue-js-devtools/)
-  - [Turn on Custom Object Formatter in Firefox DevTools](https://fxdx.dev/firefox-devtools-custom-object-formatters/)
+## Experience
 
-## Type Support for `.vue` Imports in TS
+* Drag furniture from the sidebar straight into the 3D venue
+* Rotate, duplicate, delete, or lay out selected items in rows and columns
+* See the rental total update live, with self-carry or carrying-service pricing across multiple time slots
+* Jump between preset views: overview, top-down, A201, the A215 atrium, and the A2 hall
+* Toggle grid snapping, cut-away walls, and room labels
+* Move the camera with WASD or arrow keys, and undo with ⌘Z / Ctrl+Z
+* Keep the layout saved in the browser automatically, and export or import it as JSON
 
-TypeScript cannot handle type information for `.vue` imports by default, so we replace the `tsc` CLI with `vue-tsc` for type checking. In editors, we need [Volar](https://marketplace.visualstudio.com/items?itemName=Vue.volar) to make the TypeScript language service aware of `.vue` types.
+## How It Works
 
-## Customize configuration
+```text
+Floor Plan Drawings
+        ↓
+ Architecture (Three.js)
+        ↓
+  Furniture Catalogue
+        ↓
+     VenueEditor
+        ↓
+ Layout Snapshot (Pinia)
+        ↓
+  Vue UI · Rental Cost
+```
 
-See [Vite Configuration Reference](https://vite.dev/config/).
+`VenueEditor` owns the Three.js scene, including the camera, picking, dragging,
+keyboard shortcuts, and undo history. It is the only place where object
+positions are stored. After every change, it hands a serialized layout to the
+Pinia store. Vue components read from the store and call editor methods to act
+on the scene.
 
-## Project Setup
+```text
+src/
+├── venue/                  # Three.js core, independent of Vue
+│   ├── VenueEditor.ts      # scene, interaction, undo
+│   ├── architecture.ts     # walls, floors, stairs, A2 fixed seating
+│   ├── furniture.ts        # catalogue: sizes, prices, 3D models, thumbnails
+│   ├── layout.ts           # layout format, pricing, import validation, storage
+│   ├── materials.ts        # materials and modelling helpers
+│   └── places.ts           # room / facility labels, camera views
+├── stores/planner.ts       # layout snapshot, selection, pricing, view toggles
+├── composables/            # useVenueEditor, useFurnitureThumbnails
+├── components/planner/     # sidebar, palette, cost summary, stage, toolbars
+└── views/PlannerView.vue
+docs/floorplans/            # source floor plans used for modelling
+```
+
+## Development
 
 ```sh
 pnpm install
-```
-
-### Compile and Hot-Reload for Development
-
-```sh
-pnpm dev
-```
-
-### Type-Check, Compile and Minify for Production
-
-```sh
-pnpm build
-```
-
-### Run Unit Tests with [Vitest](https://vitest.dev/)
-
-```sh
-pnpm test:unit
-```
-
-### Run End-to-End Tests with [Playwright](https://playwright.dev)
-
-```sh
-# Install browsers for the first run
-npx playwright install
-
-# When testing on CI, must build the project first
-pnpm build
-
-# Runs the end-to-end tests
-pnpm test:e2e
-# Runs the tests only on Chromium
-pnpm test:e2e --project=chromium
-# Runs the tests of a specific file
-pnpm test:e2e tests/example.spec.ts
-# Runs the tests in debug mode
-pnpm test:e2e --debug
-```
-
-### Lint with [ESLint](https://eslint.org/)
-
-```sh
-pnpm lint
+pnpm dev          # start the dev server
+pnpm build        # type-check and build for production
+pnpm test:unit    # run unit tests with Vitest
+pnpm test:e2e     # run end-to-end tests with Playwright (run `npx playwright install` first)
+pnpm lint         # lint with oxlint and ESLint
 ```
