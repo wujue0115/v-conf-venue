@@ -26,6 +26,7 @@ photos in the rental chart (家具設備租借費用圖表). Both are kept in [`
 * Rotate, duplicate, delete, or lay out selected items in rows and columns
 * Pick a colour for pieces that come in more than one (high stool, shaped sofa)
 * Place stanchions and have belts link neighbouring posts automatically; click a belt to remove it
+* Hang your own posters on any wall, resize them by dragging a corner or typing a size, and upload an image that is saved with the layout and its JSON export (posters are not charged)
 * See the rental total update live, with self-carry or carrying-service pricing across multiple time slots
 * Jump between preset views: overview, top-down, A201, the A215 atrium, and the A2 hall
 * Toggle grid snapping, cut-away walls, and room labels

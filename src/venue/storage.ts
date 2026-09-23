@@ -6,10 +6,12 @@ export function readJSON(key: string): unknown {
     return null
   }
 }
+/** Returns whether the value was stored */
 export function writeJSON(key: string, value: unknown) {
   try {
     localStorage.setItem(key, JSON.stringify(value))
+    return true
   } catch {
-    /* ignore */
+    return false
   }
 }

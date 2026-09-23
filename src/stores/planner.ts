@@ -54,7 +54,13 @@ export const usePlannerStore = defineStore('planner', () => {
     toast.value = { id: ++toastId, message }
   }
 
-  watch(items, saveLayout)
+  // Poster images can push the layout past the browser's storage quota: say so once
+  let saveFailed = false
+  watch(items, (list) => {
+    const ok = saveLayout(list)
+    if (!ok && !saveFailed) notify('配置含圖片過大，無法自動存在瀏覽器，請記得匯出 JSON')
+    saveFailed = !ok
+  })
   watch([priceMode, slots], ([m, s]) => savePricing(m, s))
   watch(sidebarCollapsed, (v) => writeJSON(SIDEBAR_KEY, v))
 

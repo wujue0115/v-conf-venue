@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { B, Cy, EF, FM, mesh } from './materials'
+import { buildPoster } from './poster'
 
 /** Builds a piece into `g`; `v` is the colour variant id when the type has variants */
 type Builder = (g: THREE.Group, v?: string) => void
@@ -382,8 +383,10 @@ export interface FurnitureDef {
   variants?: readonly FurnitureVariant[]
   /** Default array spacing [left-right, front-back] in metres */
   arr: [number, number]
-  /** Rental price per slot: [自助搬運, 含搬運] */
-  price: [number, number]
+  /** Rental price per slot: [自助搬運, 含搬運]; absent for items we bring ourselves */
+  price?: [number, number]
+  /** Mounted on a wall rather than standing on the floor */
+  wall?: boolean
 }
 
 // 附件五 家具設備租借費用表（單位 mm → m；價格：自助 / 含搬運）
@@ -523,6 +526,14 @@ export const FURNITURE = {
     price: [100, 300],
   },
   sign: { name: '直式立架', size: 'A1 / A3 / A4', build: sign, arr: [1, 1], price: [300, 500] },
+  // Brought by the organisers — not on the venue's rental list, so it has no price
+  poster: {
+    name: '海報',
+    size: '可調整尺寸',
+    build: buildPoster,
+    wall: true,
+    arr: [0.7, 1],
+  },
 } satisfies Record<string, FurnitureDef>
 
 export type FurnitureType = keyof typeof FURNITURE
@@ -530,6 +541,10 @@ export const FURNITURE_TYPES = Object.keys(FURNITURE) as FurnitureType[]
 
 export const isFurnitureType = (t: unknown): t is FurnitureType =>
   typeof t === 'string' && Object.prototype.hasOwnProperty.call(FURNITURE, t)
+
+/** Rental price, or null for items that are not rented from the venue */
+export const priceOf = (type: FurnitureType) => (FURNITURE[type] as FurnitureDef).price ?? null
+export const isWallItem = (type: FurnitureType) => !!(FURNITURE[type] as FurnitureDef).wall
 
 export const variantsOf = (type: FurnitureType): readonly FurnitureVariant[] =>
   (FURNITURE[type] as FurnitureDef).variants ?? []

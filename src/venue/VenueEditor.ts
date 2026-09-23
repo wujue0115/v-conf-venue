@@ -1,9 +1,16 @@
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { CENTER, buildArchitecture, type Architecture } from './architecture'
-import { FURNITURE, buildFurniture, isFurnitureType, type FurnitureType } from './furniture'
+import {
+  FURNITURE,
+  buildFurniture,
+  isFurnitureType,
+  isWallItem,
+  type FurnitureType,
+} from './furniture'
 import type { LayoutItem } from './layout'
 import { B, FM, YEL } from './materials'
+import { POSTER_MIN, applyPoster, clampPosterSize, type PosterFit } from './poster'
 import type { CameraView, Vec3 } from './places'
 import { bearing, linkPosts, withoutCutToward, type Post } from './stanchions'
 
@@ -17,6 +24,10 @@ export interface SelectionInfo {
   cutBelts: number
   /** Colour variant id, for types that have variants */
   variant?: string
+  /** Height of the object's origin (a poster's centre) */
+  y: number
+  /** Posters only */
+  poster?: { w: number; h: number; hasImage: boolean; lock: boolean }
 }
 
 export interface EditorCallbacks {
@@ -55,6 +66,13 @@ const BELT_GEO = B(1, 0.05, 0.006)
 const X_AXIS = new THREE.Vector3(1, 0, 0)
 
 const isPost = (o: THREE.Object3D) => o.userData.type === 'stanchion'
+const onWall = (o: THREE.Object3D) => isWallItem(o.userData.type as FurnitureType)
+/** A poster with its proportions locked: resizing keeps the aspect ratio */
+const lockedAspect = (o: THREE.Object3D) => !!o.userData.lock
+/** Gap between a wall and a poster's back, so they never z-fight */
+const WALL_GAP = 0.002
+const HANDLE_GEO = new THREE.BoxGeometry(1, 1, 0.2)
+const HANDLE_MAT = new THREE.MeshBasicMaterial({ color: YEL, depthTest: false })
 const toPost = (o: THREE.Object3D): Post => ({
   x: o.position.x,
   z: o.position.z,
@@ -77,6 +95,13 @@ export class VenueEditor {
   private readonly placed = new THREE.Group()
   /** Belts between stanchions, rebuilt from their positions (not part of the layout) */
   private readonly belts = new THREE.Group()
+  /** Corner handles for resizing the selected poster */
+  private readonly handles = new THREE.Group()
+  /** Wall, glass and column meshes posters can hang on */
+  private readonly wallMeshes: THREE.Mesh[] = []
+  /** Poster images interned for undo snapshots: data URL ↔ short key */
+  private readonly imgKeys = new Map<string, string>()
+  private readonly imgByKey = new Map<string, string>()
   private readonly grid: THREE.GridHelper
   private readonly selBox = new THREE.Box3()
   private readonly selHelper: THREE.Box3Helper
@@ -92,6 +117,14 @@ export class VenueEditor {
   private snap = true
   private undoStack: string[] = []
   private drag: { o: THREE.Object3D; dx: number; dz: number; moved: boolean } | null = null
+  private resizing: {
+    o: THREE.Object3D
+    sx: number
+    sy: number
+    anchor: THREE.Vector3
+    aspect: number
+    moved: boolean
+  } | null = null
   private downPt: { x: number; y: number } | null = null
   private placing: { type: FurnitureType; obj: THREE.Group | null; sx: number; sy: number } | null =
     null
@@ -149,7 +182,22 @@ export class VenueEditor {
 
     this.archi = buildArchitecture(scene)
     this.fixedSeats = this.archi.fixedSeats
-    scene.add(this.placed, this.belts)
+    scene.add(this.placed, this.belts, this.handles)
+    this.archi.wallsG.traverse((o) => {
+      if ((o as THREE.Mesh).isMesh) this.wallMeshes.push(o as THREE.Mesh)
+    })
+    for (const [sx, sy] of [
+      [1, 1],
+      [-1, 1],
+      [1, -1],
+      [-1, -1],
+    ] as const) {
+      const h = new THREE.Mesh(HANDLE_GEO, HANDLE_MAT)
+      h.renderOrder = 1000
+      h.userData = { sx, sy }
+      this.handles.add(h)
+    }
+    this.handles.visible = false
 
     const grid = (this.grid = new THREE.GridHelper(90, 180, '#cdbf9d', '#e4dccb'))
     grid.position.set(19, 0.015, 17.5)
@@ -184,18 +232,7 @@ export class VenueEditor {
   // ---------------- Public API ----------------
 
   serialize(): LayoutItem[] {
-    return this.placed.children.map((o) => {
-      const cut = o.userData.cut as number[] | undefined
-      return {
-        t: o.userData.type as FurnitureType,
-        x: +o.position.x.toFixed(3),
-        y: +o.position.y.toFixed(3),
-        z: +o.position.z.toFixed(3),
-        r: +o.rotation.y.toFixed(4),
-        ...(o.userData.variant ? { v: o.userData.variant as string } : {}),
-        ...(cut?.length ? { cut: cut.map((c) => +c.toFixed(3)) } : {}),
-      }
-    })
+    return this.placed.children.map((o) => this.itemOf(o))
   }
 
   /** Replace the whole layout. Pass `record` to make it undoable. */
@@ -203,7 +240,7 @@ export class VenueEditor {
     if (record) this.pushUndo()
     this.select(null)
     this.placed.clear()
-    items.forEach((i) => this.add(i.t, i.x, i.y, i.z, i.r, i.cut, i.v))
+    items.forEach((i) => this.add(i))
     this.commit()
   }
 
@@ -219,7 +256,10 @@ export class VenueEditor {
   undo() {
     const s = this.undoStack.pop()
     if (!s) return
-    this.load(JSON.parse(s))
+    const items = (JSON.parse(s) as LayoutItem[]).map((i) =>
+      i.img ? { ...i, img: this.imgByKey.get(i.img) } : i,
+    )
+    this.load(items)
     this.cb.onToast('已復原')
   }
 
@@ -254,7 +294,7 @@ export class VenueEditor {
 
   rotate(deg: number) {
     const s = this.selected
-    if (!s) return
+    if (!s || onWall(s)) return
     this.pushUndo()
     s.rotation.y += THREE.MathUtils.degToRad(deg)
     this.updSel()
@@ -266,16 +306,22 @@ export class VenueEditor {
     if (!s) return
     this.pushUndo()
     const type = s.userData.type as FurnitureType
-    const off = new THREE.Vector3(FURNITURE[type].arr[0], 0, 0).applyAxisAngle(UP, s.rotation.y)
-    const o = this.add(
-      type,
-      this.sn(s.position.x + off.x),
-      undefined,
-      this.sn(s.position.z + off.z),
-      s.rotation.y,
-      undefined,
-      s.userData.variant as string | undefined,
-    )
+    const item = this.itemOf(s)
+    let o: THREE.Object3D | null
+    if (onWall(s)) {
+      // next to it along the wall, same height
+      const off = new THREE.Vector3((item.w ?? 0) + 0.1, 0, 0).applyAxisAngle(UP, s.rotation.y)
+      o = this.add({ ...item, x: s.position.x + off.x, z: s.position.z + off.z })
+    } else {
+      const off = new THREE.Vector3(FURNITURE[type].arr[0], 0, 0).applyAxisAngle(UP, s.rotation.y)
+      o = this.add({
+        ...item,
+        x: this.sn(s.position.x + off.x),
+        y: undefined,
+        z: this.sn(s.position.z + off.z),
+        cut: undefined,
+      })
+    }
     this.select(o)
     this.commit()
   }
@@ -292,7 +338,7 @@ export class VenueEditor {
   /** Repeat the selected object `cols` to its right and `rows` behind it. */
   arrayFromSelected({ cols, rows, dx, dz }: ArrayOptions) {
     const s = this.selected
-    if (!s) return
+    if (!s || onWall(s)) return
     cols = Math.max(1, Math.min(60, Math.trunc(cols) || 1))
     rows = Math.max(1, Math.min(60, Math.trunc(rows) || 1))
     dx = dx || 1
@@ -304,15 +350,13 @@ export class VenueEditor {
       for (let c = 0; c < cols; c++) {
         if (!r && !c) continue
         const v = new THREE.Vector3(c * dx, 0, -r * dz).applyAxisAngle(UP, s.rotation.y)
-        this.add(
-          type,
-          s.position.x + v.x,
-          undefined,
-          s.position.z + v.z,
-          s.rotation.y,
-          undefined,
-          s.userData.variant as string | undefined,
-        )
+        this.add({
+          ...this.itemOf(s),
+          x: s.position.x + v.x,
+          y: undefined,
+          z: s.position.z + v.z,
+          cut: undefined,
+        })
       }
     this.commit()
     this.cb.onToast(
@@ -325,12 +369,66 @@ export class VenueEditor {
     const s = this.selected
     if (!s || s.userData.variant === v) return
     this.pushUndo()
-    const o = buildFurniture(s.userData.type as FurnitureType, v)
-    o.position.copy(s.position)
-    o.rotation.copy(s.rotation)
+    const item = this.itemOf(s)
     this.placed.remove(s)
-    this.placed.add(o)
-    this.select(o)
+    this.select(this.add({ ...item, v }))
+    this.commit()
+  }
+
+  /**
+   * Resize the selected poster around its centre (metres). A locked poster keeps its ratio,
+   * following whichever side changed, unless `exact` (a paper-size preset) sets both.
+   */
+  setPosterSize(w: number, h: number, exact = false) {
+    const s = this.selected
+    if (!s || !onWall(s)) return
+    const w0 = s.userData.w as number
+    const h0 = s.userData.h as number
+    if (lockedAspect(s) && !exact) {
+      // follow whichever side was changed
+      if (w !== w0) h = w / (w0 / h0)
+      else w = h * (w0 / h0)
+    }
+    w = clampPosterSize(w, w0)
+    h = clampPosterSize(h, h0)
+    if (w === w0 && h === h0) return
+    this.pushUndo()
+    applyPoster(s, { w, h, img: s.userData.img as string | undefined })
+    this.keepAboveFloor(s)
+    this.updSel()
+    this.commit()
+  }
+
+  /**
+   * Put an image on the selected poster (or clear it). The image is always cropped to fill.
+   * 'image' fit reshapes the poster to the image's `aspect` and locks it; 'poster' fit keeps
+   * the poster's size and unlocks it. Without `fit` (the image already matches) it locks too.
+   */
+  setPosterImage(img: string | null, aspect?: number, fit?: PosterFit) {
+    const s = this.selected
+    if (!s || !onWall(s)) return
+    this.pushUndo()
+    const w = s.userData.w as number
+    const h0 = s.userData.h as number
+    let h = h0
+    if (img && aspect) {
+      const follow = fit !== 'poster'
+      if (follow) h = clampPosterSize(w / aspect, h0)
+      s.userData.lock = follow
+    }
+    applyPoster(s, { w, h, img: img ?? undefined })
+    this.keepAboveFloor(s)
+    this.updSel()
+    this.commit()
+  }
+
+  /** Lock or unlock the selected poster's aspect ratio. */
+  setPosterLock(on: boolean) {
+    const s = this.selected
+    if (!s || !onWall(s) || !!s.userData.lock === on) return
+    this.pushUndo()
+    s.userData.lock = on
+    this.updSel()
     this.commit()
   }
 
@@ -368,10 +466,16 @@ export class VenueEditor {
           this.placed.add(pl.obj)
           this.grid.visible = true
         }
-        const p = this.floorHit(ev)
-        if (p) {
-          this.moveTo(pl.obj, p.x, p.z)
-          pl.obj.visible = true
+        if (onWall(pl.obj)) {
+          const hit = this.wallHit(ev)
+          if (hit) this.hangOn(pl.obj, hit.point, hit.normal)
+          pl.obj.visible = !!hit
+        } else {
+          const p = this.floorHit(ev)
+          if (p) {
+            this.moveTo(pl.obj, p.x, p.z)
+            pl.obj.visible = true
+          }
         }
       } else if (pl.obj) pl.obj.visible = false
     }
@@ -402,10 +506,25 @@ export class VenueEditor {
         this.commit()
       } else {
         if (pl.obj) this.placed.remove(pl.obj)
-        if (clicked) {
+        if (clicked && isWallItem(type)) {
+          // hang it on whatever wall is in the middle of the view
+          this.ray.setFromCamera(this.ndc.set(0, 0), this.camera)
+          const hit = this.wallHitFromRay()
+          if (!hit) {
+            this.cb.onToast(`請把「${FURNITURE[type].name}」拖曳到牆面上`)
+            return
+          }
+          this.pushUndo()
+          const o = buildFurniture(type)
+          this.placed.add(o)
+          this.hangOn(o, hit.point, hit.normal)
+          this.select(o)
+          this.commit()
+          this.cb.onToast(`已將「${FURNITURE[type].name}」貼在畫面中央的牆上，可拖曳調整`)
+        } else if (clicked) {
           this.pushUndo()
           const t = this.controls.target
-          this.select(this.add(type, this.sn(t.x), undefined, this.sn(t.z)))
+          this.select(this.add({ t: type, x: this.sn(t.x), z: this.sn(t.z), r: 0 }))
           this.commit()
           this.cb.onToast(`已放置「${FURNITURE[type].name}」於畫面中央，可拖曳調整`)
         }
@@ -418,22 +537,142 @@ export class VenueEditor {
 
   // ---------------- Internals ----------------
 
-  private add(
-    t: FurnitureType,
-    x: number,
-    y: number | undefined,
-    z: number,
-    r = 0,
-    cut?: readonly number[],
-    v?: string,
-  ) {
+  /** Place an item; with no `y` it is dropped onto the floor below (x, z). */
+  private add({ t, x, y, z, r, v, cut, w, h, img, lock }: LayoutItem) {
     if (!isFurnitureType(t)) return null
     const o = buildFurniture(t, v)
     o.position.set(x, y ?? this.floorY(x, z), z)
     o.rotation.y = r
     if (cut?.length) o.userData.cut = [...cut]
+    if (w && h) applyPoster(o, { w, h, img })
+    if (lock) o.userData.lock = true
     this.placed.add(o)
     return o
+  }
+
+  private itemOf(o: THREE.Object3D): LayoutItem {
+    const ud = o.userData
+    const cut = ud.cut as number[] | undefined
+    return {
+      t: ud.type as FurnitureType,
+      x: +o.position.x.toFixed(3),
+      y: +o.position.y.toFixed(3),
+      z: +o.position.z.toFixed(3),
+      r: +o.rotation.y.toFixed(4),
+      ...(ud.variant ? { v: ud.variant as string } : {}),
+      ...(cut?.length ? { cut: cut.map((c) => +c.toFixed(3)) } : {}),
+      ...(onWall(o)
+        ? {
+            w: +(ud.w as number).toFixed(3),
+            h: +(ud.h as number).toFixed(3),
+            ...(ud.img ? { img: ud.img as string } : {}),
+            ...(ud.lock ? { lock: true } : {}),
+          }
+        : {}),
+    }
+  }
+
+  /** Short stand-in for a poster image in undo snapshots, so each one doesn't copy the data URL */
+  private imgKey(img: string) {
+    let k = this.imgKeys.get(img)
+    if (!k) {
+      k = `img${this.imgKeys.size}`
+      this.imgKeys.set(img, k)
+      this.imgByKey.set(k, img)
+    }
+    return k
+  }
+
+  /** First vertical wall face under the current ray, with its normal turned toward the camera */
+  private wallHitFromRay() {
+    const hits: THREE.Intersection[] = []
+    // walls opt out of raycasting (see buildArchitecture), so call the mesh raycast directly
+    for (const m of this.wallMeshes) THREE.Mesh.prototype.raycast.call(m, this.ray, hits)
+    hits.sort((a, b) => a.distance - b.distance)
+    for (const h of hits) {
+      if (!h.face) continue
+      const n = h.face.normal.clone().transformDirection(h.object.matrixWorld)
+      if (Math.abs(n.y) > 0.3) continue
+      n.setY(0).normalize()
+      if (n.dot(this.ray.ray.direction) > 0) n.negate()
+      return { point: h.point, normal: n }
+    }
+    return null
+  }
+
+  private wallHit(e: PointerEvent) {
+    this.setRay(e)
+    return this.wallHitFromRay()
+  }
+
+  /** Hang a wall item centred on `point`, facing out along `normal`. */
+  private hangOn(o: THREE.Object3D, point: THREE.Vector3, normal: THREE.Vector3) {
+    o.rotation.set(0, Math.atan2(normal.x, normal.z), 0)
+    o.position.copy(point).addScaledVector(normal, WALL_GAP)
+    this.keepAboveFloor(o)
+  }
+
+  /** Keep a poster's bottom edge off the floor in front of its wall. */
+  private keepAboveFloor(o: THREE.Object3D) {
+    const n = new THREE.Vector3(0, 0, 1).applyQuaternion(o.quaternion)
+    const p = o.position
+    const floor = this.floorY(p.x + n.x * 0.3, p.z + n.z * 0.3)
+    p.y = Math.max(p.y, floor + (o.userData.h as number) / 2 + 0.02)
+  }
+
+  /** Position the resize handles on the selected poster's corners, sized for the current zoom. */
+  private updHandles() {
+    const s = this.selected
+    this.handles.visible = !!s && onWall(s)
+    if (!s || !this.handles.visible) return
+    s.updateMatrixWorld()
+    const w = s.userData.w as number
+    const h = s.userData.h as number
+    for (const hd of this.handles.children) {
+      const { sx, sy } = hd.userData as { sx: number; sy: number }
+      hd.position.copy(s.localToWorld(new THREE.Vector3((sx * w) / 2, (sy * h) / 2, 0.01)))
+      hd.quaternion.copy(s.quaternion)
+      const k = THREE.MathUtils.clamp(
+        this.camera.position.distanceTo(hd.position) * 0.012,
+        0.03,
+        0.4,
+      )
+      hd.scale.set(k, k, k)
+    }
+  }
+
+  private pickHandle(e: PointerEvent) {
+    if (!this.handles.visible) return null
+    this.setRay(e)
+    return this.ray.intersectObjects(this.handles.children, false)[0]?.object ?? null
+  }
+
+  /** Drag a poster corner: the opposite corner stays put. Shift keeps the aspect ratio. */
+  private resizeTo(e: PointerEvent) {
+    const r = this.resizing
+    if (!r) return
+    const { o } = r
+    const normal = new THREE.Vector3(0, 0, 1).applyQuaternion(o.quaternion)
+    const right = new THREE.Vector3(1, 0, 0).applyQuaternion(o.quaternion)
+    this.setRay(e)
+    const p = this.ray.ray.intersectPlane(
+      new THREE.Plane().setFromNormalAndCoplanarPoint(normal, r.anchor),
+      new THREE.Vector3(),
+    )
+    if (!p) return
+    const d = p.sub(r.anchor)
+    let w = clampPosterSize(r.sx * d.dot(right), POSTER_MIN)
+    let h = clampPosterSize(r.sy * d.y, POSTER_MIN)
+    if (e.shiftKey || lockedAspect(o)) {
+      if (w / h > r.aspect) h = clampPosterSize(w / r.aspect, POSTER_MIN)
+      else w = clampPosterSize(h * r.aspect, POSTER_MIN)
+    }
+    applyPoster(o, { w, h, img: o.userData.img as string | undefined })
+    o.position
+      .copy(r.anchor)
+      .addScaledVector(right, (r.sx * w) / 2)
+      .add(new THREE.Vector3(0, (r.sy * h) / 2, 0))
+    this.updSel()
   }
 
   private commit() {
@@ -478,7 +717,8 @@ export class VenueEditor {
   }
 
   private pushUndo() {
-    this.undoStack.push(JSON.stringify(this.serialize()))
+    const items = this.serialize().map((i) => (i.img ? { ...i, img: this.imgKey(i.img) } : i))
+    this.undoStack.push(JSON.stringify(items))
     if (this.undoStack.length > UNDO_LIMIT) this.undoStack.shift()
   }
 
@@ -486,7 +726,10 @@ export class VenueEditor {
     this.selected = o
     this.selHelper.visible = !!o
     if (o) this.updSel()
-    else this.cb.onSelect(null)
+    else {
+      this.updHandles()
+      this.cb.onSelect(null)
+    }
   }
 
   private updSel() {
@@ -500,13 +743,25 @@ export class VenueEditor {
       const me = posts.indexOf(s)
       cutBelts = linkPosts(posts.map(toPost)).cut.filter((p) => p.includes(me)).length
     }
+    this.updHandles()
     this.cb.onSelect({
       type: s.userData.type,
       x: s.position.x,
+      y: s.position.y,
       z: s.position.z,
       deg,
       cutBelts,
       variant: s.userData.variant,
+      ...(onWall(s)
+        ? {
+            poster: {
+              w: s.userData.w,
+              h: s.userData.h,
+              hasImage: !!s.userData.img,
+              lock: !!s.userData.lock,
+            },
+          }
+        : {}),
     })
   }
 
@@ -662,20 +917,69 @@ export class VenueEditor {
         if (e.target !== canvas || e.button !== 0) return
         canvas.focus()
         this.downPt = { x: e.clientX, y: e.clientY }
+        const hd = this.pickHandle(e)
+        if (hd && this.selected) {
+          e.stopPropagation()
+          e.preventDefault()
+          const s = this.selected
+          const { sx, sy } = hd.userData as { sx: number; sy: number }
+          const w = s.userData.w as number
+          const h = s.userData.h as number
+          const anchor = s.localToWorld(new THREE.Vector3((-sx * w) / 2, (-sy * h) / 2, 0))
+          this.resizing = { o: s, sx, sy, anchor, aspect: w / h, moved: false }
+          this.controls.enabled = false
+          return
+        }
         const o = this.pickObj(e)
         if (!o) return
         e.stopPropagation()
         e.preventDefault()
         this.select(o)
-        const p = this.floorHit(e) ?? o.position.clone()
-        this.drag = { o, dx: o.position.x - p.x, dz: o.position.z - p.z, moved: false }
+        if (onWall(o)) {
+          // remember where on the poster it was grabbed, in its own (right, up) axes
+          const n = new THREE.Vector3(0, 0, 1).applyQuaternion(o.quaternion)
+          this.setRay(e)
+          const p = this.ray.ray.intersectPlane(
+            new THREE.Plane().setFromNormalAndCoplanarPoint(n, o.position),
+            new THREE.Vector3(),
+          )
+          const g = p ? o.worldToLocal(p) : new THREE.Vector3()
+          this.drag = { o, dx: g.x, dz: g.y, moved: false }
+        } else {
+          const p = this.floorHit(e) ?? o.position.clone()
+          this.drag = { o, dx: o.position.x - p.x, dz: o.position.z - p.z, moved: false }
+        }
         this.controls.enabled = false
         canvas.style.cursor = 'grabbing'
       },
       true,
     )
     this.listen(window, 'pointermove', (e) => {
+      const r = this.resizing
+      if (r) {
+        if (!r.moved) {
+          this.pushUndo()
+          r.moved = true
+        }
+        this.resizeTo(e)
+        return
+      }
       const d = this.drag
+      if (d && onWall(d.o)) {
+        const hit = this.wallHit(e)
+        if (!hit) return
+        if (!d.moved) {
+          this.pushUndo()
+          d.moved = true
+        }
+        this.hangOn(d.o, hit.point, hit.normal)
+        // shift so the grabbed spot, not the centre, follows the pointer
+        const right = new THREE.Vector3(1, 0, 0).applyQuaternion(d.o.quaternion)
+        d.o.position.addScaledVector(right, -d.dx).setY(d.o.position.y - d.dz)
+        this.keepAboveFloor(d.o)
+        this.updSel()
+        return
+      }
       if (d) {
         const p = this.floorHit(e)
         if (!p) return
@@ -690,10 +994,27 @@ export class VenueEditor {
         return
       }
       if (this.placing) return
-      if (e.target === canvas && e.buttons === 0)
-        canvas.style.cursor = this.pickObj(e) ? 'grab' : this.pickBelt(e) ? 'pointer' : ''
+      if (e.target === canvas && e.buttons === 0) {
+        const hd = this.pickHandle(e)
+        canvas.style.cursor = hd
+          ? hd.userData.sx * hd.userData.sy > 0
+            ? 'nesw-resize'
+            : 'nwse-resize'
+          : this.pickObj(e)
+            ? 'grab'
+            : this.pickBelt(e)
+              ? 'pointer'
+              : ''
+      }
     })
     this.listen(window, 'pointerup', (e) => {
+      if (this.resizing) {
+        if (this.resizing.moved) this.commit()
+        this.resizing = null
+        this.controls.enabled = true
+        this.downPt = null
+        return
+      }
       if (this.drag) {
         if (this.drag.moved) this.commit()
         this.drag = null
@@ -713,8 +1034,10 @@ export class VenueEditor {
   }
 
   private onKeyDown = (e: KeyboardEvent) => {
-    const tag = (e.target as HTMLElement | null)?.tagName
-    if (tag === 'INPUT' || tag === 'TEXTAREA') return
+    const target = e.target as HTMLElement | null
+    if (target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA') return
+    // keys pressed in a dialog (e.g. Esc / Delete) belong to it, not to the scene
+    if (target?.closest?.('dialog')) return
     const kk = e.key.toLowerCase()
     const mod = e.metaKey || e.ctrlKey
     if (
@@ -746,7 +1069,24 @@ export class VenueEditor {
     else if (kk === 'e') this.rotate(-15)
     else if (kk === 'r') this.rotate(-90)
     else if (e.key === 'Escape') this.select(null)
-    else if (e.key.startsWith('Arrow')) {
+    else if (e.key.startsWith('Arrow') && onWall(s)) {
+      // posters slide along their wall: left/right sideways, up/down in height
+      e.preventDefault()
+      const st = e.shiftKey ? 0.25 : 0.05
+      const right = new THREE.Vector3(1, 0, 0).applyQuaternion(s.quaternion)
+      const nudge: Record<string, [number, number]> = {
+        ArrowLeft: [-st, 0],
+        ArrowRight: [st, 0],
+        ArrowUp: [0, st],
+        ArrowDown: [0, -st],
+      }
+      const [dx, dy] = nudge[e.key] ?? [0, 0]
+      this.pushUndo()
+      s.position.addScaledVector(right, dx).setY(s.position.y + dy)
+      this.keepAboveFloor(s)
+      this.updSel()
+      this.commit()
+    } else if (e.key.startsWith('Arrow')) {
       // nudge the selection along the world axis closest to the screen direction
       e.preventDefault()
       const st = e.shiftKey ? 1 : 0.25
@@ -820,7 +1160,10 @@ export class VenueEditor {
       if (k >= 1) this.fly = null
     }
     controls.update()
-    if (this.selected) this.selBox.setFromObject(this.selected)
+    if (this.selected) {
+      this.selBox.setFromObject(this.selected)
+      if (this.handles.visible) this.updHandles()
+    }
     this.renderer.render(this.scene, camera)
     if (this.labelsVisible) this.layoutLabels()
   }

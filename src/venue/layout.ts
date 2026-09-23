@@ -1,8 +1,10 @@
+import { POSTER_H, POSTER_W, clampPosterSize, isImageDataUrl } from './poster'
 import { readJSON, writeJSON } from './storage'
 import {
   FURNITURE,
   FURNITURE_TYPES,
   isFurnitureType,
+  priceOf,
   resolveVariant,
   type FurnitureType,
 } from './furniture'
@@ -16,6 +18,12 @@ export interface LayoutItem {
   r: number
   /** Colour variant id, for types that have variants */
   v?: string
+  /** Posters only: size in metres and the image as a data URL */
+  w?: number
+  h?: number
+  img?: string
+  /** Posters only: aspect ratio locked while resizing */
+  lock?: boolean
   /** Stanchions only: bearings (radians) of auto-linked belts the user removed at this post */
   cut?: number[]
 }
@@ -41,14 +49,11 @@ export const clampSlots = (n: number) => Math.max(1, Math.min(MAX_SLOTS, Math.tr
 export function summarizeCost(items: readonly LayoutItem[], priceMode: PriceMode, slots: number) {
   const counts = new Map<FurnitureType, number>()
   for (const i of items) counts.set(i.t, (counts.get(i.t) ?? 0) + 1)
-  const lines: CostLine[] = FURNITURE_TYPES.filter((t) => counts.has(t)).map((t) => {
+  const lines: CostLine[] = FURNITURE_TYPES.flatMap((t) => {
     const count = counts.get(t) ?? 0
-    return {
-      type: t,
-      name: FURNITURE[t].name,
-      count,
-      subtotal: FURNITURE[t].price[priceMode] * count * slots,
-    }
+    const price = priceOf(t)
+    if (!count || !price) return []
+    return [{ type: t, name: FURNITURE[t].name, count, subtotal: price[priceMode] * count * slots }]
   })
   return { lines, total: lines.reduce((s, l) => s + l.subtotal, 0) }
 }
@@ -78,6 +83,14 @@ export function parseLayout(data: unknown): LayoutItem[] {
         z: i.z,
         r: Number.isFinite(i.r) ? i.r : 0,
         ...(v ? { v } : {}),
+        ...(t === 'poster'
+          ? {
+              w: clampPosterSize(i.w, POSTER_W),
+              h: clampPosterSize(i.h, POSTER_H),
+              ...(isImageDataUrl(i.img) ? { img: i.img } : {}),
+              ...(i.lock === true ? { lock: true } : {}),
+            }
+          : {}),
         ...(cuts.length ? { cut: cuts } : {}),
       },
     ]
@@ -128,6 +141,7 @@ export function loadSavedLayout(): LayoutItem[] | null {
   const saved = readJSON(STORAGE_KEY)
   return Array.isArray(saved) ? parseLayout(saved) : null
 }
+/** Returns false when the browser refused to store it (e.g. large poster images over quota) */
 export const saveLayout = (items: readonly LayoutItem[]) => writeJSON(STORAGE_KEY, items)
 
 export function loadPricing(): { priceMode: PriceMode; slots: number } {

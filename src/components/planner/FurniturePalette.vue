@@ -2,15 +2,21 @@
 import SectionTitle from './SectionTitle.vue'
 import { useFurnitureThumbnails } from '@/composables/useFurnitureThumbnails'
 import { useVenueEditor } from '@/composables/useVenueEditor'
-import { FURNITURE, FURNITURE_TYPES, type FurnitureType } from '@/venue/furniture'
+import { FURNITURE, FURNITURE_TYPES, priceOf, type FurnitureType } from '@/venue/furniture'
 
 const editor = useVenueEditor()
 const thumbs = useFurnitureThumbnails()
 
 const tiles = FURNITURE_TYPES.map((type) => {
-  const { name, size, price } = FURNITURE[type]
-  return { type, name, size, price: `$${price[0]} / $${price[1]}` }
+  const { name, size } = FURNITURE[type]
+  const price = priceOf(type)
+  return { type, name, size, price: price && `$${price[0]} / $${price[1]}` }
 })
+// Rented from the venue vs. brought by us (not charged)
+const sections = [
+  { title: '場地家具', note: '拖曳放置', tiles: tiles.filter((t) => t.price) },
+  { title: '自備物件', note: '不計費', tiles: tiles.filter((t) => !t.price) },
+]
 
 function onPointerDown(e: PointerEvent, type: FurnitureType) {
   editor.value?.startPlace(e, type)
@@ -18,21 +24,23 @@ function onPointerDown(e: PointerEvent, type: FurnitureType) {
 </script>
 
 <template>
-  <SectionTitle title="家具與物件" note="拖曳放置" />
-  <div class="palette">
-    <div
-      v-for="t in tiles"
-      :key="t.type"
-      class="tile"
-      :data-type="t.type"
-      @pointerdown="onPointerDown($event, t.type)"
-    >
-      <img :src="thumbs[t.type]" alt="" />
-      <b>{{ t.name }}</b>
-      <i>{{ t.size }}</i>
-      <i class="pr">{{ t.price }}</i>
+  <template v-for="sec in sections" :key="sec.title">
+    <SectionTitle :title="sec.title" :note="sec.note" />
+    <div class="palette">
+      <div
+        v-for="t in sec.tiles"
+        :key="t.type"
+        class="tile"
+        :data-type="t.type"
+        @pointerdown="onPointerDown($event, t.type)"
+      >
+        <img :src="thumbs[t.type]" alt="" />
+        <b>{{ t.name }}</b>
+        <i>{{ t.size }}</i>
+        <i v-if="t.price" class="pr">{{ t.price }}</i>
+      </div>
     </div>
-  </div>
+  </template>
 </template>
 
 <style scoped>

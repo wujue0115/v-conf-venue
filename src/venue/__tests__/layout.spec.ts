@@ -92,3 +92,29 @@ describe('parseLayout variants', () => {
     expect(c).not.toHaveProperty('v')
   })
 })
+
+describe('posters', () => {
+  it('keeps size and image, clamping sizes and dropping non-image data', () => {
+    const [a, b] = parseLayout([
+      { t: 'poster', x: 1, y: 1.5, z: 2, r: 0, w: 0.6, h: 20, img: 'data:image/jpeg;base64,AAA' },
+      { t: 'poster', x: 1, y: 1.5, z: 2, r: 0, img: 'https://example.com/x.png' },
+    ])
+    expect(a).toMatchObject({ w: 0.6, h: 6, img: 'data:image/jpeg;base64,AAA' })
+    expect(b).toMatchObject({ w: 0.594, h: 0.841 })
+    expect(b).not.toHaveProperty('img')
+  })
+
+  it('keeps the aspect lock only when it is on', () => {
+    const [a, b] = parseLayout([
+      { t: 'poster', x: 0, z: 0, r: 0, lock: true },
+      { t: 'poster', x: 0, z: 0, r: 0, lock: 'yes' },
+    ])
+    expect(a?.lock).toBe(true)
+    expect(b).not.toHaveProperty('lock')
+  })
+
+  it('are not charged', () => {
+    const { lines, total } = summarizeCost([{ t: 'poster', x: 0, z: 0, r: 0 }], 1, 3)
+    expect([lines, total]).toEqual([[], 0])
+  })
+})
