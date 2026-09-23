@@ -5,12 +5,14 @@ import {
   FURNITURE,
   buildFurniture,
   isFurnitureType,
+  isResizable,
   isWallItem,
+  takesImage,
   type FurnitureType,
 } from './furniture'
 import type { LayoutItem } from './layout'
 import { B, FM, YEL } from './materials'
-import { POSTER_MIN, applyPoster, clampPosterSize, type PosterFit } from './poster'
+import { POSTER_MIN, applyPoster, clampPosterSize, setFaceImage, type PosterFit } from './poster'
 import type { CameraView, Vec3 } from './places'
 import { bearing, linkPosts, withoutCutToward, type Post } from './stanchions'
 
@@ -26,8 +28,11 @@ export interface SelectionInfo {
   variant?: string
   /** Height of the object's origin (a poster's centre) */
   y: number
-  /** Posters only */
-  poster?: { w: number; h: number; hasImage: boolean; lock: boolean }
+  /** Resizable items only: width × height, editable in the panel. `presets` offers paper
+   * sizes and only applies to wall items (posters); floor-standing ones (易拉展) don't get them. */
+  size?: { w: number; h: number; lock: boolean; presets: boolean }
+  /** Items with a printable face */
+  image?: { hasImage: boolean }
 }
 
 export interface EditorCallbacks {
@@ -67,7 +72,9 @@ const X_AXIS = new THREE.Vector3(1, 0, 0)
 
 const isPost = (o: THREE.Object3D) => o.userData.type === 'stanchion'
 const onWall = (o: THREE.Object3D) => isWallItem(o.userData.type as FurnitureType)
-/** A poster with its proportions locked: resizing keeps the aspect ratio */
+const hasFace = (o: THREE.Object3D) => takesImage(o.userData.type as FurnitureType)
+const resizable = (o: THREE.Object3D) => isResizable(o.userData.type as FurnitureType)
+/** A resizable item with its proportions locked: resizing keeps the aspect ratio */
 const lockedAspect = (o: THREE.Object3D) => !!o.userData.lock
 /** Gap between a wall and a poster's back, so they never z-fight */
 const WALL_GAP = 0.002
@@ -383,19 +390,19 @@ export class VenueEditor {
     const s = this.selected
     if (!s || s.userData.variant === v) return
     this.pushUndo()
-    const item = this.itemOf(s)
-    this.placed.remove(s)
-    this.select(this.add({ ...item, v }))
+    this.select(this.rebuild(s, { v }))
     this.commit()
   }
 
   /**
-   * Resize the selected poster around its centre (metres). A locked poster keeps its ratio,
-   * following whichever side changed, unless `exact` (a paper-size preset) sets both.
+   * Resize the selected item around its anchor (metres) — a poster's centre, or a
+   * floor-standing item's base. A locked item keeps its ratio, following whichever side
+   * changed, unless `exact` (a paper-size preset) sets both. A poster's face is just
+   * rescaled in place; a floor-standing item's hardware is rebuilt to match its new size.
    */
   setPosterSize(w: number, h: number, exact = false) {
     const s = this.selected
-    if (!s || !onWall(s)) return
+    if (!s || !resizable(s)) return
     const w0 = s.userData.w as number
     const h0 = s.userData.h as number
     if (lockedAspect(s) && !exact) {
@@ -407,39 +414,55 @@ export class VenueEditor {
     h = clampPosterSize(h, h0)
     if (w === w0 && h === h0) return
     this.pushUndo()
-    applyPoster(s, { w, h, img: s.userData.img as string | undefined })
-    this.keepAboveFloor(s)
-    this.updSel()
+    if (onWall(s)) {
+      applyPoster(s, { w, h, img: s.userData.img as string | undefined })
+      this.keepAboveFloor(s)
+      this.updSel()
+    } else {
+      this.select(this.rebuild(s, { w, h }))
+    }
     this.commit()
   }
 
   /**
-   * Put an image on the selected poster (or clear it). The image is always cropped to fill.
-   * 'image' fit reshapes the poster to the image's `aspect` and locks it; 'poster' fit keeps
-   * the poster's size and unlocks it. Without `fit` (the image already matches) it locks too.
+   * Put an image on the selected item's printable face (or clear it). The image is always
+   * cropped to fill. On a resizable item, 'image' fit reshapes it to the image's `aspect`
+   * and locks it; 'poster' fit keeps its size and unlocks it. Without `fit` (the image
+   * already matches) it locks too. A face with no adjustable size just crops in place. A
+   * reshaped floor-standing item has its hardware rebuilt to match, same as {@link setPosterSize}.
    */
   setPosterImage(img: string | null, aspect?: number, fit?: PosterFit) {
     const s = this.selected
-    if (!s || !onWall(s)) return
+    if (!s || !hasFace(s)) return
     this.pushUndo()
-    const w = s.userData.w as number
-    const h0 = s.userData.h as number
-    let h = h0
-    if (img && aspect) {
-      const follow = fit !== 'poster'
-      if (follow) h = clampPosterSize(w / aspect, h0)
-      s.userData.lock = follow
+    if (resizable(s)) {
+      const w = s.userData.w as number
+      const h0 = s.userData.h as number
+      let h = h0
+      let lock = !!s.userData.lock
+      if (img && aspect) {
+        lock = fit !== 'poster'
+        if (lock) h = clampPosterSize(w / aspect, h0)
+      }
+      if (onWall(s)) {
+        s.userData.lock = lock
+        applyPoster(s, { w, h, img: img ?? undefined })
+        this.keepAboveFloor(s)
+        this.updSel()
+      } else {
+        this.select(this.rebuild(s, { w, h, img: img ?? undefined, lock }))
+      }
+    } else {
+      setFaceImage(s, img ?? undefined)
+      this.updSel()
     }
-    applyPoster(s, { w, h, img: img ?? undefined })
-    this.keepAboveFloor(s)
-    this.updSel()
     this.commit()
   }
 
-  /** Lock or unlock the selected poster's aspect ratio. */
+  /** Lock or unlock the selected item's aspect ratio. */
   setPosterLock(on: boolean) {
     const s = this.selected
-    if (!s || !onWall(s) || !!s.userData.lock === on) return
+    if (!s || !resizable(s) || !!s.userData.lock === on) return
     this.pushUndo()
     s.userData.lock = on
     this.updSel()
@@ -555,14 +578,22 @@ export class VenueEditor {
   /** Place an item; with no `y` it is dropped onto the floor below (x, z). */
   private add({ t, x, y, z, r, v, cut, w, h, img, lock }: LayoutItem) {
     if (!isFurnitureType(t)) return null
-    const o = buildFurniture(t, v)
+    const o = buildFurniture(t, v, w && h ? { w, h } : undefined)
     o.position.set(x, y ?? this.floorY(x, z), z)
     o.rotation.y = r
     if (cut?.length) o.userData.cut = [...cut]
     if (w && h) applyPoster(o, { w, h, img })
+    else if (img) setFaceImage(o, img)
     if (lock) o.userData.lock = true
     this.placed.add(o)
     return o
+  }
+
+  /** Remove `o` and rebuild it fresh with `overrides` merged onto its current item, in place. */
+  private rebuild(o: THREE.Object3D, overrides: Partial<LayoutItem>) {
+    const item = this.itemOf(o)
+    this.placed.remove(o)
+    return this.add({ ...item, ...overrides })
   }
 
   private itemOf(o: THREE.Object3D): LayoutItem {
@@ -576,11 +607,11 @@ export class VenueEditor {
       r: +o.rotation.y.toFixed(4),
       ...(ud.variant ? { v: ud.variant as string } : {}),
       ...(cut?.length ? { cut: cut.map((c) => +c.toFixed(3)) } : {}),
-      ...(onWall(o)
+      ...(ud.img && hasFace(o) ? { img: ud.img as string } : {}),
+      ...(resizable(o)
         ? {
             w: +(ud.w as number).toFixed(3),
             h: +(ud.h as number).toFixed(3),
-            ...(ud.img ? { img: ud.img as string } : {}),
             ...(ud.lock ? { lock: true } : {}),
           }
         : {}),
@@ -767,16 +798,17 @@ export class VenueEditor {
       deg,
       cutBelts,
       variant: s.userData.variant,
-      ...(onWall(s)
+      ...(resizable(s)
         ? {
-            poster: {
+            size: {
               w: s.userData.w,
               h: s.userData.h,
-              hasImage: !!s.userData.img,
               lock: !!s.userData.lock,
+              presets: onWall(s),
             },
           }
         : {}),
+      ...(hasFace(s) ? { image: { hasImage: !!s.userData.img } } : {}),
     })
   }
 

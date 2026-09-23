@@ -118,3 +118,20 @@ describe('posters', () => {
     expect([lines, total]).toEqual([[], 0])
   })
 })
+
+describe('易拉展', () => {
+  it('keeps size and image, clamping sizes and dropping non-image data', () => {
+    const [a, b] = parseLayout([
+      { t: 'rollup', x: 1, z: 2, r: 0, w: 3, h: 20, img: 'data:image/jpeg;base64,AAA' },
+      { t: 'rollup', x: 1, z: 2, r: 0, img: 'https://example.com/x.png' },
+    ])
+    expect(a).toMatchObject({ w: 3, h: 6, img: 'data:image/jpeg;base64,AAA' })
+    expect(b).toMatchObject({ w: 0.85, h: 2 })
+    expect(b).not.toHaveProperty('img')
+  })
+
+  it('is not charged', () => {
+    const { lines, total } = summarizeCost([{ t: 'rollup', x: 0, z: 0, r: 0 }], 1, 3)
+    expect([lines, total]).toEqual([[], 0])
+  })
+})

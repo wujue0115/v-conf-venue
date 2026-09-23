@@ -1,11 +1,14 @@
-import { POSTER_H, POSTER_W, clampPosterSize, isImageDataUrl } from './poster'
+import { clampPosterSize, isImageDataUrl } from './poster'
 import { readJSON, writeJSON } from './storage'
 import {
   FURNITURE,
   FURNITURE_TYPES,
+  defaultSizeOf,
   isFurnitureType,
+  isResizable,
   priceOf,
   resolveVariant,
+  takesImage,
   type FurnitureType,
 } from './furniture'
 
@@ -18,11 +21,12 @@ export interface LayoutItem {
   r: number
   /** Colour variant id, for types that have variants */
   v?: string
-  /** Posters only: size in metres and the image as a data URL */
+  /** Resizable items only: size in metres */
   w?: number
   h?: number
+  /** Items with a printable face: the graphic as a data URL */
   img?: string
-  /** Posters only: aspect ratio locked while resizing */
+  /** Resizable items only: aspect ratio locked while resizing */
   lock?: boolean
   /** Stanchions only: bearings (radians) of auto-linked belts the user removed at this post */
   cut?: number[]
@@ -75,6 +79,7 @@ export function parseLayout(data: unknown): LayoutItem[] {
     const v = resolveVariant(t, legacy?.v ?? i.v)
     const cut: unknown[] = Array.isArray(i.cut) ? i.cut : []
     const cuts = cut.filter((c): c is number => Number.isFinite(c))
+    const [dw, dh] = defaultSizeOf(t)
     return [
       {
         t,
@@ -83,11 +88,11 @@ export function parseLayout(data: unknown): LayoutItem[] {
         z: i.z,
         r: Number.isFinite(i.r) ? i.r : 0,
         ...(v ? { v } : {}),
-        ...(t === 'poster'
+        ...(takesImage(t) && isImageDataUrl(i.img) ? { img: i.img } : {}),
+        ...(isResizable(t)
           ? {
-              w: clampPosterSize(i.w, POSTER_W),
-              h: clampPosterSize(i.h, POSTER_H),
-              ...(isImageDataUrl(i.img) ? { img: i.img } : {}),
+              w: clampPosterSize(i.w, dw),
+              h: clampPosterSize(i.h, dh),
               ...(i.lock === true ? { lock: true } : {}),
             }
           : {}),

@@ -1,9 +1,13 @@
 import * as THREE from 'three'
 import { B, Cy, EF, FM, mesh } from './materials'
-import { buildPoster } from './poster'
+import { POSTER_H, POSTER_W, buildFace, buildPoster } from './poster'
 
-/** Builds a piece into `g`; `v` is the colour variant id when the type has variants */
-type Builder = (g: THREE.Group, v?: string) => void
+/**
+ * Builds a piece into `g`; `v` is the colour variant id when the type has variants, `size` the
+ * current width × height for a resizable item whose geometry (not just its printable face)
+ * depends on it. Builders that don't need either simply ignore the trailing arguments.
+ */
+type Builder = (g: THREE.Group, v?: string, size?: { w: number; h: number }) => void
 
 const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z)
 
@@ -360,6 +364,29 @@ const stanchion: Builder = (g) => {
   mesh(Cy(0.042, 0.042, 0.015, 16), FM.chrome, g, 0, 0.972, 0, { e: null })
 }
 
+// W850 × D200 × H2100 — 捲軸式易拉展：鋁製底座、伸縮背桿，正面是可換圖的輸出布幕
+export const ROLLUP_W = 0.85
+export const ROLLUP_H = 2
+/** Height of the banner's bottom edge, on top of the base cassette */
+const ROLLUP_Y0 = 0.07
+// Resizable: the banner's hardware (base, pole, top rail) scales with it, so `size` drives
+// every dimension here rather than the ROLLUP_W/ROLLUP_H defaults.
+const rollup: Builder = (g, _v, size) => {
+  const w = size?.w ?? ROLLUP_W
+  const h = size?.h ?? ROLLUP_H
+  const x = w / 2
+  const top = ROLLUP_Y0 + h
+  // base cassette the banner rolls into, with an end cap at each side
+  mesh(B(w, 0.06, 0.2), FM.silver, g, 0, 0.03, -0.04, { e: EF })
+  for (const sx of [1, -1])
+    mesh(B(0.024, 0.08, 0.22), FM.chrome, g, sx * (x - 0.012), 0.04, -0.04, { e: EF })
+  // telescopic back pole hooked over the banner's top rail
+  mesh(Cy(0.011, 0.014, top - 0.06, 10), FM.chrome, g, 0, (top + 0.06) / 2, -0.11, { e: null })
+  rod(g, V(0, top + 0.01, -0.11), V(0, top + 0.01, -0.01), 0.009, FM.chrome)
+  mesh(B(w, 0.02, 0.03), FM.chrome, g, 0, top + 0.01, -0.01, { e: EF })
+  buildFace(g, w, h, { anchor: 'bottom', ref: ROLLUP_Y0 })
+}
+
 // A3 poster frame on a chrome pole with a teal weighted base
 const sign: Builder = (g) => {
   mesh(Cy(0.17, 0.19, 0.04, 32), FM.teal, g, 0, 0.02, 0, { e: EF })
@@ -387,6 +414,10 @@ export interface FurnitureDef {
   price?: [number, number]
   /** Mounted on a wall rather than standing on the floor */
   wall?: boolean
+  /** Has a printable face that can carry an uploaded graphic */
+  image?: boolean
+  /** Width × height can be edited in the selection panel, in metres */
+  resizable?: [number, number]
 }
 
 // 附件五 家具設備租借費用表（單位 mm → m；價格：自助 / 含搬運）
@@ -526,13 +557,23 @@ export const FURNITURE = {
     price: [100, 300],
   },
   sign: { name: '直式立架', size: 'A1 / A3 / A4', build: sign, arr: [1, 1], price: [300, 500] },
-  // Brought by the organisers — not on the venue's rental list, so it has no price
+  // Brought by the organisers — not on the venue's rental list, so they have no price
   poster: {
     name: '海報',
     size: '可調整尺寸',
     build: buildPoster,
     wall: true,
+    image: true,
+    resizable: [POSTER_W, POSTER_H],
     arr: [0.7, 1],
+  },
+  rollup: {
+    name: '易拉展',
+    size: '可調整尺寸',
+    build: rollup,
+    image: true,
+    resizable: [ROLLUP_W, ROLLUP_H],
+    arr: [1.1, 1],
   },
 } satisfies Record<string, FurnitureDef>
 
@@ -545,6 +586,12 @@ export const isFurnitureType = (t: unknown): t is FurnitureType =>
 /** Rental price, or null for items that are not rented from the venue */
 export const priceOf = (type: FurnitureType) => (FURNITURE[type] as FurnitureDef).price ?? null
 export const isWallItem = (type: FurnitureType) => !!(FURNITURE[type] as FurnitureDef).wall
+/** Can carry an uploaded graphic on its face */
+export const takesImage = (type: FurnitureType) => !!(FURNITURE[type] as FurnitureDef).image
+export const isResizable = (type: FurnitureType) => !!(FURNITURE[type] as FurnitureDef).resizable
+/** Default width × height in metres, for resizable items */
+export const defaultSizeOf = (type: FurnitureType): readonly [number, number] =>
+  (FURNITURE[type] as FurnitureDef).resizable ?? [1, 1]
 
 export const variantsOf = (type: FurnitureType): readonly FurnitureVariant[] =>
   (FURNITURE[type] as FurnitureDef).variants ?? []
@@ -559,13 +606,13 @@ export function resolveVariant(type: FurnitureType, v?: unknown) {
 export const thumbKey = (type: FurnitureType, v?: string) =>
   v && v !== variantsOf(type)[0]?.id ? `${type}.${v}` : type
 
-export function buildFurniture(type: FurnitureType, v?: string) {
+export function buildFurniture(type: FurnitureType, v?: string, size?: { w: number; h: number }) {
   const g = new THREE.Group()
   const variant = resolveVariant(type, v)
   g.name = type
   g.userData.type = type
   if (variant) g.userData.variant = variant
-  FURNITURE[type].build(g, variant)
+  FURNITURE[type].build(g, variant, size)
   return g
 }
 

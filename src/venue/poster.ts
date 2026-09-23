@@ -101,18 +101,52 @@ function disposeFace(m: THREE.MeshStandardMaterial) {
 }
 
 /**
- * A poster hangs from its group origin: the centre of its back face, which sits on the
- * wall. Local +z points out of the wall. Size lives in the children's scale so resizing
- * never rebuilds geometry.
+ * A printable face of w × h, looking along +z. The size lives in the children's scale so
+ * resizing never rebuilds geometry; the owning group remembers it. `anchor` says which edge
+ * stays put as h changes on resize: 'center' (the default, for a poster that hangs from its
+ * own middle) or 'bottom' (for a floor-standing item whose base must stay on the ground) —
+ * `ref` is that fixed y (the centre height, or the bottom height) in the group's local space.
  */
-export function buildPoster(g: THREE.Group) {
-  const panel = mesh(new THREE.BoxGeometry(1, 1, THICK), FM.white, g, 0, 0, THICK / 2, { e: EF })
+export function buildFace(
+  g: THREE.Group,
+  w: number,
+  h: number,
+  {
+    anchor = 'center',
+    ref = 0,
+    z = 0,
+  }: { anchor?: 'center' | 'bottom'; ref?: number; z?: number } = {},
+) {
+  g.userData.faceAnchor = anchor
+  g.userData.faceRef = ref
+  const y = anchor === 'bottom' ? ref + h / 2 : ref
+  const panel = mesh(new THREE.BoxGeometry(1, 1, THICK), FM.white, g, 0, y, z + THICK / 2, {
+    e: EF,
+  })
   panel.name = 'panel'
-  const face = mesh(new THREE.PlaneGeometry(1, 1), blankFace, g, 0, 0, THICK + 0.0005, {
+  const face = mesh(new THREE.PlaneGeometry(1, 1), blankFace, g, 0, y, z + THICK + 0.0005, {
     e: null,
   })
   face.name = 'face'
-  applyPoster(g, { w: POSTER_W, h: POSTER_H })
+  g.userData.w = w
+  g.userData.h = h
+  for (const m of [panel, face]) m.scale.set(w, h, 1)
+}
+
+/**
+ * A poster hangs from its group origin: the centre of its back face, which sits on the
+ * wall. Local +z points out of the wall.
+ */
+export function buildPoster(g: THREE.Group) {
+  buildFace(g, POSTER_W, POSTER_H)
+}
+
+/** Put an image on a built face (or clear it), cropped to fill the face's current size. */
+export function setFaceImage(g: THREE.Object3D, img?: string) {
+  if (img) g.userData.img = img
+  else delete g.userData.img
+  const face = g.getObjectByName('face') as THREE.Mesh | undefined
+  if (face) dressFace(face, img, g.userData.w as number, g.userData.h as number)
 }
 
 export function applyPoster(
@@ -121,11 +155,16 @@ export function applyPoster(
 ) {
   g.userData.w = w
   g.userData.h = h
-  if (img) g.userData.img = img
-  else delete g.userData.img
-  for (const name of ['panel', 'face']) g.getObjectByName(name)?.scale.set(w, h, 1)
-  const face = g.getObjectByName('face') as THREE.Mesh | undefined
-  if (face) dressFace(face, img, w, h)
+  const anchor = (g.userData.faceAnchor as 'center' | 'bottom' | undefined) ?? 'center'
+  const ref = (g.userData.faceRef as number | undefined) ?? 0
+  const y = anchor === 'bottom' ? ref + h / 2 : ref
+  for (const name of ['panel', 'face']) {
+    const m = g.getObjectByName(name)
+    if (!m) continue
+    m.scale.set(w, h, 1)
+    m.position.y = y
+  }
+  setFaceImage(g, img)
 }
 
 /** Read an image file, scale it down and re-encode it so layouts stay small enough to save. */

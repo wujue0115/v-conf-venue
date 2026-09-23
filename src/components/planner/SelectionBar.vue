@@ -3,7 +3,7 @@ import { computed, shallowRef, useTemplateRef, watch } from 'vue'
 import { useFurnitureThumbnails } from '@/composables/useFurnitureThumbnails'
 import { useVenueEditor } from '@/composables/useVenueEditor'
 import { usePlannerStore } from '@/stores/planner'
-import { FURNITURE, priceOf, thumbKey, variantsOf } from '@/venue/furniture'
+import { FURNITURE, isWallItem, priceOf, thumbKey, variantsOf } from '@/venue/furniture'
 import { POSTER_PRESETS, readPosterImage, type PosterFit } from '@/venue/poster'
 import { formatNT } from '@/venue/layout'
 import { BELT_MAX } from '@/venue/stanchions'
@@ -32,37 +32,37 @@ const position = computed(() => {
   const s = sel.value
   if (!s) return ''
   const xz = `x ${s.x.toFixed(2)} · z ${s.z.toFixed(2)}`
-  return s.poster ? `${xz} · 中心離地 ${s.y.toFixed(2)} m` : `${xz} · ${s.deg}°`
+  return isWallItem(s.type) ? `${xz} · 中心離地 ${s.y.toFixed(2)} m` : `${xz} · ${s.deg}°`
 })
 
-// Poster size, edited in centimetres
+// Size (posters and 易拉展), edited in centimetres
 const cm = (m: number) => Math.round(m * 1000) / 10
 const pw = shallowRef(0)
 const ph = shallowRef(0)
 watch(
-  () => sel.value?.poster,
-  (p) => {
-    if (!p) return
-    pw.value = cm(p.w)
-    ph.value = cm(p.h)
+  () => sel.value?.size,
+  (sz) => {
+    if (!sz) return
+    pw.value = cm(sz.w)
+    ph.value = cm(sz.h)
   },
   { immediate: true },
 )
 const applySize = () => editor.value?.setPosterSize(pw.value / 100, ph.value / 100)
 function applyPreset(w: number, h: number) {
-  const p = sel.value?.poster
-  // keep the poster's current orientation
-  if (p && p.w > p.h) editor.value?.setPosterSize(h, w, true)
+  const sz = sel.value?.size
+  // keep the item's current orientation
+  if (sz && sz.w > sz.h) editor.value?.setPosterSize(h, w, true)
   else editor.value?.setPosterSize(w, h, true)
 }
 
 const fileInput = useTemplateRef('file')
-// After picking an image whose proportions differ from the poster, ask how to fit it
+// After picking an image whose proportions differ from the current size, ask how to fit it
 const pending = shallowRef<{ url: string; aspect: number } | null>(null)
 const fitDialog = useTemplateRef('fitDialog')
-const posterAspect = computed(() => {
-  const p = sel.value?.poster
-  return p ? p.w / p.h : 1
+const sizeAspect = computed(() => {
+  const sz = sel.value?.size
+  return sz ? sz.w / sz.h : 1
 })
 /** CSS size of a preview box with the given aspect, fitting inside 120 × 120 */
 const box = (aspect: number) =>
@@ -77,7 +77,8 @@ async function onFile(e: Event) {
   if (!f) return
   try {
     const img = await readPosterImage(f)
-    if (Math.abs(img.aspect / posterAspect.value - 1) < 0.01) {
+    // a face with no adjustable size always crops to fill, so there is nothing to ask
+    if (!sel.value?.size || Math.abs(img.aspect / sizeAspect.value - 1) < 0.01) {
       editor.value?.setPosterImage(img.url, img.aspect)
       return
     }
@@ -143,7 +144,7 @@ const generate = () =>
         </div>
       </template>
 
-      <template v-if="sel.poster">
+      <template v-if="sel.size">
         <span class="lbl">尺寸</span>
         <div class="ctl arr">
           <div class="pair" role="group" aria-label="寬 × 高（公分）">
@@ -157,19 +158,17 @@ const generate = () =>
             />
             <button
               class="lock"
-              :class="{ on: sel.poster.lock }"
+              :class="{ on: sel.size.lock }"
               type="button"
-              :title="sel.poster.lock ? '比例已鎖定，點擊解鎖' : '鎖定比例'"
-              :aria-label="sel.poster.lock ? '解鎖比例' : '鎖定比例'"
-              :aria-pressed="sel.poster.lock"
-              @click="editor?.setPosterLock(!sel.poster.lock)"
+              :title="sel.size.lock ? '比例已鎖定，點擊解鎖' : '鎖定比例'"
+              :aria-label="sel.size.lock ? '解鎖比例' : '鎖定比例'"
+              :aria-pressed="sel.size.lock"
+              @click="editor?.setPosterLock(!sel.size.lock)"
             >
               <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
                 <rect x="3" y="7" width="10" height="7" rx="1.5" fill="currentColor" />
                 <path
-                  :d="
-                    sel.poster.lock ? 'M5.5 7V5a2.5 2.5 0 0 1 5 0v2' : 'M5.5 7V5a2.5 2.5 0 0 1 5 0'
-                  "
+                  :d="sel.size.lock ? 'M5.5 7V5a2.5 2.5 0 0 1 5 0v2' : 'M5.5 7V5a2.5 2.5 0 0 1 5 0'"
                   fill="none"
                   stroke="currentColor"
                   stroke-width="1.6"
@@ -187,7 +186,7 @@ const generate = () =>
             />
             <span class="op">cm</span>
           </div>
-          <span class="presets">
+          <span v-if="sel.size.presets" class="presets">
             <button
               v-for="p in POSTER_PRESETS"
               :key="p.name"
@@ -199,44 +198,9 @@ const generate = () =>
             </button>
           </span>
         </div>
-
-        <span class="lbl">圖片</span>
-        <div class="ctl">
-          <button class="btn" @click="fileInput?.click()">
-            {{ sel.poster.hasImage ? '更換圖片' : '上傳圖片' }}
-          </button>
-          <button v-if="sel.poster.hasImage" class="btn" @click="editor?.setPosterImage(null)">
-            移除
-          </button>
-          <button class="btn dup" title="複製 (⌘D)" @click="editor?.duplicate()">複製</button>
-          <input ref="file" type="file" accept="image/*" hidden @change="onFile" />
-          <dialog ref="fitDialog" class="fit-dialog" @close="pending = null">
-            <template v-if="pending">
-              <h3>圖片比例和海報不同</h3>
-              <p>要怎麼放這張圖片？</p>
-              <div class="choices">
-                <button class="choice" type="button" @click="chooseFit('image')">
-                  <span class="frame">
-                    <img :src="pending.url" alt="" :style="box(pending.aspect)" />
-                  </span>
-                  <b>照圖片比例</b>
-                  <i>海報改成圖片的比例，完整顯示</i>
-                </button>
-                <button class="choice" type="button" @click="chooseFit('poster')">
-                  <span class="frame">
-                    <img :src="pending.url" alt="" class="crop" :style="box(posterAspect)" />
-                  </span>
-                  <b>維持海報比例</b>
-                  <i>海報尺寸不變，圖片裁切填滿</i>
-                </button>
-              </div>
-              <button class="btn cancel" type="button" @click="fitDialog?.close()">取消</button>
-            </template>
-          </dialog>
-        </div>
       </template>
 
-      <template v-else>
+      <template v-if="!isWallItem(sel.type)">
         <span class="lbl">旋轉</span>
         <div class="ctl">
           <button class="btn" title="逆時針 15° (Q)" @click="rotate(15)">⟲ 15°</button>
@@ -284,6 +248,50 @@ const generate = () =>
             <span class="op">m</span>
           </label>
           <button class="btn gen" @click="generate">產生</button>
+        </div>
+      </template>
+
+      <template v-if="sel.image">
+        <span class="lbl">圖片</span>
+        <div class="ctl">
+          <button class="btn" @click="fileInput?.click()">
+            {{ sel.image.hasImage ? '更換圖片' : '上傳圖片' }}
+          </button>
+          <button v-if="sel.image.hasImage" class="btn" @click="editor?.setPosterImage(null)">
+            移除
+          </button>
+          <button
+            v-if="isWallItem(sel.type)"
+            class="btn dup"
+            title="複製 (⌘D)"
+            @click="editor?.duplicate()"
+          >
+            複製
+          </button>
+          <input ref="file" type="file" accept="image/*" hidden @change="onFile" />
+          <dialog ref="fitDialog" class="fit-dialog" @close="pending = null">
+            <template v-if="pending">
+              <h3>圖片比例和目前尺寸不同</h3>
+              <p>要怎麼放這張圖片？</p>
+              <div class="choices">
+                <button class="choice" type="button" @click="chooseFit('image')">
+                  <span class="frame">
+                    <img :src="pending.url" alt="" :style="box(pending.aspect)" />
+                  </span>
+                  <b>照圖片比例</b>
+                  <i>改成圖片的比例，完整顯示</i>
+                </button>
+                <button class="choice" type="button" @click="chooseFit('poster')">
+                  <span class="frame">
+                    <img :src="pending.url" alt="" class="crop" :style="box(sizeAspect)" />
+                  </span>
+                  <b>維持目前比例</b>
+                  <i>尺寸不變，圖片裁切填滿</i>
+                </button>
+              </div>
+              <button class="btn cancel" type="button" @click="fitDialog?.close()">取消</button>
+            </template>
+          </dialog>
         </div>
       </template>
 
