@@ -2,9 +2,11 @@
 import CollapsibleSection from './CollapsibleSection.vue'
 import { useFurnitureThumbnails } from '@/composables/useFurnitureThumbnails'
 import { useVenueEditor } from '@/composables/useVenueEditor'
+import { usePlannerStore } from '@/stores/planner'
 import { FURNITURE, FURNITURE_TYPES, priceOf, type FurnitureType } from '@/venue/furniture'
 
 const editor = useVenueEditor()
+const store = usePlannerStore()
 const thumbs = useFurnitureThumbnails()
 
 const tiles = FURNITURE_TYPES.map((type) => {
@@ -24,13 +26,14 @@ function onPointerDown(e: PointerEvent, type: FurnitureType) {
 </script>
 
 <template>
+  <p v-if="!store.editing" class="locked">目前是檢視模式，切換到「編輯」才能擺放物件</p>
   <CollapsibleSection
     v-for="sec in sections"
     :key="sec.id"
     :title="sec.title"
     :storage-key="`vueconf26-palette-${sec.id}-collapsed`"
   >
-    <div class="palette">
+    <div class="palette" :class="{ off: !store.editing }" :inert="!store.editing">
       <div
         v-for="t in sec.tiles"
         :key="t.type"
@@ -48,6 +51,22 @@ function onPointerDown(e: PointerEvent, type: FurnitureType) {
 </template>
 
 <style scoped>
+.locked {
+  margin: 0 4px 10px;
+  padding: 8px 10px;
+  border: 1px solid rgba(237, 179, 42, 0.45);
+  border-radius: 8px;
+  background: #fdf7e6;
+  font-size: 12px;
+  color: #8a6a1c;
+}
+.palette.off {
+  opacity: 0.45;
+  filter: grayscale(0.4);
+}
+.palette.off .tile {
+  cursor: default;
+}
 .palette {
   display: grid;
   grid-template-columns: 1fr 1fr;

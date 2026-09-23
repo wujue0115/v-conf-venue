@@ -15,6 +15,10 @@ import {
 import { readJSON, writeJSON } from '@/venue/storage'
 
 const SIDEBAR_KEY = 'vueconf26-sidebar-collapsed'
+const MODE_KEY = 'vueconf26-mode'
+
+/** 'view' only looks around; 'edit' can place and change objects */
+export type PlannerMode = 'view' | 'edit'
 
 /**
  * UI-facing planner state. The three.js scene (VenueEditor) is the source of
@@ -31,6 +35,9 @@ export const usePlannerStore = defineStore('planner', () => {
   const priceMode = shallowRef<PriceMode>(pricing.priceMode)
   const slots = shallowRef(pricing.slots)
 
+  // First visit opens in view mode so nothing gets moved by accident
+  const mode = shallowRef<PlannerMode>(readJSON(MODE_KEY) === 'edit' ? 'edit' : 'view')
+  const editing = computed(() => mode.value === 'edit')
   const snap = shallowRef(true)
   const wallsCut = shallowRef(false)
   const showLabels = shallowRef(true)
@@ -63,6 +70,7 @@ export const usePlannerStore = defineStore('planner', () => {
   })
   watch([priceMode, slots], ([m, s]) => savePricing(m, s))
   watch(sidebarCollapsed, (v) => writeJSON(SIDEBAR_KEY, v))
+  watch(mode, (v) => writeJSON(MODE_KEY, v))
 
   return {
     initialItems,
@@ -71,6 +79,8 @@ export const usePlannerStore = defineStore('planner', () => {
     fixedSeats,
     priceMode,
     slots,
+    mode,
+    editing,
     snap,
     wallsCut,
     showLabels,

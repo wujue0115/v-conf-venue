@@ -1,11 +1,16 @@
 <script setup lang="ts">
 import { shallowRef, useTemplateRef } from 'vue'
 import { useVenueEditor } from '@/composables/useVenueEditor'
-import { usePlannerStore } from '@/stores/planner'
+import { usePlannerStore, type PlannerMode } from '@/stores/planner'
 import { exportLayout, parseLayout } from '@/venue/layout'
 import { VIEWS, type CameraView } from '@/venue/places'
 
 const store = usePlannerStore()
+
+const MODES: { mode: PlannerMode; label: string; title: string }[] = [
+  { mode: 'view', label: '檢視', title: '只瀏覽場地，不會動到物件' },
+  { mode: 'edit', label: '編輯', title: '擺放、移動與調整物件' },
+]
 const editor = useVenueEditor()
 const fileInput = useTemplateRef('file')
 const activeView = shallowRef(0)
@@ -61,6 +66,7 @@ async function onFile(e: Event) {
     <div class="bar tools" data-stage-ui>
       <div class="grp">
         <button
+          v-if="store.editing"
           class="btn"
           :class="{ on: store.snap }"
           title="格點吸附 0.25m"
@@ -85,10 +91,29 @@ async function onFile(e: Event) {
         </button>
       </div>
       <div class="grp">
-        <button class="btn" title="復原 (⌘Z)" @click="editor?.undo()">復原</button>
+        <button v-if="store.editing" class="btn" title="復原 (⌘Z)" @click="editor?.undo()">
+          復原
+        </button>
         <button class="btn" @click="download">匯出</button>
-        <button class="btn" @click="fileInput?.click()">匯入</button>
-        <button class="btn danger" @click="clearAll">清空</button>
+        <template v-if="store.editing">
+          <button class="btn" @click="fileInput?.click()">匯入</button>
+          <button class="btn danger" @click="clearAll">清空</button>
+        </template>
+      </div>
+      <div class="grp mode" :class="{ edit: store.editing }" role="radiogroup" aria-label="模式">
+        <span class="thumb" aria-hidden="true"></span>
+        <button
+          v-for="m in MODES"
+          :key="m.mode"
+          class="btn"
+          :class="{ cur: store.mode === m.mode }"
+          role="radio"
+          :aria-checked="store.mode === m.mode"
+          :title="m.title"
+          @click="store.mode = m.mode"
+        >
+          {{ m.label }}
+        </button>
       </div>
     </div>
     <input ref="file" type="file" accept=".json,application/json" hidden @change="onFile" />
@@ -117,5 +142,42 @@ async function onFile(e: Event) {
 .tools {
   justify-content: flex-end;
   margin-left: auto;
+}
+
+/* Mode switch: one yellow thumb slides between two equal halves */
+.mode {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+.thumb {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: 3px;
+  /* one column: (inner width − the 2px gap) / 2 */
+  width: calc((100% - 8px) / 2);
+  border-radius: 7px;
+  background: var(--yel);
+  transition: transform 0.25s cubic-bezier(0.3, 0.7, 0.4, 1);
+}
+.mode.edit .thumb {
+  transform: translateX(calc(100% + 2px));
+}
+.mode .btn {
+  position: relative;
+  background: transparent;
+  transition: color 0.2s;
+}
+.mode .btn:not(.cur) {
+  color: var(--muted);
+}
+.mode .btn:not(.cur):hover {
+  color: var(--ink);
+}
+@media (prefers-reduced-motion: reduce) {
+  .thumb {
+    transition: none;
+  }
 }
 </style>

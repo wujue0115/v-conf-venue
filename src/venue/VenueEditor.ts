@@ -114,6 +114,8 @@ export class VenueEditor {
   private labels: (LabelAnchor & { p: THREE.Vector3 })[] = []
   private labelsVisible = true
   private selected: THREE.Object3D | null = null
+  /** View mode turns this off: the camera still moves, but nothing can be placed or changed */
+  private editable = true
   private snap = true
   private undoStack: string[] = []
   private drag: { o: THREE.Object3D; dx: number; dz: number; moved: boolean } | null = null
@@ -261,6 +263,18 @@ export class VenueEditor {
     )
     this.load(items)
     this.cb.onToast('已復原')
+  }
+
+  /** Switch between edit mode and view-only mode. */
+  setEditable(on: boolean) {
+    this.editable = on
+    if (on) return
+    this.drag = null
+    this.resizing = null
+    this.controls.enabled = true
+    this.grid.visible = false
+    this.canvas.style.cursor = ''
+    this.select(null)
   }
 
   setSnap(on: boolean) {
@@ -448,6 +462,7 @@ export class VenueEditor {
 
   /** Begin drag-placing a new object from the palette (call from a pointerdown). */
   startPlace(e: PointerEvent, type: FurnitureType) {
+    if (!this.editable) return
     // Touch: let the browser keep vertical panning (the palette uses touch-action: pan-y);
     // if it takes the gesture over as a scroll we get pointercancel and abort below.
     if (e.pointerType !== 'touch') e.preventDefault()
@@ -917,6 +932,7 @@ export class VenueEditor {
         if (e.target !== canvas || e.button !== 0) return
         canvas.focus()
         this.downPt = { x: e.clientX, y: e.clientY }
+        if (!this.editable) return
         const hd = this.pickHandle(e)
         if (hd && this.selected) {
           e.stopPropagation()
@@ -993,7 +1009,7 @@ export class VenueEditor {
         this.updSel()
         return
       }
-      if (this.placing) return
+      if (this.placing || !this.editable) return
       if (e.target === canvas && e.buttons === 0) {
         const hd = this.pickHandle(e)
         canvas.style.cursor = hd
@@ -1025,7 +1041,7 @@ export class VenueEditor {
       }
       const d = this.downPt
       if (d && e.target === canvas && Math.hypot(e.clientX - d.x, e.clientY - d.y) < 4) {
-        const belt = this.pickBelt(e)
+        const belt = this.editable && this.pickBelt(e)
         if (belt) this.cutBelt(belt)
         else this.select(null)
       }
@@ -1052,6 +1068,8 @@ export class VenueEditor {
         return
       }
     }
+    // everything below changes the layout
+    if (!this.editable) return
     if (mod && kk === 'z') {
       e.preventDefault()
       this.undo()

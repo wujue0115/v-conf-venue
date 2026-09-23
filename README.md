@@ -22,6 +22,7 @@ photos in the rental chart (家具設備租借費用圖表). Both are kept in [`
 
 ## Experience
 
+* Browse safely in view mode, then switch to edit mode to change the layout
 * Drag furniture from the sidebar straight into the 3D venue
 * Rotate, duplicate, delete, or lay out selected items in rows and columns
 * Pick a colour for pieces that come in more than one (high stool, shaped sofa)

@@ -18,7 +18,7 @@ const SECTIONS = [
     ],
   },
   {
-    title: '物件',
+    title: '物件（編輯模式）',
     rows: [
       ['拖曳', '移動物件'],
       ['方向鍵', '微調 0.25m（Shift 1m）'],

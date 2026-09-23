@@ -32,6 +32,7 @@ onBeforeUnmount(() => {
 })
 
 // Push view toggles from the store into the scene
+watch([editor, () => store.editing], ([ed, on]) => ed?.setEditable(on), { immediate: true })
 watch([editor, () => store.snap], ([ed, on]) => ed?.setSnap(on), { immediate: true })
 watch([editor, () => store.wallsCut], ([ed, on]) => ed?.setWallsCut(on), { immediate: true })
 watch([editor, () => store.showLabels], ([ed, on]) => ed?.setLabelsVisible(on), { immediate: true })
