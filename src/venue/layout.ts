@@ -1,3 +1,4 @@
+import { readJSON, writeJSON } from './storage'
 import { FURNITURE, FURNITURE_TYPES, isFurnitureType, type FurnitureType } from './furniture'
 
 /** One placed object. `y` omitted → dropped onto the floor below (x, z). `r` is rotation around Y in radians. */
@@ -98,22 +99,6 @@ export function demoLayout(): LayoutItem[] {
   )
   L.push({ t: 'woodLectern', x: 31.6, y: 0.9, z: 35.5, r: -Math.PI / 2 })
   return L
-}
-
-// localStorage can throw (private mode, blocked storage) — never let that break the planner.
-function readJSON(key: string): unknown {
-  try {
-    return JSON.parse(localStorage.getItem(key) ?? 'null')
-  } catch {
-    return null
-  }
-}
-function writeJSON(key: string, value: unknown) {
-  try {
-    localStorage.setItem(key, JSON.stringify(value))
-  } catch {
-    /* ignore */
-  }
 }
 
 export function loadSavedLayout(): LayoutItem[] | null {

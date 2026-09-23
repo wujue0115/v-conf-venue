@@ -80,7 +80,7 @@ const generate = () =>
 <style scoped>
 .sel {
   position: absolute;
-  left: 50%;
+  left: calc(50% + var(--stage-inset, 0px) / 2);
   bottom: 18px;
   transform: translateX(-50%);
   background: #fff;
@@ -93,7 +93,7 @@ const generate = () =>
   gap: 8px;
   flex-wrap: wrap;
   justify-content: center;
-  max-width: calc(100% - 28px);
+  max-width: calc(100% - var(--stage-inset, 0px) - 28px);
 }
 .who {
   display: flex;

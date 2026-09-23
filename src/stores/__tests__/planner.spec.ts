@@ -32,4 +32,13 @@ describe('planner store', () => {
     expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!)).toHaveLength(1)
     expect(JSON.parse(localStorage.getItem(PRICE_KEY)!)).toEqual({ priceMode: 0, slots: 9 })
   })
+
+  it('remembers whether the sidebar is collapsed', async () => {
+    const store = usePlannerStore()
+    expect(store.sidebarCollapsed).toBe(false)
+    store.sidebarCollapsed = true
+    await nextTick()
+    setActivePinia(createPinia())
+    expect(usePlannerStore().sidebarCollapsed).toBe(true)
+  })
 })

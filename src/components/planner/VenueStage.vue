@@ -66,7 +66,7 @@ canvas {
 }
 .help {
   position: absolute;
-  left: 14px;
+  left: calc(var(--stage-inset, 0px) + 14px);
   bottom: 14px;
   font-size: 11.5px;
   color: #6b6e75;

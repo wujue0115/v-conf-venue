@@ -99,7 +99,7 @@ async function onFile(e: Event) {
 .topbars {
   position: absolute;
   top: 14px;
-  left: 14px;
+  left: calc(var(--stage-inset, 0px) + 14px);
   right: 14px;
   display: flex;
   justify-content: space-between;

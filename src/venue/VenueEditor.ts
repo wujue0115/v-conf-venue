@@ -217,12 +217,15 @@ export class VenueEditor {
   }
 
   flyTo(view: CameraView) {
+    const to = view.position
+      ? { position: new THREE.Vector3(...view.position), target: new THREE.Vector3(...view.target) }
+      : this.overview()
     this.fly = {
       t0: performance.now(),
       p0: this.camera.position.clone(),
       g0: this.controls.target.clone(),
-      p1: view.position ? new THREE.Vector3(...view.position) : this.overviewPos(),
-      g1: new THREE.Vector3(...view.target),
+      p1: to.position,
+      g1: to.target,
     }
   }
 
@@ -423,11 +426,61 @@ export class VenueEditor {
     return inside && !(e.target as Element | null)?.closest?.('[data-stage-ui]')
   }
 
-  private overviewPos() {
+  /** Overview camera framed to the viewport aspect, with the building centred left–right on screen. */
+  private overview() {
     const aspect = this.camera.aspect
     const a = Number.isFinite(aspect) && aspect > 0 ? Math.max(0.5, aspect) : 1.4
     const s = Math.max(1, 1.75 / a)
-    return new THREE.Vector3(-48, 62, 52).multiplyScalar(s * 0.92).add(CENTER)
+    const target = CENTER.clone()
+    const position = new THREE.Vector3(-48, 62, 52).multiplyScalar(s * 0.92).add(CENTER)
+
+    // The plan isn't symmetric around CENTER from this angle: pan sideways until the
+    // walls are centred on screen, and back off if they don't fit (narrow screens).
+    // A few passes let the perspective settle.
+    const points: THREE.Vector3[] = []
+    const mb = new THREE.Box3()
+    this.archi.wallsG.updateMatrixWorld(true)
+    this.archi.wallsG.traverse((o) => {
+      if (!(o as THREE.Mesh).isMesh) return
+      mb.setFromObject(o, true)
+      for (let i = 0; i < 8; i++)
+        points.push(
+          new THREE.Vector3(
+            i & 1 ? mb.max.x : mb.min.x,
+            i & 2 ? mb.max.y : mb.min.y,
+            i & 4 ? mb.max.z : mb.min.z,
+          ),
+        )
+    })
+    const cam = this.camera.clone()
+    const right = new THREE.Vector3()
+    const v = new THREE.Vector3()
+    for (let pass = 0; pass < 4; pass++) {
+      cam.position.copy(position)
+      cam.lookAt(target)
+      cam.updateMatrixWorld()
+      let minX = Infinity
+      let maxX = -Infinity
+      let minY = Infinity
+      let maxY = -Infinity
+      for (const pt of points) {
+        v.copy(pt).project(cam)
+        minX = Math.min(minX, v.x)
+        maxX = Math.max(maxX, v.x)
+        minY = Math.min(minY, v.y)
+        maxY = Math.max(maxY, v.y)
+      }
+      const halfW =
+        Math.tan(THREE.MathUtils.degToRad(cam.fov / 2)) * position.distanceTo(target) * cam.aspect
+      right.setFromMatrixColumn(cam.matrixWorld, 0).setY(0).normalize()
+      const shift = right.multiplyScalar(((minX + maxX) / 2) * halfW)
+      position.add(shift)
+      target.add(shift)
+      // keep ~8% margin on each side; only ever zoom out
+      const over = Math.max((maxX - minX) / 1.84, (maxY - minY) / 1.7)
+      if (over > 1) position.sub(target).multiplyScalar(over).add(target)
+    }
+    return { position, target }
   }
 
   private resize() {
@@ -442,7 +495,9 @@ export class VenueEditor {
 
   private fit = () => {
     if (this.resize() && this.firstFit) {
-      this.camera.position.copy(this.overviewPos())
+      const { position, target } = this.overview()
+      this.camera.position.copy(position)
+      this.controls.target.copy(target)
       this.firstFit = false
     }
   }
