@@ -8,9 +8,15 @@ import {
   isResizable,
   isWallItem,
   takesImage,
+  takesTag,
+  PERSON_COLOR,
+  PERSON_TAG_Y,
+  SEATED_TAG_Y,
+  SEATS,
+  applyPeople,
   type FurnitureType,
 } from './furniture'
-import type { LayoutItem } from './layout'
+import { clampPeople, cleanTag, isHexColor, type LayoutItem } from './layout'
 import { B, FM, YEL } from './materials'
 import {
   POSTER_MIN,
@@ -41,6 +47,10 @@ export interface SelectionInfo {
   size?: { w: number; h: number; lock: boolean; presets: boolean }
   /** Items with a printable face */
   image?: { hasImage: boolean }
+  /** People: their name tag ('' when none) */
+  tag?: string
+  /** 人員 items: how many figures, their colour, and whether they sit on a seat */
+  people?: { n: number; color: string; sit: boolean }
 }
 
 export interface EditorCallbacks {
@@ -79,6 +89,17 @@ const BELT_GEO = B(1, 0.05, 0.006)
 const X_AXIS = new THREE.Vector3(1, 0, 0)
 
 const isPost = (o: THREE.Object3D) => o.userData.type === 'stanchion'
+const isPerson = (o: THREE.Object3D) => o.userData.type === 'person'
+const seatOf = (o: THREE.Object3D) => SEATS[o.userData.type as string]
+/** How close (metres, on the floor plan) a person must be dropped to a seat to sit on it */
+const SIT_REACH = 0.35
+
+/** Someone sitting on a seat, remembered in the seat's frame so they move with it */
+interface Rider {
+  o: THREE.Object3D
+  local: THREE.Vector3
+  turn: number
+}
 const onWall = (o: THREE.Object3D) => isWallItem(o.userData.type as FurnitureType)
 const hasFace = (o: THREE.Object3D) => takesImage(o.userData.type as FurnitureType)
 const resizable = (o: THREE.Object3D) => isResizable(o.userData.type as FurnitureType)
@@ -129,12 +150,23 @@ export class VenueEditor {
 
   private labels: (LabelAnchor & { p: THREE.Vector3 })[] = []
   private labelsVisible = true
+  /** Where people's name tags are drawn, and the element made for each tagged person */
+  private tagLayer: HTMLElement | null = null
+  private tagsVisible = true
+  private readonly tagEls = new Map<THREE.Object3D, HTMLElement>()
   private selected: THREE.Object3D | null = null
   /** View mode turns this off: the camera still moves, but nothing can be placed or changed */
   private editable = true
   private snap = true
   private undoStack: string[] = []
-  private drag: { o: THREE.Object3D; dx: number; dz: number; moved: boolean } | null = null
+  private drag: {
+    o: THREE.Object3D
+    dx: number
+    dz: number
+    moved: boolean
+    /** people sitting on a dragged seat, carried along with it */
+    riders?: Rider[]
+  } | null = null
   private resizing: {
     o: THREE.Object3D
     sx: number
@@ -306,6 +338,46 @@ export class VenueEditor {
     this.sun.castShadow = on
   }
 
+  /** The element people's name tags are drawn into (one child per tagged person). */
+  setPersonTagLayer(el: HTMLElement | null) {
+    this.tagEls.forEach((t) => t.remove())
+    this.tagEls.clear()
+    this.tagLayer = el
+  }
+
+  setPersonTagsVisible(on: boolean) {
+    this.tagsVisible = on
+  }
+
+  /** Change how many figures the selected 人員 item shows, and/or their colour. */
+  setPeople({ n, color }: { n?: number; color?: string }) {
+    const s = this.selected
+    if (!s || s.userData.type !== 'person') return
+    const n0 = (s.userData.n as number | undefined) ?? 1
+    const c0 = (s.userData.color as string | undefined) ?? PERSON_COLOR
+    // someone sitting is always one person
+    const n1 = s.userData.sit ? 1 : n === undefined ? n0 : clampPeople(n)
+    const c1 = color && isHexColor(color) ? color.toLowerCase() : c0
+    if (n1 === n0 && c1 === c0) return
+    this.pushUndo()
+    applyPeople(s, n1, c1, !!s.userData.sit)
+    this.updSel()
+    this.commit()
+  }
+
+  /** Name the selected person; an empty tag removes it. */
+  setTag(tag: string) {
+    const s = this.selected
+    if (!s || !takesTag(s.userData.type as FurnitureType)) return
+    const t = cleanTag(tag)
+    if ((s.userData.tag ?? '') === t) return
+    this.pushUndo()
+    if (t) s.userData.tag = t
+    else delete s.userData.tag
+    this.updSel()
+    this.commit()
+  }
+
   setLabelsVisible(on: boolean) {
     this.labelsVisible = on
   }
@@ -331,7 +403,9 @@ export class VenueEditor {
     const s = this.selected
     if (!s || onWall(s)) return
     this.pushUndo()
+    const riders = this.ridersOf(s)
     s.rotation.y += THREE.MathUtils.degToRad(deg)
+    this.carry(s, riders)
     this.updSel()
     this.commit()
   }
@@ -348,14 +422,20 @@ export class VenueEditor {
       const off = new THREE.Vector3((item.w ?? 0) + 0.1, 0, 0).applyAxisAngle(UP, s.rotation.y)
       o = this.add({ ...item, x: s.position.x + off.x, z: s.position.z + off.z })
     } else {
-      const off = new THREE.Vector3(FURNITURE[type].arr[0], 0, 0).applyAxisAngle(UP, s.rotation.y)
+      // a group of people is wider than one: step past its whole width
+      const n = (s.userData.n as number | undefined) ?? 1
+      const step = type === 'person' ? Math.min(n, 3) * 0.55 + 0.1 : FURNITURE[type].arr[0]
+      const off = new THREE.Vector3(step, 0, 0).applyAxisAngle(UP, s.rotation.y)
       o = this.add({
         ...item,
         x: this.sn(s.position.x + off.x),
         y: undefined,
         z: this.sn(s.position.z + off.z),
         cut: undefined,
+        sit: undefined,
       })
+      // a copied person takes the next seat if there is one
+      if (o) this.settle(o)
     }
     this.select(o)
     this.commit()
@@ -365,7 +445,9 @@ export class VenueEditor {
     const s = this.selected
     if (!s) return
     this.pushUndo()
+    const riders = this.ridersOf(s)
     this.placed.remove(s)
+    for (const r of riders) this.standUp(r.o)
     this.select(null)
     this.commit()
   }
@@ -385,13 +467,15 @@ export class VenueEditor {
       for (let c = 0; c < cols; c++) {
         if (!r && !c) continue
         const v = new THREE.Vector3(c * dx, 0, -r * dz).applyAxisAngle(UP, s.rotation.y)
-        this.add({
+        const o = this.add({
           ...this.itemOf(s),
           x: s.position.x + v.x,
           y: undefined,
           z: s.position.z + v.z,
           cut: undefined,
+          sit: undefined,
         })
+        if (o) this.settle(o)
       }
     this.commit()
     this.cb.onToast(
@@ -526,6 +610,7 @@ export class VenueEditor {
           const p = this.floorHit(ev)
           if (p) {
             this.moveTo(pl.obj, p.x, p.z)
+            this.settle(pl.obj)
             pl.obj.visible = true
           }
         }
@@ -576,7 +661,9 @@ export class VenueEditor {
         } else if (clicked) {
           this.pushUndo()
           const t = this.controls.target
-          this.select(this.add({ t: type, x: this.sn(t.x), z: this.sn(t.z), r: 0 }))
+          const o = this.add({ t: type, x: this.sn(t.x), z: this.sn(t.z), r: 0 })
+          if (o) this.settle(o)
+          this.select(o)
           this.commit()
           this.cb.onToast(`已放置「${FURNITURE[type].name}」於畫面中央，可拖曳調整`)
         }
@@ -590,7 +677,7 @@ export class VenueEditor {
   // ---------------- Internals ----------------
 
   /** Place an item; with no `y` it is dropped onto the floor below (x, z). */
-  private add({ t, x, y, z, r, v, cut, w, h, img, lock }: LayoutItem) {
+  private add({ t, x, y, z, r, v, cut, w, h, img, lock, tag, n, color, sit }: LayoutItem) {
     if (!isFurnitureType(t)) return null
     const o = buildFurniture(t, v, w && h ? { w, h } : undefined)
     o.position.set(x, y ?? this.floorY(x, z), z)
@@ -599,6 +686,8 @@ export class VenueEditor {
     if (w && h) applyPoster(o, { w, h, img })
     else if (img) setFaceImage(o, img)
     if (lock) o.userData.lock = true
+    if (tag) o.userData.tag = tag
+    if (t === 'person' && (n || color || sit)) applyPeople(o, n, color, sit)
     this.placed.add(o)
     return o
   }
@@ -621,6 +710,10 @@ export class VenueEditor {
       r: +o.rotation.y.toFixed(4),
       ...(ud.variant ? { v: ud.variant as string } : {}),
       ...(cut?.length ? { cut: cut.map((c) => +c.toFixed(3)) } : {}),
+      ...(ud.tag ? { tag: ud.tag as string } : {}),
+      ...(ud.n ? { n: ud.n as number } : {}),
+      ...(ud.color ? { color: ud.color as string } : {}),
+      ...(ud.sit ? { sit: true } : {}),
       ...(ud.img && hasFace(o) ? { img: ud.img as string } : {}),
       ...(resizable(o)
         ? {
@@ -641,6 +734,68 @@ export class VenueEditor {
       this.imgByKey.set(k, img)
     }
     return k
+  }
+
+  /** Where someone sits on `chair`, in world space */
+  private seatPoint(chair: THREE.Object3D) {
+    const s = seatOf(chair)!
+    chair.updateMatrixWorld()
+    return chair.localToWorld(new THREE.Vector3(0, s.y, s.z))
+  }
+
+  /** People sitting on `seat`, with their place in its frame */
+  private ridersOf(seat: THREE.Object3D): Rider[] {
+    if (!seatOf(seat)) return []
+    const p = this.seatPoint(seat)
+    return this.placed.children
+      .filter((o) => o.userData.sit && o.position.distanceTo(p) < 0.03)
+      .map((o) => ({
+        o,
+        local: seat.worldToLocal(o.position.clone()),
+        turn: o.rotation.y - seat.rotation.y,
+      }))
+  }
+
+  /** Put riders back on their seat after it moved or turned */
+  private carry(seat: THREE.Object3D, riders: Rider[]) {
+    seat.updateMatrixWorld()
+    for (const r of riders) {
+      r.o.position.copy(seat.localToWorld(r.local.clone()))
+      r.o.rotation.y = seat.rotation.y + r.turn
+    }
+  }
+
+  /** The nearest free seat within reach of (x, z), for `who` to sit on */
+  private freeSeatNear(x: number, z: number, who: THREE.Object3D) {
+    let best: THREE.Object3D | null = null
+    let bestD = SIT_REACH
+    for (const c of this.placed.children) {
+      if (!seatOf(c) || !c.visible) continue
+      const p = this.seatPoint(c)
+      const d = Math.hypot(p.x - x, p.z - z)
+      if (d >= bestD) continue
+      if (this.ridersOf(c).some((r) => r.o !== who)) continue
+      best = c
+      bestD = d
+    }
+    return best
+  }
+
+  /** A single person on a free seat sits down on it; anyone else stands on the floor. */
+  private settle(o: THREE.Object3D) {
+    if (!isPerson(o)) return
+    const ud = o.userData
+    const seat = (ud.n ?? 1) === 1 ? this.freeSeatNear(o.position.x, o.position.z, o) : null
+    if (!seat) return this.standUp(o)
+    if (!ud.sit) applyPeople(o, 1, ud.color as string | undefined, true)
+    o.position.copy(this.seatPoint(seat))
+    o.rotation.y = seat.rotation.y
+  }
+
+  private standUp(o: THREE.Object3D) {
+    if (!o.userData.sit) return
+    applyPeople(o, 1, o.userData.color as string | undefined, false)
+    o.position.y = this.floorY(o.position.x, o.position.z)
   }
 
   /** First vertical wall face under the current ray, with its normal turned toward the camera */
@@ -847,6 +1002,18 @@ export class VenueEditor {
           }
         : {}),
       ...(hasFace(s) ? { image: { hasImage: !!s.userData.img } } : {}),
+      ...(takesTag(s.userData.type as FurnitureType)
+        ? { tag: (s.userData.tag as string | undefined) ?? '' }
+        : {}),
+      ...(s.userData.type === 'person'
+        ? {
+            people: {
+              n: (s.userData.n as number | undefined) ?? 1,
+              color: (s.userData.color as string | undefined) ?? PERSON_COLOR,
+              sit: !!s.userData.sit,
+            },
+          }
+        : {}),
     })
   }
 
@@ -1034,7 +1201,13 @@ export class VenueEditor {
           this.drag = { o, dx: g.x, dz: g.y, moved: false }
         } else {
           const p = this.floorHit(e) ?? o.position.clone()
-          this.drag = { o, dx: o.position.x - p.x, dz: o.position.z - p.z, moved: false }
+          this.drag = {
+            o,
+            dx: o.position.x - p.x,
+            dz: o.position.z - p.z,
+            moved: false,
+            riders: this.ridersOf(o),
+          }
         }
         this.controls.enabled = false
         canvas.style.cursor = 'grabbing'
@@ -1076,6 +1249,8 @@ export class VenueEditor {
           this.grid.visible = true
         }
         this.moveTo(d.o, p.x + d.dx, p.z + d.dz)
+        if (d.riders?.length) this.carry(d.o, d.riders)
+        this.settle(d.o)
         if (isPost(d.o)) this.updateBelts()
         this.updSel()
         return
@@ -1201,9 +1376,12 @@ export class VenueEditor {
           ? new THREE.Vector3(Math.sign(v.x), 0, 0)
           : new THREE.Vector3(0, 0, Math.sign(v.z))
       this.pushUndo()
+      const riders = this.ridersOf(s)
       const p = s.position
       p.set(p.x + ax.x * st, 0, p.z + ax.z * st)
       p.y = this.floorY(p.x, p.z)
+      this.carry(s, riders)
+      this.settle(s)
       this.updSel()
       this.commit()
     }
@@ -1260,6 +1438,45 @@ export class VenueEditor {
     }
     this.renderer.render(this.scene, camera)
     if (this.labelsVisible) this.layoutLabels()
+    if (this.tagLayer && this.tagsVisible) this.layoutPersonTags()
+  }
+
+  /** Keep one name-tag element per tagged person and pin it above their head on screen. */
+  private layoutPersonTags() {
+    const layer = this.tagLayer
+    if (!layer) return
+    const w = this.stageEl.clientWidth
+    const h = this.stageEl.clientHeight
+    const v = this.v
+    const seen = new Set<THREE.Object3D>()
+    for (const o of this.placed.children) {
+      const tag = o.userData.tag as string | undefined
+      if (!tag || !o.visible) continue
+      seen.add(o)
+      let el = this.tagEls.get(o)
+      if (!el) {
+        el = document.createElement('div')
+        el.className = 'ptag'
+        layer.append(el)
+        this.tagEls.set(o, el)
+      }
+      if (el.textContent !== tag) el.textContent = tag
+      const above = o.userData.sit ? SEATED_TAG_Y : PERSON_TAG_Y
+      v.set(o.position.x, o.position.y + above, o.position.z).project(this.camera)
+      if (v.z > 1 || Math.abs(v.x) > 1.2 || Math.abs(v.y) > 1.2) {
+        el.style.display = 'none'
+        continue
+      }
+      el.style.display = ''
+      const x = ((v.x + 1) / 2) * w - el.offsetWidth / 2
+      const y = ((1 - v.y) / 2) * h - el.offsetHeight
+      el.style.transform = `translate(${x.toFixed(1)}px,${y.toFixed(1)}px)`
+    }
+    for (const [o, el] of this.tagEls)
+      if (!seen.has(o)) {
+        el.remove()
+        this.tagEls.delete(o)
+      }
   }
 
   /** Project label anchors to screen space and hide ones that would overlap. */

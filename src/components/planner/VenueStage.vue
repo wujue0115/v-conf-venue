@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, useTemplateRef, watch } from 'vue'
+import PersonTags from './PersonTags.vue'
 import SelectionBar from './SelectionBar.vue'
 import StageHelp from './StageHelp.vue'
 import StageToast from './StageToast.vue'
@@ -37,12 +38,16 @@ watch([editor, () => store.snap], ([ed, on]) => ed?.setSnap(on), { immediate: tr
 watch([editor, () => store.wallsCut], ([ed, on]) => ed?.setWallsCut(on), { immediate: true })
 watch([editor, () => store.showLabels], ([ed, on]) => ed?.setLabelsVisible(on), { immediate: true })
 watch([editor, () => store.shadows], ([ed, on]) => ed?.setShadows(on), { immediate: true })
+watch([editor, () => store.showPersonTags], ([ed, on]) => ed?.setPersonTagsVisible(on), {
+  immediate: true,
+})
 </script>
 
 <template>
   <main ref="stage" class="stage">
     <canvas ref="canvas" tabindex="0"></canvas>
     <VenueLabels v-show="store.showLabels" />
+    <PersonTags v-show="store.showPersonTags" />
     <StageToolbar />
     <StageToast />
     <SelectionBar />

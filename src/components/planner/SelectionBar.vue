@@ -1,9 +1,18 @@
 <script setup lang="ts">
 import { computed, shallowRef, useTemplateRef, watch } from 'vue'
+import TagCombobox from './TagCombobox.vue'
 import { useFurnitureThumbnails } from '@/composables/useFurnitureThumbnails'
 import { useVenueEditor } from '@/composables/useVenueEditor'
 import { usePlannerStore } from '@/stores/planner'
-import { FURNITURE, isWallItem, priceOf, thumbKey, variantsOf } from '@/venue/furniture'
+import {
+  FURNITURE,
+  PEOPLE_MAX,
+  PERSON_COLOR,
+  isWallItem,
+  priceOf,
+  thumbKey,
+  variantsOf,
+} from '@/venue/furniture'
 import { POSTER_PRESETS, readPosterImage, type PosterFit } from '@/venue/poster'
 import { formatNT } from '@/venue/layout'
 import { BELT_MAX } from '@/venue/stanchions'
@@ -18,6 +27,17 @@ const dx = shallowRef(1)
 const dz = shallowRef(1)
 
 const sel = computed(() => store.selection)
+/**
+ * Quick picks for people's colour: the default matches the green of their tags, the rest are
+ * soft tints so figures don't overpower the furniture. The last chip opens a colour picker.
+ */
+const PERSON_COLORS = [PERSON_COLOR, '#8fb3d9', '#f2cf73', '#ec9a93', '#b8a4dc', '#8a8f99']
+/** Every tag already on someone in the layout, most used first */
+const usedTags = computed(() => {
+  const n = new Map<string, number>()
+  for (const i of store.items) if (i.tag) n.set(i.tag, (n.get(i.tag) ?? 0) + 1)
+  return [...n].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([t]) => t)
+})
 const def = computed(() => (sel.value ? FURNITURE[sel.value.type] : null))
 const variants = computed(() => (sel.value ? variantsOf(sel.value.type) : []))
 const thumb = computed(() =>
@@ -197,6 +217,67 @@ const generate = () =>
               {{ p.name }}
             </button>
           </span>
+        </div>
+      </template>
+
+      <template v-if="sel.people">
+        <span class="lbl">人數</span>
+        <div class="ctl">
+          <div class="grp count" role="radiogroup" aria-label="人數">
+            <button
+              v-for="k in PEOPLE_MAX"
+              :key="k"
+              class="btn"
+              :class="{ on: sel.people.n === k }"
+              role="radio"
+              :aria-checked="sel.people.n === k"
+              :disabled="sel.people.sit && k !== 1"
+              @click="editor?.setPeople({ n: k })"
+            >
+              {{ k }}
+            </button>
+          </div>
+          <span v-if="sel.people.sit" class="hint">坐在椅子上時為 1 人</span>
+        </div>
+
+        <span class="lbl">顏色</span>
+        <div class="ctl colors" role="radiogroup" aria-label="人員顏色">
+          <button
+            v-for="c in PERSON_COLORS"
+            :key="c"
+            class="chip"
+            :class="{ on: sel.people.color === c }"
+            :style="{ background: c }"
+            type="button"
+            role="radio"
+            :aria-checked="sel.people.color === c"
+            :aria-label="c"
+            @click="editor?.setPeople({ color: c })"
+          ></button>
+          <label
+            class="chip custom"
+            :class="{ on: !PERSON_COLORS.includes(sel.people.color) }"
+            :style="
+              PERSON_COLORS.includes(sel.people.color)
+                ? undefined
+                : { background: sel.people.color }
+            "
+            title="自訂顏色"
+          >
+            <input
+              type="color"
+              :value="sel.people.color"
+              aria-label="自訂顏色"
+              @change="editor?.setPeople({ color: ($event.target as HTMLInputElement).value })"
+            />
+          </label>
+        </div>
+      </template>
+
+      <template v-if="sel.tag !== undefined">
+        <span class="lbl">標籤</span>
+        <div class="ctl">
+          <TagCombobox :value="sel.tag" :options="usedTags" @commit="editor?.setTag($event)" />
         </div>
       </template>
 
@@ -576,6 +657,51 @@ const generate = () =>
   height: 18px;
   border-radius: 50%;
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15);
+}
+.count {
+  padding: 2px;
+}
+.count .btn {
+  width: 30px;
+  height: 26px;
+  padding: 0;
+  justify-content: center;
+  font: 500 12px var(--mono);
+}
+.colors {
+  gap: 6px;
+}
+.chip {
+  position: relative;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15);
+  cursor: pointer;
+}
+.chip.on {
+  box-shadow:
+    0 0 0 2px #fff,
+    0 0 0 4px var(--ink);
+}
+.chip:focus-visible,
+.chip:focus-within {
+  outline: 2px solid var(--yel);
+  outline-offset: 3px;
+}
+/* rainbow ring until a custom colour is chosen */
+.custom {
+  background: conic-gradient(#f44, #fd4, #4d6, #4bf, #84f, #f4a, #f44);
+}
+.custom input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
 }
 .hint {
   font-size: 12px;

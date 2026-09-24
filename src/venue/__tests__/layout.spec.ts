@@ -135,3 +135,51 @@ describe('易拉展', () => {
     expect([lines, total]).toEqual([[], 0])
   })
 })
+
+describe('person tags', () => {
+  it('keeps trimmed tags on people only, capped in length', () => {
+    const [a, b, c] = parseLayout([
+      { t: 'person', x: 0, z: 0, r: 0, tag: '  報到組  ' },
+      { t: 'person', x: 0, z: 0, r: 0, tag: 'x'.repeat(40) },
+      { t: 'table2', x: 0, z: 0, r: 0, tag: '報到組' },
+    ])
+    expect(a?.tag).toBe('報到組')
+    expect(b?.tag).toHaveLength(24)
+    expect(c).not.toHaveProperty('tag')
+  })
+
+  it('drops empty tags and does not charge for people', () => {
+    const [p] = parseLayout([{ t: 'person', x: 0, z: 0, r: 0, tag: '   ' }])
+    expect(p).not.toHaveProperty('tag')
+    expect(summarizeCost([p!], 1, 2).total).toBe(0)
+  })
+})
+
+describe('people count and colour', () => {
+  it('clamps the count to 1–6 and keeps valid hex colours on people only', () => {
+    const [a, b, c, d] = parseLayout([
+      { t: 'person', x: 0, z: 0, r: 0, n: 3, color: '#42B883' },
+      { t: 'person', x: 0, z: 0, r: 0, n: 12, color: 'red' },
+      { t: 'person', x: 0, z: 0, r: 0, n: 1 },
+      { t: 'table2', x: 0, z: 0, r: 0, n: 4, color: '#42b883' },
+    ])
+    expect(a).toMatchObject({ n: 3, color: '#42b883' })
+    expect(b).toMatchObject({ n: 6 })
+    expect(b).not.toHaveProperty('color')
+    expect(c).not.toHaveProperty('n')
+    expect(d).not.toHaveProperty('n')
+    expect(d).not.toHaveProperty('color')
+  })
+})
+
+describe('seated people', () => {
+  it('keeps sit on people only and always counts a sitter as one', () => {
+    const [a, b] = parseLayout([
+      { t: 'person', x: 0, y: 0.49, z: 0, r: 0, sit: true, n: 4 },
+      { t: 'studentChair', x: 0, z: 0, r: 0, sit: true },
+    ])
+    expect(a).toMatchObject({ sit: true, y: 0.49 })
+    expect(a).not.toHaveProperty('n')
+    expect(b).not.toHaveProperty('sit')
+  })
+})

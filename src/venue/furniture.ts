@@ -1,5 +1,6 @@
 import * as THREE from 'three'
-import { B, Cy, EF, FM, mesh } from './materials'
+import { B, Cy, EF, FM, mat, mesh } from './materials'
+import { personGeometry, seatedGeometry } from './person'
 import { POSTER_H, POSTER_W, buildFace, buildPoster } from './poster'
 
 /**
@@ -355,6 +356,94 @@ const infoLectern: Builder = (g) => {
   mesh(B(W - 0.1, 0.005, D - 0.1), FM.charcoal, tilt, 0, 0.022, 0, { e: null })
 }
 
+/** Height above a person's feet (or seat, when sitting) where their name tag floats */
+export const PERSON_TAG_Y = 1.95
+export const SEATED_TAG_Y = 1.2
+
+/**
+ * Where someone sits on each kind of seat, in the seat's own frame: the height of the
+ * cushion's top and how far forward (+z) the hips sit. The sitter faces the seat's front.
+ */
+export const SEATS: Partial<Record<string, { y: number; z: number }>> = {
+  stoolHigh: { y: 0.74, z: -0.04 },
+  studentChair: { y: 0.49, z: -0.04 },
+  foldBlack: { y: 0.44, z: -0.03 },
+  foldBeige: { y: 0.465, z: -0.03 },
+  redSofa: { y: 0.54, z: -0.02 },
+  armchair: { y: 0.46, z: -0.05 },
+  shapeSofa: { y: 0.52, z: -0.03 },
+  whiteSofa: { y: 0.48, z: -0.05 },
+}
+
+/** Default figure colour, and the most people one 人員 item can stand for */
+export const PERSON_COLOR = '#42b883'
+export const PEOPLE_MAX = 6
+/** Where each figure stands for a group of n (x, z in metres): rows of up to three */
+const FORMATIONS: Record<number, [number, number][]> = {
+  1: [[0, 0]],
+  2: [
+    [-0.28, 0],
+    [0.28, 0],
+  ],
+  3: [
+    [-0.55, 0],
+    [0, 0],
+    [0.55, 0],
+  ],
+  4: [
+    [-0.28, 0.28],
+    [0.28, 0.28],
+    [-0.28, -0.28],
+    [0.28, -0.28],
+  ],
+  5: [
+    [-0.55, 0.28],
+    [0, 0.28],
+    [0.55, 0.28],
+    [-0.28, -0.28],
+    [0.28, -0.28],
+  ],
+  6: [
+    [-0.55, 0.28],
+    [0, 0.28],
+    [0.55, 0.28],
+    [-0.55, -0.28],
+    [0, -0.28],
+    [0.55, -0.28],
+  ],
+}
+const figureMats = new Map<string, THREE.Material>()
+const figureMat = (color: string) => {
+  let m = figureMats.get(color)
+  if (!m) figureMats.set(color, (m = mat(color, { roughness: 0.55, name: 'figure' })))
+  return m
+}
+
+function figure(g: THREE.Object3D, m: THREE.Material, x: number, z: number) {
+  mesh(personGeometry(), m, g, x, 0, z, { e: null })
+}
+
+/**
+ * (Re)build a 人員 item as `n` figures in one colour. A seated item is always one figure,
+ * with its origin on the seat.
+ */
+export function applyPeople(g: THREE.Object3D, n = 1, color = PERSON_COLOR, sit = false) {
+  g.clear()
+  const m = figureMat(color)
+  if (sit) {
+    mesh(seatedGeometry(), m, g, 0, 0, 0, { e: null })
+    n = 1
+  } else for (const [x, z] of FORMATIONS[n] ?? FORMATIONS[1]!) figure(g, m, x, z)
+  if (sit) g.userData.sit = true
+  else delete g.userData.sit
+  if (n > 1) g.userData.n = n
+  else delete g.userData.n
+  if (color !== PERSON_COLOR) g.userData.color = color
+  else delete g.userData.color
+}
+
+const person: Builder = (g) => applyPeople(g)
+
 // Stainless steel post on a domed base, black belt cassette at the top
 const stanchion: Builder = (g) => {
   mesh(Cy(0.17, 0.17, 0.02, 32), FM.chrome, g, 0, 0.01, 0, { e: null })
@@ -416,6 +505,8 @@ export interface FurnitureDef {
   wall?: boolean
   /** Has a printable face that can carry an uploaded graphic */
   image?: boolean
+  /** Can carry a name tag (人員標籤) shown above it */
+  tag?: boolean
   /** Width × height can be edited in the selection panel, in metres */
   resizable?: [number, number]
 }
@@ -567,6 +658,13 @@ export const FURNITURE = {
     resizable: [POSTER_W, POSTER_H],
     arr: [0.7, 1],
   },
+  person: {
+    name: '人員',
+    size: 'H1700',
+    build: person,
+    tag: true,
+    arr: [0.6, 0.8],
+  },
   rollup: {
     name: '易拉展',
     size: '可調整尺寸',
@@ -588,6 +686,8 @@ export const priceOf = (type: FurnitureType) => (FURNITURE[type] as FurnitureDef
 export const isWallItem = (type: FurnitureType) => !!(FURNITURE[type] as FurnitureDef).wall
 /** Can carry an uploaded graphic on its face */
 export const takesImage = (type: FurnitureType) => !!(FURNITURE[type] as FurnitureDef).image
+/** Can carry a name tag */
+export const takesTag = (type: FurnitureType) => !!(FURNITURE[type] as FurnitureDef).tag
 export const isResizable = (type: FurnitureType) => !!(FURNITURE[type] as FurnitureDef).resizable
 /** Default width × height in metres, for resizable items */
 export const defaultSizeOf = (type: FurnitureType): readonly [number, number] =>

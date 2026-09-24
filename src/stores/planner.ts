@@ -42,6 +42,7 @@ export const usePlannerStore = defineStore('planner', () => {
   const wallsCut = shallowRef(false)
   const showLabels = shallowRef(true)
   const shadows = shallowRef(true)
+  const showPersonTags = shallowRef(true)
   const savedSidebar = readJSON(SIDEBAR_KEY)
   // First visit on a phone: start collapsed so the venue is visible
   const sidebarCollapsed = shallowRef(
@@ -86,6 +87,7 @@ export const usePlannerStore = defineStore('planner', () => {
     wallsCut,
     showLabels,
     shadows,
+    showPersonTags,
     sidebarCollapsed,
     toast,
     cost,

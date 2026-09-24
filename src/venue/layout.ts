@@ -9,6 +9,8 @@ import {
   priceOf,
   resolveVariant,
   takesImage,
+  takesTag,
+  PEOPLE_MAX,
   type FurnitureType,
 } from './furniture'
 
@@ -28,6 +30,14 @@ export interface LayoutItem {
   img?: string
   /** Resizable items only: aspect ratio locked while resizing */
   lock?: boolean
+  /** People only: name tag shown above them */
+  tag?: string
+  /** People only: how many figures the item shows (1–6; absent means 1) */
+  n?: number
+  /** People only: figure colour as #rrggbb (absent means the default) */
+  color?: string
+  /** People only: sitting on the seat at this position (always a single figure) */
+  sit?: boolean
   /** Stanchions only: bearings (radians) of auto-linked belts the user removed at this post */
   cut?: number[]
 }
@@ -41,6 +51,19 @@ export interface CostLine {
   count: number
   subtotal: number
 }
+
+/** Longest name tag kept, in characters */
+export const TAG_MAX = 24
+
+/** Trim a tag and cap its length; empty means no tag */
+export const cleanTag = (s: unknown) =>
+  typeof s === 'string' ? [...s.trim()].slice(0, TAG_MAX).join('') : ''
+
+export const clampPeople = (n: unknown) =>
+  typeof n === 'number' && Number.isFinite(n) ? Math.min(PEOPLE_MAX, Math.max(1, Math.round(n))) : 1
+
+export const isHexColor = (s: unknown): s is string =>
+  typeof s === 'string' && /^#[0-9a-f]{6}$/i.test(s)
 
 export const STORAGE_KEY = 'vueconf26-nccu-layout-v4'
 export const PRICE_KEY = STORAGE_KEY + '-price'
@@ -80,6 +103,10 @@ export function parseLayout(data: unknown): LayoutItem[] {
     const cut: unknown[] = Array.isArray(i.cut) ? i.cut : []
     const cuts = cut.filter((c): c is number => Number.isFinite(c))
     const [dw, dh] = defaultSizeOf(t)
+    const tag = takesTag(t) ? cleanTag(i.tag) : ''
+    const sit = t === 'person' && i.sit === true
+    const n = t === 'person' && !sit ? clampPeople(i.n) : 1
+    const color = t === 'person' && isHexColor(i.color) ? i.color.toLowerCase() : ''
     return [
       {
         t,
@@ -97,6 +124,10 @@ export function parseLayout(data: unknown): LayoutItem[] {
             }
           : {}),
         ...(cuts.length ? { cut: cuts } : {}),
+        ...(tag ? { tag } : {}),
+        ...(n > 1 ? { n } : {}),
+        ...(color ? { color } : {}),
+        ...(sit ? { sit } : {}),
       },
     ]
   })
