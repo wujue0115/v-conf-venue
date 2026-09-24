@@ -31,6 +31,7 @@ import {
 } from './poster'
 import type { CameraView, Vec3 } from './places'
 import { bearing, linkPosts, withoutCutToward, type Post } from './stanchions'
+import { TRAY_L, TRAY_W } from './snack'
 import { ZONE_COLOR, ZONE_MIN, applyZone, clampZone, onZoneGrid } from './zone'
 
 export interface SelectionInfo {
@@ -117,6 +118,8 @@ const tableOf = (o: THREE.Object3D) => TABLES[o.userData.type as string]
 const onTable = (o: THREE.Object3D) => onTableOnly(o.userData.type as FurnitureType)
 /** How far a tray's centre must stay inside a table top's edge */
 const TABLE_MARGIN = 0.1
+/** Space kept between two trays */
+const TRAY_GAP = 0.015
 /** How close (metres, on the floor plan) a person must be dropped to a seat to sit on it */
 const SIT_REACH = 0.35
 
@@ -468,15 +471,13 @@ export class VenueEditor {
     const item = this.itemOf(s)
     let o: THREE.Object3D | null
     if (onTable(s)) {
-      const off = new THREE.Vector3(FURNITURE[type].arr[0], 0, 0).applyAxisAngle(UP, s.rotation.y)
-      const [x, z] = [s.position.x + off.x, s.position.z + off.z]
-      const y = this.tableTopAt(x, z)
-      if (y === null) {
+      const spot = this.freeTraySpot(s)
+      if (!spot) {
         this.undoStack.pop()
-        this.cb.onToast('旁邊的桌面放不下了')
+        this.cb.onToast('桌面上沒有空位可以再放點心盤了')
         return
       }
-      o = this.add({ ...item, x, y, z })
+      o = this.add({ ...item, x: spot.x, y: spot.y, z: spot.z })
     } else if (onWall(s)) {
       // next to it along the wall, same height
       const off = new THREE.Vector3((item.w ?? 0) + 0.1, 0, 0).applyAxisAngle(UP, s.rotation.y)
@@ -907,6 +908,71 @@ export class VenueEditor {
         return t.position.y + top.y
     }
     return null
+  }
+
+  /** Whether a tray at (x, z) turned `r` would overlap another tray standing at height y */
+  private trayOverlaps(x: number, z: number, y: number, r: number, self?: THREE.Object3D) {
+    // separating-axis test between two rotated rectangles, with a small gap kept between them
+    const hl = TRAY_L / 2 + TRAY_GAP / 2
+    const hw = TRAY_W / 2 + TRAY_GAP / 2
+    const axes = (a: number): [[number, number], [number, number]] => [
+      [Math.cos(a), -Math.sin(a)],
+      [Math.sin(a), Math.cos(a)],
+    ]
+    const reach = (a: number, [ux, uz]: [number, number]) => {
+      const [[ax, az], [bx, bz]] = axes(a)
+      return hl * Math.abs(ax * ux + az * uz) + hw * Math.abs(bx * ux + bz * uz)
+    }
+    return this.placed.children.some((o) => {
+      if (o === self || !onTable(o) || Math.abs(o.position.y - y) > 0.02) return false
+      const [dx, dz] = [o.position.x - x, o.position.z - z]
+      return [...axes(r), ...axes(o.rotation.y)].every(
+        (u) => Math.abs(dx * u[0] + dz * u[1]) < reach(r, u) + reach(o.rotation.y, u),
+      )
+    })
+  }
+
+  /**
+   * Where a copy of tray `s` can go: right beside it along its length, else the other way,
+   * else in front or behind, else the nearest free spot on any table top.
+   */
+  private freeTraySpot(s: THREE.Object3D) {
+    const r = s.rotation.y
+    const fits = (x: number, z: number) => {
+      const y = this.tableTopAt(x, z)
+      return y !== null && !this.trayOverlaps(x, z, y, r) ? new THREE.Vector3(x, y, z) : null
+    }
+    const along = TRAY_L + TRAY_GAP
+    const across = TRAY_W + TRAY_GAP
+    for (const [dx, dz] of [
+      [along, 0],
+      [-along, 0],
+      [0, across],
+      [0, -across],
+    ] as const) {
+      const v = new THREE.Vector3(dx, 0, dz).applyAxisAngle(UP, r)
+      const p = fits(s.position.x + v.x, s.position.z + v.z)
+      if (p) return p
+    }
+    let best: THREE.Vector3 | null = null
+    let bestD = Infinity
+    for (const t of this.placed.children) {
+      const top = tableOf(t)
+      if (!top || !t.visible) continue
+      t.updateMatrixWorld()
+      const [mx, mz] = [top.w / 2 - TABLE_MARGIN / 2, top.d / 2 - TABLE_MARGIN / 2]
+      for (let lx = -mx; lx <= mx + 1e-6; lx += 0.03)
+        for (let lz = -mz; lz <= mz + 1e-6; lz += 0.03) {
+          const w = t.localToWorld(new THREE.Vector3(lx, top.y, lz))
+          const d = w.distanceToSquared(s.position)
+          if (d >= bestD) continue
+          const p = fits(w.x, w.z)
+          if (!p) continue
+          best = p
+          bestD = d
+        }
+    }
+    return best
   }
 
   /** Stand a tray on the table under the pointer; false (and nothing moves) when there is none */
