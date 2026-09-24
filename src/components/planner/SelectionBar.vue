@@ -10,8 +10,10 @@ import {
   PEOPLE_MAX,
   PERSON_COLOR,
   isWallItem,
+  onTableOnly,
   priceOf,
   thumbKey,
+  variantLabelOf,
   variantsOf,
 } from '@/venue/furniture'
 import { POSTER_PRESETS, readPosterImage, type PosterFit } from '@/venue/poster'
@@ -61,6 +63,7 @@ watch(
 )
 const def = computed(() => (sel.value ? FURNITURE[sel.value.type] : null))
 const variants = computed(() => (sel.value ? variantsOf(sel.value.type) : []))
+const variantLabel = computed(() => (sel.value ? variantLabelOf(sel.value.type) : ''))
 const thumb = computed(() =>
   sel.value ? thumbs.value[thumbKey(sel.value.type, sel.value.variant)] : '',
 )
@@ -168,8 +171,8 @@ const generate = () =>
 
     <div class="rows">
       <template v-if="variants.length">
-        <span class="lbl">顏色</span>
-        <div class="ctl swatches" role="radiogroup" aria-label="顏色">
+        <span class="lbl">{{ variantLabel }}</span>
+        <div class="ctl swatches" role="radiogroup" :aria-label="variantLabel">
           <button
             v-for="v in variants"
             :key="v.id"
@@ -327,7 +330,7 @@ const generate = () =>
           <button class="btn dup" title="複製 (⌘D)" @click="editor?.duplicate()">複製</button>
         </div>
 
-        <template v-if="!sel.zone">
+        <template v-if="!sel.zone && !onTableOnly(sel.type)">
           <span class="lbl">陣列</span>
           <div class="ctl arr">
             <label class="pair" title="每排數量 × 排數">

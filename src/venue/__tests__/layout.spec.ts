@@ -195,3 +195,15 @@ describe('zones', () => {
     expect(summarizeCost([a!, b!], 1, 3).total).toBe(0)
   })
 })
+
+describe('snack trays', () => {
+  it('keep a known flavour, default the rest, and are not charged', () => {
+    const [a, b] = parseLayout([
+      { t: 'snack', x: 0, y: 0.71, z: 0, r: 0, v: 'tart' },
+      { t: 'snack', x: 0, y: 0.71, z: 0, r: 0, v: 'pizza' },
+    ])
+    expect([a?.v, b?.v]).toEqual(['tart', 'puff'])
+    expect(a?.y).toBe(0.71)
+    expect(summarizeCost([a!, b!], 1, 2).total).toBe(0)
+  })
+})

@@ -13,6 +13,8 @@ import {
   PERSON_TAG_Y,
   SEATED_TAG_Y,
   SEATS,
+  TABLES,
+  onTableOnly,
   applyPeople,
   type FurnitureType,
 } from './furniture'
@@ -111,6 +113,10 @@ const FLAT = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0),
 export type TagKind = 'person' | 'zone'
 const tagKindOf = (o: THREE.Object3D): TagKind => (isZone(o) ? 'zone' : 'person')
 const seatOf = (o: THREE.Object3D) => SEATS[o.userData.type as string]
+const tableOf = (o: THREE.Object3D) => TABLES[o.userData.type as string]
+const onTable = (o: THREE.Object3D) => onTableOnly(o.userData.type as FurnitureType)
+/** How far a tray's centre must stay inside a table top's edge */
+const TABLE_MARGIN = 0.1
 /** How close (metres, on the floor plan) a person must be dropped to a seat to sit on it */
 const SIT_REACH = 0.35
 
@@ -461,7 +467,17 @@ export class VenueEditor {
     const type = s.userData.type as FurnitureType
     const item = this.itemOf(s)
     let o: THREE.Object3D | null
-    if (onWall(s)) {
+    if (onTable(s)) {
+      const off = new THREE.Vector3(FURNITURE[type].arr[0], 0, 0).applyAxisAngle(UP, s.rotation.y)
+      const [x, z] = [s.position.x + off.x, s.position.z + off.z]
+      const y = this.tableTopAt(x, z)
+      if (y === null) {
+        this.undoStack.pop()
+        this.cb.onToast('旁邊的桌面放不下了')
+        return
+      }
+      o = this.add({ ...item, x, y, z })
+    } else if (onWall(s)) {
       // next to it along the wall, same height
       const off = new THREE.Vector3((item.w ?? 0) + 0.1, 0, 0).applyAxisAngle(UP, s.rotation.y)
       o = this.add({ ...item, x: s.position.x + off.x, z: s.position.z + off.z })
@@ -496,7 +512,11 @@ export class VenueEditor {
     this.pushUndo()
     const riders = this.ridersOf(s)
     this.placed.remove(s)
-    for (const r of riders) this.standUp(r.o)
+    // people get up; trays go with their table
+    for (const r of riders) {
+      if (onTable(r.o)) this.placed.remove(r.o)
+      else this.standUp(r.o)
+    }
     this.select(null)
     this.commit()
   }
@@ -504,7 +524,7 @@ export class VenueEditor {
   /** Repeat the selected object `cols` to its right and `rows` behind it. */
   arrayFromSelected({ cols, rows, dx, dz }: ArrayOptions) {
     const s = this.selected
-    if (!s || onWall(s)) return
+    if (!s || onWall(s) || onTable(s)) return
     cols = Math.max(1, Math.min(60, Math.trunc(cols) || 1))
     rows = Math.max(1, Math.min(60, Math.trunc(rows) || 1))
     dx = dx || 1
@@ -655,6 +675,9 @@ export class VenueEditor {
           const hit = this.wallHit(ev)
           if (hit) this.hangOn(pl.obj, hit.point, hit.normal)
           pl.obj.visible = !!hit
+        } else if (onTable(pl.obj)) {
+          // a tray only shows (and can only be dropped) over a table top
+          pl.obj.visible = this.putOnTable(pl.obj, ev)
         } else {
           const p = this.floorHit(ev)
           if (p) {
@@ -692,7 +715,20 @@ export class VenueEditor {
         this.commit()
       } else {
         if (pl.obj) this.placed.remove(pl.obj)
-        if (clicked && isWallItem(type)) {
+        if (onTableOnly(type)) {
+          // dragged somewhere without a table, or clicked: try the table in the middle of the view
+          this.ray.setFromCamera(this.ndc.set(0, 0), this.camera)
+          const p = clicked ? this.tableSpotOnRay() : null
+          if (!p) {
+            this.cb.onToast(`「${FURNITURE[type].name}」只能放在桌子上`)
+            return
+          }
+          this.pushUndo()
+          const o = this.add({ t: type, x: p.x, y: p.y, z: p.z, r: 0 })
+          this.select(o)
+          this.commit()
+          this.cb.onToast(`已將「${FURNITURE[type].name}」放在畫面中央的桌上`)
+        } else if (clicked && isWallItem(type)) {
           // hang it on whatever wall is in the middle of the view
           this.ray.setFromCamera(this.ndc.set(0, 0), this.camera)
           const hit = this.wallHitFromRay()
@@ -795,16 +831,90 @@ export class VenueEditor {
   }
 
   /** People sitting on `seat`, with their place in its frame */
-  private ridersOf(seat: THREE.Object3D): Rider[] {
-    if (!seatOf(seat)) return []
-    const p = this.seatPoint(seat)
+  /** What rides on `base`: the person sitting on a seat, or the trays standing on a table */
+  private ridersOf(base: THREE.Object3D): Rider[] {
+    const rider = (o: THREE.Object3D): Rider => ({
+      o,
+      local: base.worldToLocal(o.position.clone()),
+      turn: o.rotation.y - base.rotation.y,
+    })
+    if (seatOf(base)) {
+      const p = this.seatPoint(base)
+      return this.placed.children
+        .filter((o) => o.userData.sit && o.position.distanceTo(p) < 0.03)
+        .map(rider)
+    }
+    const top = tableOf(base)
+    if (!top) return []
+    base.updateMatrixWorld()
     return this.placed.children
-      .filter((o) => o.userData.sit && o.position.distanceTo(p) < 0.03)
-      .map((o) => ({
-        o,
-        local: seat.worldToLocal(o.position.clone()),
-        turn: o.rotation.y - seat.rotation.y,
-      }))
+      .filter((o) => {
+        if (!onTable(o)) return false
+        const l = base.worldToLocal(o.position.clone())
+        return (
+          Math.abs(l.y - top.y) < 0.02 && Math.abs(l.x) <= top.w / 2 && Math.abs(l.z) <= top.d / 2
+        )
+      })
+      .map(rider)
+  }
+
+  /** The table top point under the current ray (the nearest along it), where a tray can stand */
+  private tableSpotOnRay() {
+    let best: THREE.Vector3 | null = null
+    let bestD = Infinity
+    for (const t of this.placed.children) {
+      const top = tableOf(t)
+      if (!top || !t.visible) continue
+      t.updateMatrixWorld()
+      const y = t.position.y + top.y
+      const p = this.ray.ray.intersectPlane(
+        new THREE.Plane(new THREE.Vector3(0, 1, 0), -y),
+        new THREE.Vector3(),
+      )
+      if (!p) continue
+      const l = t.worldToLocal(p.clone())
+      if (Math.abs(l.x) > top.w / 2 || Math.abs(l.z) > top.d / 2) continue
+      const d = this.ray.ray.origin.distanceTo(p)
+      if (d >= bestD) continue
+      // keep the tray's centre a little inside the edge
+      l.x = THREE.MathUtils.clamp(
+        l.x,
+        -Math.max(0, top.w / 2 - TABLE_MARGIN),
+        Math.max(0, top.w / 2 - TABLE_MARGIN),
+      )
+      l.z = THREE.MathUtils.clamp(
+        l.z,
+        -Math.max(0, top.d / 2 - TABLE_MARGIN),
+        Math.max(0, top.d / 2 - TABLE_MARGIN),
+      )
+      best = t.localToWorld(l)
+      bestD = d
+    }
+    return best
+  }
+
+  /** The height of the table top at (x, z), or null when there is none */
+  private tableTopAt(x: number, z: number) {
+    for (const t of this.placed.children) {
+      const top = tableOf(t)
+      if (!top || !t.visible) continue
+      t.updateMatrixWorld()
+      const l = t.worldToLocal(new THREE.Vector3(x, t.position.y, z))
+      if (
+        Math.abs(l.x) <= top.w / 2 - TABLE_MARGIN / 2 &&
+        Math.abs(l.z) <= top.d / 2 - TABLE_MARGIN / 2
+      )
+        return t.position.y + top.y
+    }
+    return null
+  }
+
+  /** Stand a tray on the table under the pointer; false (and nothing moves) when there is none */
+  private putOnTable(o: THREE.Object3D, e: PointerEvent) {
+    this.setRay(e)
+    const p = this.tableSpotOnRay()
+    if (p) o.position.copy(p)
+    return !!p
   }
 
   /** Put riders back on their seat after it moved or turned */
@@ -817,16 +927,31 @@ export class VenueEditor {
   }
 
   /** The nearest free seat within reach of (x, z), for `who` to sit on */
+  /**
+   * The nearest free place to sit within reach of (x, z), for `who`: a placed seat, or one of
+   * A2's fixed seats. Gives where the hips go and which way to face.
+   */
   private freeSeatNear(x: number, z: number, who: THREE.Object3D) {
-    let best: THREE.Object3D | null = null
+    let best: { p: THREE.Vector3; turn: number } | null = null
     let bestD = SIT_REACH
+    const taken = (p: THREE.Vector3) =>
+      this.placed.children.some(
+        (o) => o !== who && o.userData.sit && o.position.distanceTo(p) < 0.03,
+      )
     for (const c of this.placed.children) {
       if (!seatOf(c) || !c.visible) continue
       const p = this.seatPoint(c)
       const d = Math.hypot(p.x - x, p.z - z)
+      if (d >= bestD || taken(p)) continue
+      best = { p, turn: c.rotation.y }
+      bestD = d
+    }
+    for (const f of this.archi.seats) {
+      const d = Math.hypot(f.x - x, f.z - z)
       if (d >= bestD) continue
-      if (this.ridersOf(c).some((r) => r.o !== who)) continue
-      best = c
+      const p = new THREE.Vector3(f.x, f.y, f.z)
+      if (taken(p)) continue
+      best = { p, turn: f.turn }
       bestD = d
     }
     return best
@@ -839,8 +964,8 @@ export class VenueEditor {
     const seat = (ud.n ?? 1) === 1 ? this.freeSeatNear(o.position.x, o.position.z, o) : null
     if (!seat) return this.standUp(o)
     if (!ud.sit) applyPeople(o, 1, ud.color as string | undefined, true)
-    o.position.copy(this.seatPoint(seat))
-    o.rotation.y = seat.rotation.y
+    o.position.copy(seat.p)
+    o.rotation.y = seat.turn
   }
 
   private standUp(o: THREE.Object3D) {
@@ -1364,6 +1489,16 @@ export class VenueEditor {
         this.updSel()
         return
       }
+      if (d && onTable(d.o)) {
+        // a tray slides across table tops, and stays put when the pointer leaves them
+        if (!d.moved) {
+          this.pushUndo()
+          d.moved = true
+        }
+        this.putOnTable(d.o, e)
+        this.updSel()
+        return
+      }
       if (d) {
         const p = this.floorHit(e)
         if (!p) return
@@ -1479,6 +1614,24 @@ export class VenueEditor {
       this.pushUndo()
       s.position.addScaledVector(right, dx).setY(s.position.y + dy)
       this.keepAboveFloor(s)
+      this.updSel()
+      this.commit()
+    } else if (e.key.startsWith('Arrow') && onTable(s)) {
+      // a tray is nudged along the world axes, but never off its table
+      e.preventDefault()
+      const st = e.shiftKey ? 0.25 : 0.05
+      const step: Record<string, [number, number]> = {
+        ArrowLeft: [-st, 0],
+        ArrowRight: [st, 0],
+        ArrowUp: [0, -st],
+        ArrowDown: [0, st],
+      }
+      const [dx, dz] = step[e.key] ?? [0, 0]
+      const [x, z] = [s.position.x + dx, s.position.z + dz]
+      const y = this.tableTopAt(x, z)
+      if (y === null) return
+      this.pushUndo()
+      s.position.set(x, y, z)
       this.updSel()
       this.commit()
     } else if (e.key.startsWith('Arrow')) {

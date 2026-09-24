@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import { B, Cy, EF, FM, mat, mesh } from './materials'
 import { personGeometry, seatedGeometry } from './person'
 import { POSTER_H, POSTER_W, buildFace, buildPoster } from './poster'
+import { buildSnack } from './snack'
 import { buildZone } from './zone'
 
 /**
@@ -362,6 +363,18 @@ export const PERSON_TAG_Y = 1.95
 export const SEATED_TAG_Y = 1.2
 
 /**
+ * Table tops things can be set on, in the table's own frame: the top's height and its size
+ * (w along x, d along z). Round tops are given their bounding square.
+ */
+export const TABLES: Partial<Record<string, { y: number; w: number; d: number }>> = {
+  foldTable: { y: 0.75, w: 0.8, d: 0.8 },
+  table3: { y: 0.71, w: 1.8, d: 0.45 },
+  table2: { y: 0.71, w: 1.2, d: 0.45 },
+  teaWhite: { y: 0.6, w: 0.5, d: 0.5 },
+  teaWood: { y: 0.535, w: 0.5, d: 0.5 },
+}
+
+/**
  * Where someone sits on each kind of seat, in the seat's own frame: the height of the
  * cushion's top and how far forward (+z) the hips sit. The sitter faces the seat's front.
  */
@@ -498,6 +511,10 @@ export interface FurnitureDef {
   build: Builder
   /** Colour options; the first is the default */
   variants?: readonly FurnitureVariant[]
+  /** What the variants are called in the selection panel (default 顏色) */
+  variantLabel?: string
+  /** Can only stand on a table top (see TABLES) */
+  onTable?: boolean
   /** Default array spacing [left-right, front-back] in metres */
   arr: [number, number]
   /** Rental price per slot: [自助搬運, 含搬運]; absent for items we bring ourselves */
@@ -666,6 +683,19 @@ export const FURNITURE = {
     tag: true,
     arr: [0.6, 0.8],
   },
+  snack: {
+    name: '點心盤',
+    size: 'L420×W290',
+    build: buildSnack,
+    variants: [
+      { id: 'puff', name: '泡芙', swatch: '#e7b45c' },
+      { id: 'cake', name: '黑森林', swatch: '#4a2a1c' },
+      { id: 'tart', name: '蛋塔', swatch: '#f6d36c' },
+    ],
+    variantLabel: '口味',
+    onTable: true,
+    arr: [0.47, 0.34],
+  },
   zone: {
     name: '區域',
     size: '可調整尺寸',
@@ -694,6 +724,9 @@ export const priceOf = (type: FurnitureType) => (FURNITURE[type] as FurnitureDef
 export const isWallItem = (type: FurnitureType) => !!(FURNITURE[type] as FurnitureDef).wall
 /** Can carry an uploaded graphic on its face */
 export const takesImage = (type: FurnitureType) => !!(FURNITURE[type] as FurnitureDef).image
+export const variantLabelOf = (type: FurnitureType) =>
+  (FURNITURE[type] as FurnitureDef).variantLabel ?? '顏色'
+export const onTableOnly = (type: FurnitureType) => !!(FURNITURE[type] as FurnitureDef).onTable
 /** Can carry a name tag */
 export const takesTag = (type: FurnitureType) => !!(FURNITURE[type] as FurnitureDef).tag
 export const isResizable = (type: FurnitureType) => !!(FURNITURE[type] as FurnitureDef).resizable

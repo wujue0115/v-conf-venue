@@ -25,6 +25,14 @@ const a2BackEdge = (zc: number) =>
   A2_X0 - (A2_ROWS - 1) * A2_ROW - A2_ROW / 2 + A2_BOW * (zc - A2_ZC) ** 2 - 0.05
 
 type Seg = [x1: number, z1: number, x2: number, z2: number]
+
+export interface FixedSeat {
+  x: number
+  y: number
+  z: number
+  /** Rotation about y for a figure facing +z to face the stage */
+  turn: number
+}
 type Pt = [x: number, z: number]
 
 export interface Architecture {
@@ -38,6 +46,8 @@ export interface Architecture {
   walk: THREE.Mesh[]
   /** Fixed seats in A2 (not billed) */
   fixedSeats: number
+  /** Where someone sits on each fixed A2 seat (hips on the cushion) and the way they face */
+  seats: FixedSeat[]
   ground: THREE.Mesh
 }
 
@@ -585,7 +595,8 @@ export function buildArchitecture(scene: THREE.Scene): Architecture {
   )
   mesh(B(0.1, 3.4, 10), M.screen, arch, 34.1, 3, 37.6, { e: EA })
 
-  const fixedSeats = buildA2Seating(arch, walk)
+  const seats = buildA2Seating(arch, walk)
+  const fixedSeats = seats.length
 
   ZONES.forEach(([c, p]) => {
     const o = prism(p, 0.01, mat(c, { name: 'zone' }), zonesG, 0.002, null)
@@ -597,11 +608,11 @@ export function buildArchitecture(scene: THREE.Scene): Architecture {
     if ((o as THREE.Mesh).isMesh) o.raycast = noRay
   })
 
-  return { arch, wallsG, zonesG, walk, fixedSeats, ground }
+  return { arch, wallsG, zonesG, walk, fixedSeats, seats, ground }
 }
 
 /** Curved, raked fixed seating in A2. Returns the seat count. */
-function buildA2Seating(arch: THREE.Group, walk: THREE.Mesh[]) {
+function buildA2Seating(arch: THREE.Group, walk: THREE.Mesh[]): FixedSeat[] {
   const K = A2_BOW
   const ZC = A2_ZC
   const blocks: Pt[] = [
@@ -648,5 +659,11 @@ function buildA2Seating(arch: THREE.Group, walk: THREE.Mesh[]) {
     m.castShadow = m.receiveShadow = true
     arch.add(m)
   }
-  return slots.length
+  // seats face east (the stage), bowed by r; hips sit just behind the cushion's centre
+  return slots.map((s) => ({
+    x: s.x - 0.04 * Math.cos(s.r),
+    y: s.h + 0.49,
+    z: s.z + 0.04 * Math.sin(s.r),
+    turn: Math.PI / 2 + s.r,
+  }))
 }

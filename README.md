@@ -27,7 +27,8 @@ photos in the rental chart (家具設備租借費用圖表). Both are kept in [`
 * Rotate, duplicate, delete, or lay out selected items in rows and columns
 * Pick a colour for pieces that come in more than one (high stool, shaped sofa)
 * Place stanchions and have belts link neighbouring posts automatically; click a belt to remove it
-* Add people to the venue and give them tags (shown above their heads, with their own toggle); pick an existing tag or type a new one
+* Add people to the venue, seat them on chairs, sofas or A2's fixed seats, and give them tags (shown above their heads, with their own toggle); pick an existing tag or type a new one
+* Set snack trays (cream puffs, black forest cake or egg tarts) on tables; they move with their table
 * Mark zones on the floor: drop one in and drag its corners to size it on the grid, each with its own colour and tag (a separate tag list from people's)
 * Hang your own posters on any wall, resize them by dragging a corner or typing a size, and upload an image that is saved with the layout and its JSON export (posters are not charged)
 * See the rental total update live, with self-carry or carrying-service pricing across multiple time slots
