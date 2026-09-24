@@ -22,7 +22,7 @@ function flyTo(view: CameraView, i: number) {
 
 <template>
   <div class="topbars">
-    <div class="bar" data-stage-ui>
+    <div class="bar views" data-stage-ui>
       <div class="grp">
         <button
           v-for="(v, i) in VIEWS"
@@ -78,6 +78,14 @@ function flyTo(view: CameraView, i: number) {
 .tools {
   justify-content: flex-end;
   margin-left: auto;
+}
+
+/* Narrow screens: the bars wrap onto two rows; line the views up on the right too */
+@media (max-width: 500px) {
+  .views {
+    justify-content: flex-end;
+    margin-left: auto;
+  }
 }
 
 /* Mode switch: one yellow thumb slides between two equal halves */
