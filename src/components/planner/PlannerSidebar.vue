@@ -24,7 +24,7 @@ import LayoutSummary from './LayoutSummary.vue'
           </svg>
         </a>
       </div>
-      <h1>政大公企 · A 棟 2F · 3D 場地規劃</h1>
+      <h1>政大公企 · A 棟 2F · 場地規劃</h1>
     </div>
     <div class="scroll">
       <FurniturePalette />

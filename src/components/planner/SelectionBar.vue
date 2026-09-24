@@ -67,7 +67,7 @@ const thumb = computed(() =>
 const price = computed(() => {
   if (!sel.value) return ''
   const p = priceOf(sel.value.type)
-  return p ? formatNT(p[store.priceMode]) : '自備 · 不計費'
+  return p ? formatNT(p[store.priceMode]) : '不計費'
 })
 const position = computed(() => {
   const s = sel.value
