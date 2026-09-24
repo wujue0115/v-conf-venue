@@ -118,6 +118,7 @@ export class VenueEditor {
   private readonly imgKeys = new Map<string, string>()
   private readonly imgByKey = new Map<string, string>()
   private readonly grid: THREE.GridHelper
+  private readonly sun: THREE.DirectionalLight
   private readonly selBox = new THREE.Box3()
   private readonly selHelper: THREE.Box3Helper
   private readonly ray = new THREE.Raycaster()
@@ -179,7 +180,7 @@ export class VenueEditor {
     controls.touches = { ONE: THREE.TOUCH.PAN, TWO: THREE.TOUCH.DOLLY_ROTATE }
 
     scene.add(new THREE.HemisphereLight('#ffffff', '#d8d0bf', 1.7))
-    const sun = new THREE.DirectionalLight('#ffffff', 1.9)
+    const sun = (this.sun = new THREE.DirectionalLight('#ffffff', 1.9))
     sun.position.set(-11, 60, 45)
     sun.target.position.copy(CENTER)
     scene.add(sun.target)
@@ -298,6 +299,11 @@ export class VenueEditor {
 
   setWallsCut(on: boolean) {
     this.archi.wallsG.scale.y = on ? 0.28 : 1
+  }
+
+  /** Turn the sun's shadows on or off (off is lighter on slow devices) */
+  setShadows(on: boolean) {
+    this.sun.castShadow = on
   }
 
   setLabelsVisible(on: boolean) {
