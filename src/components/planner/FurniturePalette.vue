@@ -14,10 +14,21 @@ const tiles = FURNITURE_TYPES.map((type) => {
   const price = priceOf(type)
   return { type, name, size, price: price && `$${price[0]} / $${price[1]}` }
 })
-// Rented from the venue vs. brought by us (not charged)
+/** 其他物件 by use: people and space, then signage, then what goes on tables */
+const OTHER_ORDER: FurnitureType[] = ['person', 'zone', 'poster', 'rollup', 'snack']
+const otherRank = (t: FurnitureType) => {
+  const i = OTHER_ORDER.indexOf(t)
+  return i < 0 ? OTHER_ORDER.length : i
+}
+
+// Rented from the venue vs. everything else (not charged)
 const sections = [
   { id: 'venue', title: '場地物件', tiles: tiles.filter((t) => t.price) },
-  { id: 'own', title: '其他物件', tiles: tiles.filter((t) => !t.price) },
+  {
+    id: 'own',
+    title: '其他物件',
+    tiles: tiles.filter((t) => !t.price).sort((a, b) => otherRank(a.type) - otherRank(b.type)),
+  },
 ]
 
 function onPointerDown(e: PointerEvent, type: FurnitureType) {
