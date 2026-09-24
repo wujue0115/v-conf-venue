@@ -29,6 +29,7 @@ import {
 } from './poster'
 import type { CameraView, Vec3 } from './places'
 import { bearing, linkPosts, withoutCutToward, type Post } from './stanchions'
+import { ZONE_COLOR, ZONE_MIN, applyZone, clampZone, onZoneGrid } from './zone'
 
 export interface SelectionInfo {
   type: FurnitureType
@@ -51,6 +52,8 @@ export interface SelectionInfo {
   tag?: string
   /** 人員 items: how many figures, their colour, and whether they sit on a seat */
   people?: { n: number; color: string; sit: boolean }
+  /** 區域 items: width × depth in metres and colour */
+  zone?: { w: number; d: number; color: string }
 }
 
 export interface EditorCallbacks {
@@ -90,6 +93,23 @@ const X_AXIS = new THREE.Vector3(1, 0, 0)
 
 const isPost = (o: THREE.Object3D) => o.userData.type === 'stanchion'
 const isPerson = (o: THREE.Object3D) => o.userData.type === 'person'
+const isZone = (o: THREE.Object3D) => o.userData.type === 'zone'
+/** Whether dark text reads better than white on this #rrggbb colour (WCAG relative luminance) */
+function isLight(hex: string) {
+  const lin = (i: number) => {
+    const v = parseInt(hex.slice(i, i + 2), 16) / 255
+    return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4
+  }
+  return 0.2126 * lin(1) + 0.7152 * lin(3) + 0.0722 * lin(5) > 0.36
+}
+
+/** Screen pixels a zone's tag is raised above its centre (matches the leader line in TagLayer) */
+const ZONE_TAG_LIFT = 26
+/** Turns a wall-facing handle to lie flat on the floor */
+const FLAT = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2)
+/** Separate tag systems: people's tags float above them, zones' sit in their middle */
+export type TagKind = 'person' | 'zone'
+const tagKindOf = (o: THREE.Object3D): TagKind => (isZone(o) ? 'zone' : 'person')
 const seatOf = (o: THREE.Object3D) => SEATS[o.userData.type as string]
 /** How close (metres, on the floor plan) a person must be dropped to a seat to sit on it */
 const SIT_REACH = 0.35
@@ -150,10 +170,16 @@ export class VenueEditor {
 
   private labels: (LabelAnchor & { p: THREE.Vector3 })[] = []
   private labelsVisible = true
-  /** Where people's name tags are drawn, and the element made for each tagged person */
-  private tagLayer: HTMLElement | null = null
-  private tagsVisible = true
-  private readonly tagEls = new Map<THREE.Object3D, HTMLElement>()
+  /** Per tag system: where its tags are drawn, whether they show, and each tagged object's element */
+  private readonly tags: Record<
+    TagKind,
+    { layer: HTMLElement | null; visible: boolean; els: Map<THREE.Object3D, HTMLElement> }
+  > = {
+    person: { layer: null, visible: true, els: new Map() },
+    zone: { layer: null, visible: true, els: new Map() },
+  }
+  /** An unselected zone under the pointer: a click selects it, a drag still pans the camera */
+  private zoneClick: THREE.Object3D | null = null
   private selected: THREE.Object3D | null = null
   /** View mode turns this off: the camera still moves, but nothing can be placed or changed */
   private editable = true
@@ -338,15 +364,33 @@ export class VenueEditor {
     this.sun.castShadow = on
   }
 
-  /** The element people's name tags are drawn into (one child per tagged person). */
-  setPersonTagLayer(el: HTMLElement | null) {
-    this.tagEls.forEach((t) => t.remove())
-    this.tagEls.clear()
-    this.tagLayer = el
+  /** The element a tag system is drawn into (one child per tagged object). */
+  setTagLayer(kind: TagKind, el: HTMLElement | null) {
+    const t = this.tags[kind]
+    t.els.forEach((e) => e.remove())
+    t.els.clear()
+    t.layer = el
   }
 
-  setPersonTagsVisible(on: boolean) {
-    this.tagsVisible = on
+  setTagsVisible(kind: TagKind, on: boolean) {
+    this.tags[kind].visible = on
+  }
+
+  /** Change the selected zone's size (metres, on the zone grid, about its centre) and/or colour. */
+  setZone({ w, d, color }: { w?: number; d?: number; color?: string }) {
+    const s = this.selected
+    if (!s || !isZone(s)) return
+    const w0 = s.userData.w as number
+    const d0 = s.userData.d as number
+    const c0 = (s.userData.color as string | undefined) ?? ZONE_COLOR
+    const w1 = w === undefined ? w0 : clampZone(w, w0)
+    const d1 = d === undefined ? d0 : clampZone(d, d0)
+    const c1 = color && isHexColor(color) ? color.toLowerCase() : c0
+    if (w1 === w0 && d1 === d0 && c1 === c0) return
+    this.pushUndo()
+    applyZone(s, { w: w1, d: d1, color: c1 })
+    this.updSel()
+    this.commit()
   }
 
   /** Change how many figures the selected 人員 item shows, and/or their colour. */
@@ -424,7 +468,12 @@ export class VenueEditor {
     } else {
       // a group of people is wider than one: step past its whole width
       const n = (s.userData.n as number | undefined) ?? 1
-      const step = type === 'person' ? Math.min(n, 3) * 0.55 + 0.1 : FURNITURE[type].arr[0]
+      const step =
+        type === 'person'
+          ? Math.min(n, 3) * 0.55 + 0.1
+          : isZone(s)
+            ? (s.userData.w as number) + 0.25
+            : FURNITURE[type].arr[0]
       const off = new THREE.Vector3(step, 0, 0).applyAxisAngle(UP, s.rotation.y)
       o = this.add({
         ...item,
@@ -677,7 +726,7 @@ export class VenueEditor {
   // ---------------- Internals ----------------
 
   /** Place an item; with no `y` it is dropped onto the floor below (x, z). */
-  private add({ t, x, y, z, r, v, cut, w, h, img, lock, tag, n, color, sit }: LayoutItem) {
+  private add({ t, x, y, z, r, v, cut, w, h, d, img, lock, tag, n, color, sit }: LayoutItem) {
     if (!isFurnitureType(t)) return null
     const o = buildFurniture(t, v, w && h ? { w, h } : undefined)
     o.position.set(x, y ?? this.floorY(x, z), z)
@@ -688,6 +737,7 @@ export class VenueEditor {
     if (lock) o.userData.lock = true
     if (tag) o.userData.tag = tag
     if (t === 'person' && (n || color || sit)) applyPeople(o, n, color, sit)
+    if (t === 'zone' && w && d) applyZone(o, { w, d, color })
     this.placed.add(o)
     return o
   }
@@ -714,6 +764,7 @@ export class VenueEditor {
       ...(ud.n ? { n: ud.n as number } : {}),
       ...(ud.color ? { color: ud.color as string } : {}),
       ...(ud.sit ? { sit: true } : {}),
+      ...(isZone(o) ? { w: ud.w as number, d: ud.d as number } : {}),
       ...(ud.img && hasFace(o) ? { img: ud.img as string } : {}),
       ...(resizable(o)
         ? {
@@ -838,9 +889,29 @@ export class VenueEditor {
   /** Position the resize handles on the selected poster's corners, sized for the current zoom. */
   private updHandles() {
     const s = this.selected
-    this.handles.visible = !!s && resizable(s)
+    this.handles.visible = !!s && (resizable(s) || isZone(s))
     if (!s || !this.handles.visible) return
     s.updateMatrixWorld()
+    // a zone's handles take its colour; everything else keeps the selection yellow
+    HANDLE_MAT.color.set(isZone(s) ? ((s.userData.color as string | undefined) ?? ZONE_COLOR) : YEL)
+    if (isZone(s)) {
+      // a zone's handles lie flat on its corners
+      const w = s.userData.w as number
+      const d = s.userData.d as number
+      const flat = s.quaternion.clone().multiply(FLAT)
+      for (const hd of this.handles.children) {
+        const { sx, sy } = hd.userData as { sx: number; sy: number }
+        hd.position.copy(s.localToWorld(new THREE.Vector3((sx * w) / 2, 0.02, (sy * d) / 2)))
+        hd.quaternion.copy(flat)
+        const k = THREE.MathUtils.clamp(
+          this.camera.position.distanceTo(hd.position) * 0.012,
+          0.03,
+          0.4,
+        )
+        hd.scale.set(k, k, k)
+      }
+      return
+    }
     const w = s.userData.w as number
     const h = s.userData.h as number
     const cy = faceCenterY(s)
@@ -868,6 +939,27 @@ export class VenueEditor {
     const r = this.resizing
     if (!r) return
     const { o } = r
+    if (isZone(o)) {
+      // on the floor: the opposite corner stays put, sizes snap to the zone grid
+      this.setRay(e)
+      const p = this.ray.ray.intersectPlane(
+        new THREE.Plane(new THREE.Vector3(0, 1, 0), -r.anchor.y),
+        new THREE.Vector3(),
+      )
+      if (!p) return
+      const right = new THREE.Vector3(1, 0, 0).applyQuaternion(o.quaternion)
+      const fwd = new THREE.Vector3(0, 0, 1).applyQuaternion(o.quaternion)
+      const dv = p.sub(r.anchor)
+      const w = clampZone(r.sx * dv.dot(right), ZONE_MIN)
+      const d = clampZone(r.sy * dv.dot(fwd), ZONE_MIN)
+      applyZone(o, { w, d, color: o.userData.color as string | undefined })
+      o.position
+        .copy(r.anchor)
+        .addScaledVector(right, (r.sx * w) / 2)
+        .addScaledVector(fwd, (r.sy * d) / 2)
+      this.updSel()
+      return
+    }
     const normal = new THREE.Vector3(0, 0, 1).applyQuaternion(o.quaternion)
     this.setRay(e)
     let w: number
@@ -1014,6 +1106,15 @@ export class VenueEditor {
             },
           }
         : {}),
+      ...(isZone(s)
+        ? {
+            zone: {
+              w: s.userData.w as number,
+              d: s.userData.d as number,
+              color: (s.userData.color as string | undefined) ?? ZONE_COLOR,
+            },
+          }
+        : {}),
     })
   }
 
@@ -1057,8 +1158,16 @@ export class VenueEditor {
   }
 
   private moveTo(o: THREE.Object3D, x: number, z: number) {
-    x = this.sn(x)
-    z = this.sn(z)
+    if (isZone(o)) {
+      // keep a zone's edges on the grid (its centre is off-grid when a side is an odd length)
+      const hw = (o.userData.w as number) / 2
+      const hd = (o.userData.d as number) / 2
+      x = onZoneGrid(x - hw) + hw
+      z = onZoneGrid(z - hd) + hd
+    } else {
+      x = this.sn(x)
+      z = this.sn(z)
+    }
     o.position.set(x, this.floorY(x, z), z)
   }
 
@@ -1176,6 +1285,16 @@ export class VenueEditor {
           e.preventDefault()
           const s = this.selected
           const { sx, sy } = hd.userData as { sx: number; sy: number }
+          if (isZone(s)) {
+            const w = s.userData.w as number
+            const d = s.userData.d as number
+            const anchor = s.localToWorld(new THREE.Vector3((-sx * w) / 2, 0, (-sy * d) / 2))
+            this.resizing = { o: s, sx, sy, anchor, aspect: w / d, moved: false }
+            this.controls.enabled = false
+            // show the floor grid its edges snap to
+            this.grid.visible = true
+            return
+          }
           const w = s.userData.w as number
           const h = s.userData.h as number
           const cy = faceCenterY(s)
@@ -1186,6 +1305,11 @@ export class VenueEditor {
         }
         const o = this.pickObj(e)
         if (!o) return
+        if (isZone(o) && o !== this.selected) {
+          // leave the drag to the camera; a plain click selects the zone (pointerup)
+          this.zoneClick = o
+          return
+        }
         e.stopPropagation()
         e.preventDefault()
         this.select(o)
@@ -1274,11 +1398,12 @@ export class VenueEditor {
         const { o, moved } = this.resizing
         if (moved) {
           // a floor item's hardware wasn't kept in sync during the live drag; rebuild it now
-          if (!onWall(o)) this.select(this.rebuild(o, {}))
+          if (!onWall(o) && !isZone(o)) this.select(this.rebuild(o, {}))
           this.commit()
         }
         this.resizing = null
         this.controls.enabled = true
+        this.grid.visible = false
         this.downPt = null
         return
       }
@@ -1294,8 +1419,9 @@ export class VenueEditor {
       if (d && e.target === canvas && Math.hypot(e.clientX - d.x, e.clientY - d.y) < 4) {
         const belt = this.editable && this.pickBelt(e)
         if (belt) this.cutBelt(belt)
-        else this.select(null)
+        else this.select(this.zoneClick)
       }
+      this.zoneClick = null
       this.downPt = null
     })
   }
@@ -1438,30 +1564,42 @@ export class VenueEditor {
     }
     this.renderer.render(this.scene, camera)
     if (this.labelsVisible) this.layoutLabels()
-    if (this.tagLayer && this.tagsVisible) this.layoutPersonTags()
+    this.layoutTags('person')
+    this.layoutTags('zone')
   }
 
-  /** Keep one name-tag element per tagged person and pin it above their head on screen. */
-  private layoutPersonTags() {
-    const layer = this.tagLayer
-    if (!layer) return
+  /**
+   * Keep one tag element per tagged object of this kind and pin it on screen: people's above
+   * their head, zones' raised above the zone's centre on a leader line.
+   */
+  private layoutTags(kind: TagKind) {
+    const { layer, visible, els } = this.tags[kind]
+    if (!layer || !visible) return
     const w = this.stageEl.clientWidth
     const h = this.stageEl.clientHeight
     const v = this.v
     const seen = new Set<THREE.Object3D>()
     for (const o of this.placed.children) {
       const tag = o.userData.tag as string | undefined
-      if (!tag || !o.visible) continue
+      if (!tag || !o.visible || tagKindOf(o) !== kind) continue
       seen.add(o)
-      let el = this.tagEls.get(o)
+      let el = els.get(o)
       if (!el) {
         el = document.createElement('div')
-        el.className = 'ptag'
+        el.className = kind === 'zone' ? 'ztag' : 'ptag'
         layer.append(el)
-        this.tagEls.set(o, el)
+        els.set(o, el)
       }
       if (el.textContent !== tag) el.textContent = tag
-      const above = o.userData.sit ? SEATED_TAG_Y : PERSON_TAG_Y
+      // a tag wears its item's colour, with dark or white text depending on how light it is
+      const c =
+        (o.userData.color as string | undefined) ?? (kind === 'zone' ? ZONE_COLOR : PERSON_COLOR)
+      if (el.dataset.c !== c) {
+        el.dataset.c = c
+        el.style.setProperty('--tc', c)
+        el.style.setProperty('--tt', isLight(c) ? '#1f2126' : '#fff')
+      }
+      const above = kind === 'zone' ? 0.02 : o.userData.sit ? SEATED_TAG_Y : PERSON_TAG_Y
       v.set(o.position.x, o.position.y + above, o.position.z).project(this.camera)
       if (v.z > 1 || Math.abs(v.x) > 1.2 || Math.abs(v.y) > 1.2) {
         el.style.display = 'none'
@@ -1469,13 +1607,14 @@ export class VenueEditor {
       }
       el.style.display = ''
       const x = ((v.x + 1) / 2) * w - el.offsetWidth / 2
-      const y = ((1 - v.y) / 2) * h - el.offsetHeight
+      // both sit above their point; a zone's is raised on a leader line down to its centre
+      const y = ((1 - v.y) / 2) * h - el.offsetHeight - (kind === 'zone' ? ZONE_TAG_LIFT : 0)
       el.style.transform = `translate(${x.toFixed(1)}px,${y.toFixed(1)}px)`
     }
-    for (const [o, el] of this.tagEls)
+    for (const [o, el] of els)
       if (!seen.has(o)) {
         el.remove()
-        this.tagEls.delete(o)
+        els.delete(o)
       }
   }
 

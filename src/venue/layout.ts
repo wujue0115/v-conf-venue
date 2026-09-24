@@ -1,5 +1,6 @@
 import { clampPosterSize, isImageDataUrl } from './poster'
 import { readJSON, writeJSON } from './storage'
+import { clampZone } from './zone'
 import {
   FURNITURE,
   FURNITURE_TYPES,
@@ -34,10 +35,12 @@ export interface LayoutItem {
   tag?: string
   /** People only: how many figures the item shows (1–6; absent means 1) */
   n?: number
-  /** People only: figure colour as #rrggbb (absent means the default) */
+  /** People and zones: colour as #rrggbb (absent means the default) */
   color?: string
   /** People only: sitting on the seat at this position (always a single figure) */
   sit?: boolean
+  /** Zones only: depth in metres along local z (their width is `w`) */
+  d?: number
   /** Stanchions only: bearings (radians) of auto-linked belts the user removed at this post */
   cut?: number[]
 }
@@ -106,7 +109,8 @@ export function parseLayout(data: unknown): LayoutItem[] {
     const tag = takesTag(t) ? cleanTag(i.tag) : ''
     const sit = t === 'person' && i.sit === true
     const n = t === 'person' && !sit ? clampPeople(i.n) : 1
-    const color = t === 'person' && isHexColor(i.color) ? i.color.toLowerCase() : ''
+    const coloured = t === 'person' || t === 'zone'
+    const color = coloured && isHexColor(i.color) ? i.color.toLowerCase() : ''
     return [
       {
         t,
@@ -128,6 +132,7 @@ export function parseLayout(data: unknown): LayoutItem[] {
         ...(n > 1 ? { n } : {}),
         ...(color ? { color } : {}),
         ...(sit ? { sit } : {}),
+        ...(t === 'zone' ? { w: clampZone(i.w, 2), d: clampZone(i.d, 2) } : {}),
       },
     ]
   })

@@ -10,14 +10,15 @@ const open = shallowRef(false)
 const root = useTemplateRef('root')
 const fileInput = useTemplateRef('file')
 
-type Toggle = 'wallsCut' | 'showLabels' | 'showPersonTags' | 'shadows' | 'snap'
+type Toggle = 'wallsCut' | 'showLabels' | 'showPersonTags' | 'showZoneTags' | 'shadows' | 'snap'
 const SWITCHES = computed(() => [
   {
     title: '顯示',
     rows: [
       { key: 'wallsCut' as Toggle, label: '剖切牆面', hint: '把牆面切低，看得到房間內部' },
       { key: 'showLabels' as Toggle, label: '標籤', hint: '顯示教室與設施名稱' },
-      { key: 'showPersonTags' as Toggle, label: '人員標籤', hint: '顯示人員頭上的綠色標籤' },
+      { key: 'showPersonTags' as Toggle, label: '人員標籤', hint: '顯示人員頭上的標籤' },
+      { key: 'showZoneTags' as Toggle, label: '區域標籤', hint: '顯示區域中央的名稱' },
       { key: 'shadows' as Toggle, label: '陰影', hint: '關閉可讓較慢的裝置更順' },
     ],
   },

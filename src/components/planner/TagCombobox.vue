@@ -78,7 +78,7 @@ function clear() {
       role="combobox"
       :maxlength="TAG_MAX"
       placeholder="選擇或輸入標籤"
-      aria-label="人員標籤"
+      aria-label="標籤"
       aria-autocomplete="list"
       :aria-expanded="open"
       :aria-controls="listId"
@@ -192,19 +192,9 @@ li.active {
 li.cur {
   font-weight: 700;
 }
-/* existing tags carry the same green as the tags in the scene */
-li:not(.add)::before {
-  content: '';
-  display: inline-block;
-  width: 7px;
-  height: 7px;
-  margin-right: 7px;
-  border-radius: 50%;
-  background: #42b883;
-  vertical-align: 1px;
-}
+/* "新增" uses the page's accent (the dark gold of its accent text: plain yellow is unreadable on white) */
 li.add {
-  color: #2e8a60;
+  color: #8a6a1c;
   font-weight: 600;
 }
 </style>

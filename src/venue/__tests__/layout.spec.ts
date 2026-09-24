@@ -183,3 +183,15 @@ describe('seated people', () => {
     expect(b).not.toHaveProperty('sit')
   })
 })
+
+describe('zones', () => {
+  it('keeps size on the 25cm grid within limits, colour and tag', () => {
+    const [a, b] = parseLayout([
+      { t: 'zone', x: 1, z: 2, r: 0, w: 3.1, d: 0.05, color: '#42B883', tag: ' 報到區 ' },
+      { t: 'zone', x: 1, z: 2, r: 0 },
+    ])
+    expect(a).toMatchObject({ w: 3, d: 0.25, color: '#42b883', tag: '報到區' })
+    expect(b).toMatchObject({ w: 2, d: 2 })
+    expect(summarizeCost([a!, b!], 1, 3).total).toBe(0)
+  })
+})

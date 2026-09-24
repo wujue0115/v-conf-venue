@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, shallowRef, useTemplateRef, watch } from 'vue'
+import ColorChips from './ColorChips.vue'
 import TagCombobox from './TagCombobox.vue'
 import { useFurnitureThumbnails } from '@/composables/useFurnitureThumbnails'
 import { useVenueEditor } from '@/composables/useVenueEditor'
@@ -16,6 +17,7 @@ import {
 import { POSTER_PRESETS, readPosterImage, type PosterFit } from '@/venue/poster'
 import { formatNT } from '@/venue/layout'
 import { BELT_MAX } from '@/venue/stanchions'
+import { ZONE_COLOR } from '@/venue/zone'
 
 const store = usePlannerStore()
 const editor = useVenueEditor()
@@ -28,16 +30,35 @@ const dz = shallowRef(1)
 
 const sel = computed(() => store.selection)
 /**
- * Quick picks for people's colour: the default matches the green of their tags, the rest are
- * soft tints so figures don't overpower the furniture. The last chip opens a colour picker.
+ * Quick picks for people's colour: a light skin tone by default, then soft tints so figures
+ * don't overpower the furniture. The last chip opens a colour picker.
  */
-const PERSON_COLORS = [PERSON_COLOR, '#8fb3d9', '#f2cf73', '#ec9a93', '#b8a4dc', '#8a8f99']
-/** Every tag already on someone in the layout, most used first */
+const PERSON_COLORS = [PERSON_COLOR, '#42b883', '#8fb3d9', '#f2cf73', '#ec9a93', '#8a8f99']
+const ZONE_COLORS = [ZONE_COLOR, '#4a90d9', '#edb32a', '#e57373', '#9575cd', '#8a8f99']
+/**
+ * Tags already used in the layout, most used first. People and zones keep separate tag
+ * lists, so a zone never suggests a person's tag and the other way round.
+ */
 const usedTags = computed(() => {
+  const zone = sel.value?.type === 'zone'
   const n = new Map<string, number>()
-  for (const i of store.items) if (i.tag) n.set(i.tag, (n.get(i.tag) ?? 0) + 1)
+  for (const i of store.items)
+    if (i.tag && (i.t === 'zone') === zone) n.set(i.tag, (n.get(i.tag) ?? 0) + 1)
   return [...n].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([t]) => t)
 })
+
+// Zone size in metres, applied when an input is committed
+const zw = shallowRef(0)
+const zd = shallowRef(0)
+watch(
+  () => sel.value?.zone,
+  (z) => {
+    if (!z) return
+    zw.value = z.w
+    zd.value = z.d
+  },
+  { immediate: true },
+)
 const def = computed(() => (sel.value ? FURNITURE[sel.value.type] : null))
 const variants = computed(() => (sel.value ? variantsOf(sel.value.type) : []))
 const thumb = computed(() =>
@@ -241,36 +262,52 @@ const generate = () =>
         </div>
 
         <span class="lbl">顏色</span>
-        <div class="ctl colors" role="radiogroup" aria-label="人員顏色">
-          <button
-            v-for="c in PERSON_COLORS"
-            :key="c"
-            class="chip"
-            :class="{ on: sel.people.color === c }"
-            :style="{ background: c }"
-            type="button"
-            role="radio"
-            :aria-checked="sel.people.color === c"
-            :aria-label="c"
-            @click="editor?.setPeople({ color: c })"
-          ></button>
-          <label
-            class="chip custom"
-            :class="{ on: !PERSON_COLORS.includes(sel.people.color) }"
-            :style="
-              PERSON_COLORS.includes(sel.people.color)
-                ? undefined
-                : { background: sel.people.color }
-            "
-            title="自訂顏色"
-          >
+        <div class="ctl">
+          <ColorChips
+            :value="sel.people.color"
+            :colors="PERSON_COLORS"
+            label="人員顏色"
+            @pick="editor?.setPeople({ color: $event })"
+          />
+        </div>
+      </template>
+
+      <template v-if="sel.zone">
+        <span class="lbl">尺寸</span>
+        <div class="ctl arr">
+          <div class="pair" role="group" aria-label="寬 × 深（公尺）">
             <input
-              type="color"
-              :value="sel.people.color"
-              aria-label="自訂顏色"
-              @change="editor?.setPeople({ color: ($event.target as HTMLInputElement).value })"
+              v-model.number="zw"
+              type="number"
+              inputmode="decimal"
+              step="0.25"
+              min="0.25"
+              aria-label="寬 m"
+              @change="editor?.setZone({ w: zw })"
             />
-          </label>
+            <span class="op">×</span>
+            <input
+              v-model.number="zd"
+              type="number"
+              inputmode="decimal"
+              step="0.25"
+              min="0.25"
+              aria-label="深 m"
+              @change="editor?.setZone({ d: zd })"
+            />
+            <span class="op">m</span>
+          </div>
+          <span class="hint">拖曳角落調整</span>
+        </div>
+
+        <span class="lbl">顏色</span>
+        <div class="ctl">
+          <ColorChips
+            :value="sel.zone.color"
+            :colors="ZONE_COLORS"
+            label="區域顏色"
+            @pick="editor?.setZone({ color: $event })"
+          />
         </div>
       </template>
 
@@ -290,46 +327,48 @@ const generate = () =>
           <button class="btn dup" title="複製 (⌘D)" @click="editor?.duplicate()">複製</button>
         </div>
 
-        <span class="lbl">陣列</span>
-        <div class="ctl arr">
-          <label class="pair" title="每排數量 × 排數">
-            <input
-              v-model.number="cols"
-              type="number"
-              inputmode="numeric"
-              min="1"
-              aria-label="每排數量"
-            />
-            <span class="op">×</span>
-            <input
-              v-model.number="rows"
-              type="number"
-              inputmode="numeric"
-              min="1"
-              aria-label="排數"
-            />
-          </label>
-          <label class="pair" title="左右 / 前後間距（公尺）">
-            <span class="op">間距</span>
-            <input
-              v-model.number="dx"
-              type="number"
-              inputmode="decimal"
-              step="0.05"
-              aria-label="左右間距 m"
-            />
-            <span class="op">/</span>
-            <input
-              v-model.number="dz"
-              type="number"
-              inputmode="decimal"
-              step="0.05"
-              aria-label="前後間距 m"
-            />
-            <span class="op">m</span>
-          </label>
-          <button class="btn gen" @click="generate">產生</button>
-        </div>
+        <template v-if="!sel.zone">
+          <span class="lbl">陣列</span>
+          <div class="ctl arr">
+            <label class="pair" title="每排數量 × 排數">
+              <input
+                v-model.number="cols"
+                type="number"
+                inputmode="numeric"
+                min="1"
+                aria-label="每排數量"
+              />
+              <span class="op">×</span>
+              <input
+                v-model.number="rows"
+                type="number"
+                inputmode="numeric"
+                min="1"
+                aria-label="排數"
+              />
+            </label>
+            <label class="pair" title="左右 / 前後間距（公尺）">
+              <span class="op">間距</span>
+              <input
+                v-model.number="dx"
+                type="number"
+                inputmode="decimal"
+                step="0.05"
+                aria-label="左右間距 m"
+              />
+              <span class="op">/</span>
+              <input
+                v-model.number="dz"
+                type="number"
+                inputmode="decimal"
+                step="0.05"
+                aria-label="前後間距 m"
+              />
+              <span class="op">m</span>
+            </label>
+            <button class="btn gen" @click="generate">產生</button>
+          </div>
+        </template>
       </template>
 
       <template v-if="sel.image">
@@ -667,41 +706,6 @@ const generate = () =>
   padding: 0;
   justify-content: center;
   font: 500 12px var(--mono);
-}
-.colors {
-  gap: 6px;
-}
-.chip {
-  position: relative;
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  border: 0;
-  border-radius: 50%;
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15);
-  cursor: pointer;
-}
-.chip.on {
-  box-shadow:
-    0 0 0 2px #fff,
-    0 0 0 4px var(--ink);
-}
-.chip:focus-visible,
-.chip:focus-within {
-  outline: 2px solid var(--yel);
-  outline-offset: 3px;
-}
-/* rainbow ring until a custom colour is chosen */
-.custom {
-  background: conic-gradient(#f44, #fd4, #4d6, #4bf, #84f, #f4a, #f44);
-}
-.custom input {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  opacity: 0;
-  cursor: pointer;
 }
 .hint {
   font-size: 12px;

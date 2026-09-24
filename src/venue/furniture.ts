@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import { B, Cy, EF, FM, mat, mesh } from './materials'
 import { personGeometry, seatedGeometry } from './person'
 import { POSTER_H, POSTER_W, buildFace, buildPoster } from './poster'
+import { buildZone } from './zone'
 
 /**
  * Builds a piece into `g`; `v` is the colour variant id when the type has variants, `size` the
@@ -376,7 +377,7 @@ export const SEATS: Partial<Record<string, { y: number; z: number }>> = {
 }
 
 /** Default figure colour, and the most people one 人員 item can stand for */
-export const PERSON_COLOR = '#42b883'
+export const PERSON_COLOR = '#f1d3b3'
 export const PEOPLE_MAX = 6
 /** Where each figure stands for a group of n (x, z in metres): rows of up to three */
 const FORMATIONS: Record<number, [number, number][]> = {
@@ -664,6 +665,13 @@ export const FURNITURE = {
     build: person,
     tag: true,
     arr: [0.6, 0.8],
+  },
+  zone: {
+    name: '區域',
+    size: '可調整尺寸',
+    build: buildZone,
+    tag: true,
+    arr: [2.25, 2.25],
   },
   rollup: {
     name: '易拉展',
