@@ -161,6 +161,16 @@ onBeforeUnmount(unlisten)
       </section>
 
       <section>
+        <h4>資訊顯示</h4>
+        <VisibilityTree
+          root="全部資訊"
+          :hidden="store.hiddenInfoTypes"
+          :count="(i) => !!i.info"
+          @set="store.setInfoTypesVisible"
+        />
+      </section>
+
+      <section>
         <h4>配置</h4>
         <div class="acts">
           <button class="btn" title="復原 (⌘Z)" :disabled="!store.editing" @click="editor?.undo()">

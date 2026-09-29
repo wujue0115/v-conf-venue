@@ -18,7 +18,7 @@ import {
 } from '@/venue/furniture'
 import { LID_MAX } from '@/venue/laptop'
 import { POSTER_PRESETS, readPosterImage, type PosterFit } from '@/venue/poster'
-import { formatNT } from '@/venue/layout'
+import { INFO_MAX, formatNT } from '@/venue/layout'
 import { BELT_MAX } from '@/venue/stanchions'
 import { ZONE_COLOR } from '@/venue/zone'
 
@@ -51,6 +51,15 @@ const usedTags = computed(() => {
     if (i.tag && (i.t === 'zone') === zone) n.set(i.tag, (n.get(i.tag) ?? 0) + 1)
   return [...n].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([t]) => t)
 })
+
+// The note being typed; saved (one undo step) when the box loses focus
+const info = shallowRef('')
+watch(
+  () => sel.value?.info,
+  (v) => (info.value = v ?? ''),
+  { immediate: true },
+)
+const saveInfo = () => editor.value?.setInfo(info.value)
 
 // Zone size in metres, applied when an input is committed
 const zw = shallowRef(0)
@@ -372,6 +381,19 @@ const generate = () =>
           />
         </div>
       </template>
+
+      <span class="lbl">資訊</span>
+      <div class="ctl">
+        <textarea
+          v-model="info"
+          class="info"
+          rows="2"
+          :maxlength="INFO_MAX"
+          placeholder="補充資訊，會在物件上方顯示 i 按鈕"
+          aria-label="補充資訊"
+          @change="saveInfo"
+        ></textarea>
+      </div>
 
       <template v-if="!isWallItem(sel.type)">
         <span class="lbl">旋轉</span>
@@ -781,6 +803,23 @@ const generate = () =>
   padding: 0;
   justify-content: center;
   font: 500 12px var(--mono);
+}
+.info {
+  width: 100%;
+  min-height: 52px;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fff;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.5;
+  resize: vertical;
+}
+.info:focus {
+  outline: 2px solid var(--yel);
+  outline-offset: 0;
+  border-color: transparent;
 }
 .hint {
   font-size: 12px;

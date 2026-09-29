@@ -35,6 +35,8 @@ export interface LayoutItem {
   tag?: string
   /** Tag colour as #rrggbb, for anything but people and zones (theirs is `color`) */
   tagColor?: string
+  /** A note (補充資訊) opened from the ⓘ button above the item */
+  info?: string
   /** People only: how many figures the item shows (1–6; absent means 1) */
   n?: number
   /** People and zones: colour as #rrggbb (absent means the default) */
@@ -61,6 +63,13 @@ export interface CostLine {
 
 /** Longest name tag kept, in characters */
 export const TAG_MAX = 24
+
+/** Longest note (補充資訊) kept, in characters */
+export const INFO_MAX = 500
+
+/** Trim a note, keep its line breaks, and cap its length; empty means none */
+export const cleanInfo = (s: unknown) =>
+  typeof s === 'string' ? [...s.replace(/\r\n?/g, '\n').trim()].slice(0, INFO_MAX).join('') : ''
 
 /** Trim a tag and cap its length; empty means no tag */
 export const cleanTag = (s: unknown) =>
@@ -111,6 +120,7 @@ export function parseLayout(data: unknown): LayoutItem[] {
     const cuts = cut.filter((c): c is number => Number.isFinite(c))
     const [dw, dh] = defaultSizeOf(t)
     const tag = cleanTag(i.tag)
+    const info = cleanInfo(i.info)
     const sit = t === 'person' && i.sit === true
     const n = t === 'person' && !sit ? clampPeople(i.n) : 1
     const coloured = t === 'person' || t === 'zone'
@@ -137,6 +147,7 @@ export function parseLayout(data: unknown): LayoutItem[] {
         ...(n > 1 ? { n } : {}),
         ...(color ? { color } : {}),
         ...(tagColor ? { tagColor } : {}),
+        ...(info ? { info } : {}),
         ...(sit ? { sit } : {}),
         ...(t === 'laptop' && i.open !== undefined ? { open: clampLid(i.open) } : {}),
         ...(t === 'zone' ? { w: clampZone(i.w, 2), d: clampZone(i.d, 2) } : {}),

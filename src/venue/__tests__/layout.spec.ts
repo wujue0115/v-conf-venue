@@ -149,6 +149,17 @@ describe('tags', () => {
     expect(c?.tag).toBe('報到組')
   })
 
+  it('keeps a trimmed note with its line breaks, capped in length', () => {
+    const [a, b, c] = parseLayout([
+      { t: 'table2', x: 0, z: 0, r: 0, info: '  報到桌\r\n9:00 開放  ' },
+      { t: 'zone', x: 0, z: 0, r: 0, info: 'x'.repeat(600) },
+      { t: 'person', x: 0, z: 0, r: 0, info: '   ' },
+    ])
+    expect(a?.info).toBe('報到桌\n9:00 開放')
+    expect(b?.info).toHaveLength(500)
+    expect(c).not.toHaveProperty('info')
+  })
+
   it('keeps a tag colour on tagged items that are not people or zones', () => {
     const [a, b, c, d] = parseLayout([
       { t: 'table2', x: 0, z: 0, r: 0, tag: '報到', tagColor: '#E57373' },

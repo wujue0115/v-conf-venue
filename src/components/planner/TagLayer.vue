@@ -3,13 +3,19 @@ import { onBeforeUnmount, useTemplateRef, watch } from 'vue'
 import { useVenueEditor } from '@/composables/useVenueEditor'
 import type { TagKind } from '@/venue/VenueEditor'
 
-const props = defineProps<{ kind: TagKind }>()
 const editor = useVenueEditor()
 const layer = useTemplateRef('layer')
 
+/*
+ * Zones' and items' tags share this one layer, so an open note can rise above every other
+ * row (see layoutTags) while the layer as a whole stays under the stage's toolbars.
+ */
+const KINDS: TagKind[] = ['zone', 'item']
 // The editor adds and positions one child per tagged object every frame
-watch([editor, layer], ([ed, el]) => ed?.setTagLayer(props.kind, el), { immediate: true })
-onBeforeUnmount(() => editor.value?.setTagLayer(props.kind, null))
+watch([editor, layer], ([ed, el]) => KINDS.forEach((k) => ed?.setTagLayer(k, el)), {
+  immediate: true,
+})
+onBeforeUnmount(() => KINDS.forEach((k) => editor.value?.setTagLayer(k, null)))
 </script>
 
 <template>
@@ -20,16 +26,28 @@ onBeforeUnmount(() => editor.value?.setTagLayer(props.kind, null))
 .tags {
   position: absolute;
   inset: 0;
+  /* its own stacking context: rows are ordered inside it, never above the stage's UI */
+  z-index: 0;
   pointer-events: none;
   overflow: hidden;
 }
-.tags :deep(.ptag),
-.tags :deep(.ztag) {
+/* one row per item: its tag pill, then its ⓘ button; the editor moves the row every frame */
+.tags :deep(.trow) {
   position: absolute;
   left: 0;
   top: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
   white-space: nowrap;
   will-change: transform;
+}
+.tags :deep([hidden]) {
+  display: none !important;
+}
+.tags :deep(.ptag),
+.tags :deep(.ztag) {
+  position: relative;
 }
 
 /*
@@ -91,5 +109,75 @@ onBeforeUnmount(() => editor.value?.setTagLayer(props.kind, null))
   background: var(--tc);
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--tc) 80%, #000);
   transform: translateX(-50%);
+}
+/* the ⓘ button and its note are the only parts of the layer that take the pointer */
+.tags :deep(.tinfo) {
+  pointer-events: auto;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  /* without a tag: a quiet grey outline and icon, a light grey fill on hover */
+  border: 1.5px solid #b4b0a6;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--muted, #5d6068);
+  font:
+    italic 700 12px/1 Georgia,
+    'Times New Roman',
+    serif;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+  cursor: pointer;
+  transition:
+    color 0.15s,
+    background 0.15s,
+    border-color 0.15s;
+}
+.tags :deep(.tinfo:hover) {
+  background: #eeece6;
+}
+/*
+ * Beside a tag, the ⓘ and its note take the tag's colour (--ti, darkened when pale) for their
+ * outline and text, over white that tints to a light shade of the tag on hover
+ */
+.tags :deep(.trow.tagged .tinfo) {
+  border: 1.5px solid var(--ti);
+  background: #fff;
+  color: var(--ti);
+}
+.tags :deep(.trow.tagged .tinfo:hover) {
+  border-color: var(--ti);
+  background: color-mix(in srgb, var(--tc) 22%, #fff);
+  color: var(--ti);
+}
+.tags :deep(.trow.tagged .tbox) {
+  border: 1.5px solid var(--ti);
+  background: color-mix(in srgb, var(--tc) 12%, #fff);
+}
+.tags :deep(.tinfo:focus-visible) {
+  outline: 2px solid var(--yel, #edb32a);
+  outline-offset: 2px;
+}
+/* the note opens above the row, centred on the ⓘ (the editor sets its left) */
+.tags :deep(.tbox) {
+  pointer-events: auto;
+  position: absolute;
+  bottom: calc(100% + 8px);
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: 240px;
+  padding: 8px 10px;
+  border: 1px solid var(--line, #e4dfd3);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink, #1f2126);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.16);
 }
 </style>

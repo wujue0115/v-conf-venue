@@ -44,14 +44,16 @@ watch([editor, () => store.hiddenTypes], ([ed, types]) => ed?.setHiddenTypes(typ
 watch([editor, () => store.hiddenTagTypes], ([ed, types]) => ed?.setHiddenTagTypes(types), {
   immediate: true,
 })
+watch([editor, () => store.hiddenInfoTypes], ([ed, types]) => ed?.setHiddenInfoTypes(types), {
+  immediate: true,
+})
 </script>
 
 <template>
   <main ref="stage" class="stage">
     <canvas ref="canvas" tabindex="0"></canvas>
     <VenueLabels v-show="store.showLabels" />
-    <TagLayer kind="zone" />
-    <TagLayer kind="item" />
+    <TagLayer />
     <StageToolbar />
     <StageToast />
     <SelectionBar />

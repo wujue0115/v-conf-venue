@@ -47,6 +47,8 @@ export const usePlannerStore = defineStore('planner', () => {
   const hiddenTypes = shallowRef<readonly FurnitureType[]>([])
   /** Kinds of item whose tags are hidden (設定 → 標籤顯示); the tags are kept */
   const hiddenTagTypes = shallowRef<readonly FurnitureType[]>([])
+  /** Kinds of item whose ⓘ note buttons are hidden (設定 → 資訊顯示); the notes are kept */
+  const hiddenInfoTypes = shallowRef<readonly FurnitureType[]>([])
   const toggled = (
     list: readonly FurnitureType[],
     types: readonly FurnitureType[],
@@ -60,6 +62,9 @@ export const usePlannerStore = defineStore('planner', () => {
   }
   function setTagTypesVisible(types: readonly FurnitureType[], on: boolean) {
     hiddenTagTypes.value = toggled(hiddenTagTypes.value, types, on)
+  }
+  function setInfoTypesVisible(types: readonly FurnitureType[], on: boolean) {
+    hiddenInfoTypes.value = toggled(hiddenInfoTypes.value, types, on)
   }
   const savedSidebar = readJSON(SIDEBAR_KEY)
   // First visit on a phone: start collapsed so the venue is visible
@@ -109,6 +114,8 @@ export const usePlannerStore = defineStore('planner', () => {
     setTypesVisible,
     hiddenTagTypes,
     setTagTypesVisible,
+    hiddenInfoTypes,
+    setInfoTypesVisible,
     sidebarCollapsed,
     toast,
     cost,

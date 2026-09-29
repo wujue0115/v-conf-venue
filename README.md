@@ -25,11 +25,12 @@ photos in the rental chart (家具設備租借費用圖表). Both are kept in [`
 * Browse safely in view mode, then switch to edit mode to change the layout
 * Drag furniture from the sidebar straight into the 3D venue
 * Rotate, duplicate, delete, or lay out selected items in rows and columns
-* Show or hide items, or just their tags, by kind from the settings panel
+* Show or hide items, their tags or their notes by kind from the settings panel
 * Pick a colour for pieces that come in more than one (high stool, shaped sofa)
 * Place stanchions and have belts link neighbouring posts automatically; click a belt to remove it
 * Add people to the venue and seat them on chairs, sofas or A2's fixed seats
 * Tag anything: a tag floats above its item (a person's wears their colour; pick a colour for any other item's) and you pick an existing tag or type a new one
+* Add a note (補充資訊) to anything: a small ⓘ appears above it (right of its tag) and opens the note
 * Set snack trays (cream puffs, black forest cake or egg tarts) and aluminium laptops (13"–16" and six colours, picked separately, with the lid opened to any angle and your own image on the screen) on tables; they move with their table
 * Mark zones on the floor: drop one in and drag its corners to size it on the grid, each with its own colour and tag (a separate tag list from other items')
 * Hang your own posters on any wall, resize them by dragging a corner or typing a size, and upload an image that is saved with the layout and its JSON export (posters are not charged)

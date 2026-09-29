@@ -21,7 +21,7 @@ import {
   type FurnitureType,
 } from './furniture'
 import { LID_OPEN, clampLid, setLaptopOpen } from './laptop'
-import { clampPeople, cleanTag, isHexColor, type LayoutItem } from './layout'
+import { clampPeople, cleanInfo, cleanTag, isHexColor, type LayoutItem } from './layout'
 import { B, FM, YEL } from './materials'
 import {
   POSTER_MIN,
@@ -57,6 +57,8 @@ export interface SelectionInfo {
   tag: string
   /** Anything but people and zones: its tag's colour (theirs wear the item's colour) */
   tagColor?: string
+  /** Its note (補充資訊; '' when none) */
+  info: string
   /** 人員 items: how many figures, their colour, and whether they sit on a seat */
   people?: { n: number; color: string; sit: boolean }
   /** 區域 items: width × depth in metres and colour */
@@ -212,6 +214,10 @@ export class VenueEditor {
   }
   /** Kinds of item whose tags are hidden (see setHiddenTagTypes) */
   private hiddenTags = new Set<FurnitureType>()
+  /** Kinds of item whose ⓘ note buttons are hidden (see setHiddenInfoTypes) */
+  private hiddenInfo = new Set<FurnitureType>()
+  /** The item whose note (補充資訊) box is open from its ⓘ button */
+  private infoOpen: THREE.Object3D | null = null
   /** An unselected zone under the pointer: a click selects it, a drag still pans the camera */
   private zoneClick: THREE.Object3D | null = null
   private selected: THREE.Object3D | null = null
@@ -413,6 +419,11 @@ export class VenueEditor {
     this.hiddenTags = new Set(types)
   }
 
+  /** Hide the ⓘ note buttons of every placed item of these kinds (the notes are kept). */
+  setHiddenInfoTypes(types: readonly FurnitureType[]) {
+    this.hiddenInfo = new Set(types)
+  }
+
   /** Change the selected zone's size (metres, on the zone grid, about its centre) and/or colour. */
   setZone({ w, d, color }: { w?: number; d?: number; color?: string }) {
     const s = this.selected
@@ -455,6 +466,19 @@ export class VenueEditor {
     this.pushUndo()
     if (t) s.userData.tag = t
     else delete s.userData.tag
+    this.updSel()
+    this.commit()
+  }
+
+  /** Give the selected item a note (補充資訊); an empty one removes it. */
+  setInfo(info: string) {
+    const s = this.selected
+    if (!s) return
+    const t = cleanInfo(info)
+    if ((s.userData.info ?? '') === t) return
+    this.pushUndo()
+    if (t) s.userData.info = t
+    else delete s.userData.info
     this.updSel()
     this.commit()
   }
@@ -902,6 +926,7 @@ export class VenueEditor {
     lock,
     tag,
     tagColor,
+    info,
     n,
     color,
     sit,
@@ -917,6 +942,7 @@ export class VenueEditor {
     if (lock) o.userData.lock = true
     if (tag) o.userData.tag = tag
     if (tagColor) o.userData.tagColor = tagColor
+    if (info) o.userData.info = info
     if (t === 'person' && (n || color || sit)) applyPeople(o, n, color, sit)
     if (t === 'zone' && w && d) applyZone(o, { w, d, color })
     if (t === 'laptop' && open !== undefined) setLaptopOpen(o, open)
@@ -945,6 +971,7 @@ export class VenueEditor {
       ...(cut?.length ? { cut: cut.map((c) => +c.toFixed(3)) } : {}),
       ...(ud.tag ? { tag: ud.tag as string } : {}),
       ...(ud.tagColor ? { tagColor: ud.tagColor as string } : {}),
+      ...(ud.info ? { info: ud.info as string } : {}),
       ...(ud.n ? { n: ud.n as number } : {}),
       ...(ud.color ? { color: ud.color as string } : {}),
       ...(ud.sit ? { sit: true } : {}),
@@ -1453,6 +1480,7 @@ export class VenueEditor {
         : {}),
       ...(hasFace(s) ? { image: { hasImage: !!s.userData.img } } : {}),
       tag: (s.userData.tag as string | undefined) ?? '',
+      info: (s.userData.info as string | undefined) ?? '',
       ...(ownTagColor(s)
         ? { tagColor: (s.userData.tagColor as string | undefined) ?? TAG_COLOR }
         : {}),
@@ -1640,6 +1668,7 @@ export class VenueEditor {
       'pointerdown',
       (e) => {
         if (e.target !== canvas || e.button !== 0) return
+        this.infoOpen = null
         canvas.focus()
         this.downPt = { x: e.clientX, y: e.clientY }
         if (!this.editable) return
@@ -1805,6 +1834,11 @@ export class VenueEditor {
     if (target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA') return
     // keys pressed in a dialog (e.g. Esc / Delete) belong to it, not to the scene
     if (target?.closest?.('dialog')) return
+    // Esc closes an open note first, in either mode
+    if (e.key === 'Escape' && this.infoOpen) {
+      this.infoOpen = null
+      return
+    }
     const kk = e.key.toLowerCase()
     const mod = e.metaKey || e.ctrlKey
     if (
@@ -1961,9 +1995,10 @@ export class VenueEditor {
   }
 
   /**
-   * Keep one tag element per tagged object of this kind and pin it on screen: people's above
-   * their head, other items' just above their top, zones' raised above the zone's centre on a
-   * leader line.
+   * Keep one tag row per tagged or annotated object of this kind and pin it on screen: people's
+   * above their head, other items' just above their top, zones' raised above the zone's centre
+   * on a leader line. A row is the tag pill (unless its kind's tags are hidden) and, for an
+   * item with a note, an ⓘ button to its right that opens the note in a box above.
    */
   private layoutTags(kind: TagKind) {
     const { layer, els } = this.tags[kind]
@@ -1975,16 +2010,29 @@ export class VenueEditor {
     for (const o of this.placed.children) {
       const tag = o.userData.tag as string | undefined
       const type = o.userData.type as FurnitureType
-      if (!tag || !o.visible || tagKindOf(o) !== kind || this.hiddenTags.has(type)) continue
+      const info = this.hiddenInfo.has(type) ? undefined : (o.userData.info as string | undefined)
+      const showTag = !!tag && !this.hiddenTags.has(type)
+      if (!o.visible || tagKindOf(o) !== kind || (!showTag && !info)) continue
       seen.add(o)
       let el = els.get(o)
       if (!el) {
-        el = document.createElement('div')
-        el.className = kind === 'zone' ? 'ztag' : 'ptag'
+        el = this.tagRow(o, kind)
         layer.append(el)
         els.set(o, el)
       }
-      if (el.textContent !== tag) el.textContent = tag
+      const pill = el.children[0] as HTMLElement
+      const btn = el.children[1] as HTMLElement
+      const box = el.children[2] as HTMLElement
+      pill.hidden = !showTag
+      // beside a tag the ⓘ wears the tag's colour; alone it stays light
+      el.classList.toggle('tagged', showTag)
+      if (showTag && pill.textContent !== tag) pill.textContent = tag
+      btn.hidden = !info
+      const open = !!info && this.infoOpen === o
+      box.hidden = !open
+      if (open && box.textContent !== info) box.textContent = info
+      // items' rows sit over zones', and the row with an open note over everything
+      el.style.zIndex = open ? '2' : kind === 'item' ? '1' : ''
       // a person's or zone's tag wears its colour, anything else's its own tag colour, with
       // dark or white text depending on how light it is
       const c = ownTagColor(o)
@@ -1994,6 +2042,8 @@ export class VenueEditor {
         el.dataset.c = c
         el.style.setProperty('--tc', c)
         el.style.setProperty('--tt', isLight(c) ? '#1f2126' : '#fff')
+        // the tag's colour as a line or text on white: a pale one is darkened to stay visible
+        el.style.setProperty('--ti', isLight(c) ? `color-mix(in srgb, ${c} 55%, #000)` : c)
       }
       const above = isZone(o)
         ? 0.02
@@ -2008,16 +2058,44 @@ export class VenueEditor {
         continue
       }
       el.style.display = ''
-      const x = ((v.x + 1) / 2) * w - el.offsetWidth / 2
-      // both sit above their point; a zone's is raised on a leader line down to its centre
-      const y = ((1 - v.y) / 2) * h - el.offsetHeight - (kind === 'zone' ? ZONE_TAG_LIFT : 0)
+      // the tag (or, without one, the ⓘ) is centred over the point; the ⓘ follows to its right
+      const anchor = showTag ? pill : btn
+      const x = ((v.x + 1) / 2) * w - anchor.offsetLeft - anchor.offsetWidth / 2
+      // the row sits above its point; a zone's is raised on a leader line down to its centre
+      const lift = kind === 'zone' && showTag ? ZONE_TAG_LIFT : 0
+      const y = ((1 - v.y) / 2) * h - el.offsetHeight - lift
       el.style.transform = `translate(${x.toFixed(1)}px,${y.toFixed(1)}px)`
+      if (open) box.style.left = `${btn.offsetLeft + btn.offsetWidth / 2}px`
     }
     for (const [o, el] of els)
       if (!seen.has(o)) {
         el.remove()
         els.delete(o)
+        if (this.infoOpen === o) this.infoOpen = null
       }
+  }
+
+  /** A tag row's elements: the pill, the ⓘ button (toggles its item's note) and the note box */
+  private tagRow(o: THREE.Object3D, kind: TagKind) {
+    const el = document.createElement('div')
+    el.className = 'trow'
+    const pill = document.createElement('span')
+    pill.className = kind === 'zone' ? 'ztag' : 'ptag'
+    const btn = document.createElement('button')
+    btn.type = 'button'
+    btn.className = 'tinfo'
+    btn.textContent = 'i'
+    btn.title = '補充資訊'
+    btn.setAttribute('aria-label', '補充資訊')
+    btn.addEventListener('click', () => {
+      this.infoOpen = this.infoOpen === o ? null : o
+    })
+    const box = document.createElement('div')
+    box.className = 'tbox'
+    box.setAttribute('role', 'note')
+    for (const e of [btn, box]) e.dataset.stageUi = ''
+    el.append(pill, btn, box)
+    return el
   }
 
   /** Project label anchors to screen space and hide ones that would overlap. */
