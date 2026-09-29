@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, reactive } from 'vue'
+import CollapseBody from './CollapseBody.vue'
 import { storeToRefs } from 'pinia'
 import SectionTitle from './SectionTitle.vue'
 import TriCheckbox from './TriCheckbox.vue'
@@ -123,29 +124,31 @@ function onSlotsInput(e: Event) {
             l.billed ? formatNT(l.subtotal) : t().summary.unbilled
           }}</em>
         </div>
-        <div v-if="open[l.type]" class="kids">
-          <div
-            v-for="(k, n) in l.indices"
-            :key="k"
-            class="crow kid"
-            role="button"
-            tabindex="0"
-            :title="t().summary.goTo(itemLabel(k, n + 1))"
-            @click="goTo(k)"
-            @keydown.enter.space.self.prevent="goTo(k)"
-          >
-            <TriCheckbox
-              :state="isBilled(k) ? 'on' : 'off'"
-              :label="t().summary.billed(itemLabel(k, n + 1))"
-              @click.stop
-              @toggle="toggleItem(k)"
-            />
-            <span class="name">{{ itemLabel(k, n + 1) }}</span>
-            <em :class="{ off: !isBilled(k) }">{{
-              isBilled(k) ? formatNT(each(l.type)) : t().summary.unbilled
-            }}</em>
+        <CollapseBody :open="!!open[l.type]">
+          <div class="kids">
+            <div
+              v-for="(k, n) in l.indices"
+              :key="k"
+              class="crow kid"
+              role="button"
+              tabindex="0"
+              :title="t().summary.goTo(itemLabel(k, n + 1))"
+              @click="goTo(k)"
+              @keydown.enter.space.self.prevent="goTo(k)"
+            >
+              <TriCheckbox
+                :state="isBilled(k) ? 'on' : 'off'"
+                :label="t().summary.billed(itemLabel(k, n + 1))"
+                @click.stop
+                @toggle="toggleItem(k)"
+              />
+              <span class="name">{{ itemLabel(k, n + 1) }}</span>
+              <em :class="{ off: !isBilled(k) }">{{
+                isBilled(k) ? formatNT(each(l.type)) : t().summary.unbilled
+              }}</em>
+            </div>
           </div>
-        </div>
+        </CollapseBody>
       </template>
     </template>
     <div v-if="!cost.lines.length" class="empty">{{ t().summary.empty }}</div>
@@ -253,7 +256,7 @@ function onSlotsInput(e: Event) {
   stroke-width: 1.8;
   stroke-linecap: round;
   stroke-linejoin: round;
-  transition: transform 0.2s;
+  transition: transform 0.25s ease;
 }
 .chev.closed {
   transform: rotate(-90deg);

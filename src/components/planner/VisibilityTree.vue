@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, reactive } from 'vue'
+import CollapseBody from './CollapseBody.vue'
 import TriCheckbox from './TriCheckbox.vue'
 import { usePlannerStore } from '@/stores/planner'
 import { FURNITURE_GROUPS, FURNITURE_TYPES, type FurnitureType } from '@/venue/furniture'
@@ -82,51 +83,59 @@ const groups = computed(() =>
       </button>
     </div>
 
-    <div v-if="open.all" class="kids">
-      <label v-if="extra" class="node leaf">
-        <TriCheckbox
-          :state="extra.on ? 'on' : 'off'"
-          :label="extra.label"
-          @toggle="emit('extra', !extra.on)"
-        />
-        <span class="name">{{ extra.label }}</span>
-      </label>
-      <template v-for="g in groups" :key="g.id">
-        <div class="node">
-          <TriCheckbox :state="stateOf(g.types)" :label="g.title" @toggle="toggle(g.types)" />
-          <button
-            class="head"
-            type="button"
-            :aria-expanded="!!open[g.id]"
-            @click="open[g.id] = !open[g.id]"
-          >
-            <b>{{ g.title }}</b>
-            <span class="n">{{ countOf(g.types) }}</span>
-            <svg
-              class="chev"
-              :class="{ closed: !open[g.id] }"
-              viewBox="0 0 16 16"
-              aria-hidden="true"
+    <CollapseBody :open="!!open.all">
+      <div class="kids">
+        <label v-if="extra" class="node leaf">
+          <TriCheckbox
+            :state="extra.on ? 'on' : 'off'"
+            :label="extra.label"
+            @toggle="emit('extra', !extra.on)"
+          />
+          <span class="name">{{ extra.label }}</span>
+        </label>
+        <template v-for="g in groups" :key="g.id">
+          <div class="node">
+            <TriCheckbox :state="stateOf(g.types)" :label="g.title" @toggle="toggle(g.types)" />
+            <button
+              class="head"
+              type="button"
+              :aria-expanded="!!open[g.id]"
+              @click="open[g.id] = !open[g.id]"
             >
-              <path d="M4 6l4 4 4-4" />
-            </svg>
-          </button>
-        </div>
+              <b>{{ g.title }}</b>
+              <span class="n">{{ countOf(g.types) }}</span>
+              <svg
+                class="chev"
+                :class="{ closed: !open[g.id] }"
+                viewBox="0 0 16 16"
+                aria-hidden="true"
+              >
+                <path d="M4 6l4 4 4-4" />
+              </svg>
+            </button>
+          </div>
 
-        <div v-if="open[g.id]" class="kids">
-          <label
-            v-for="i in g.items"
-            :key="i.type"
-            class="node leaf"
-            :class="{ none: !counts.get(i.type) }"
-          >
-            <TriCheckbox :state="stateOf([i.type])" :label="i.name" @toggle="toggle([i.type])" />
-            <span class="name">{{ i.name }}</span>
-            <span class="n">{{ counts.get(i.type) ?? 0 }}</span>
-          </label>
-        </div>
-      </template>
-    </div>
+          <CollapseBody :open="!!open[g.id]">
+            <div class="kids">
+              <label
+                v-for="i in g.items"
+                :key="i.type"
+                class="node leaf"
+                :class="{ none: !counts.get(i.type) }"
+              >
+                <TriCheckbox
+                  :state="stateOf([i.type])"
+                  :label="i.name"
+                  @toggle="toggle([i.type])"
+                />
+                <span class="name">{{ i.name }}</span>
+                <span class="n">{{ counts.get(i.type) ?? 0 }}</span>
+              </label>
+            </div>
+          </CollapseBody>
+        </template>
+      </div>
+    </CollapseBody>
   </div>
 </template>
 
@@ -180,7 +189,7 @@ const groups = computed(() =>
   stroke-width: 1.8;
   stroke-linecap: round;
   stroke-linejoin: round;
-  transition: transform 0.2s;
+  transition: transform 0.25s ease;
 }
 .chev.closed {
   transform: rotate(-90deg);
