@@ -2,6 +2,7 @@
 import { computed, shallowRef, useTemplateRef, watch } from 'vue'
 import ColorChips from './ColorChips.vue'
 import TagCombobox from './TagCombobox.vue'
+import TriCheckbox from './TriCheckbox.vue'
 import { useFurnitureThumbnails } from '@/composables/useFurnitureThumbnails'
 import { useVenueEditor } from '@/composables/useVenueEditor'
 import { usePlannerStore } from '@/stores/planner'
@@ -96,7 +97,8 @@ const thumb = computed(() =>
 const price = computed(() => {
   if (!sel.value) return ''
   const p = priceOf(sel.value.type)
-  return p ? formatNT(p[store.priceMode]) : t().summary.free
+  if (!p) return t().summary.free
+  return sel.value.billed === false ? t().summary.unbilled : formatNT(p[store.priceMode])
 })
 const position = computed(() => {
   const s = sel.value
@@ -398,6 +400,18 @@ const generate = () =>
           @change="saveInfo"
         ></textarea>
       </div>
+
+      <template v-if="sel.billed !== undefined">
+        <span class="lbl">{{ t().sel.billing }}</span>
+        <label class="ctl billed">
+          <TriCheckbox
+            :state="sel.billed ? 'on' : 'off'"
+            :label="t().sel.billed"
+            @toggle="editor?.setBilled(!sel.billed)"
+          />
+          {{ t().sel.billed }}
+        </label>
+      </template>
 
       <template v-if="!isWallItem(sel.type)">
         <span class="lbl">{{ t().sel.rotate }}</span>
@@ -811,6 +825,12 @@ const generate = () =>
   padding: 0;
   justify-content: center;
   font: 500 12px var(--mono);
+}
+.billed {
+  gap: 8px;
+  min-height: 30px;
+  font-size: 12px;
+  cursor: pointer;
 }
 .info {
   width: 100%;

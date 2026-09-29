@@ -110,6 +110,9 @@ const en: Messages = {
     empty: 'Nothing placed yet. Drag items from above onto the venue.',
     total: 'Rental total',
     free: 'Free',
+    billed: (name: string) => `Count ${name} in the rental total`,
+    goTo: (name: string) => `Go to ${name}`,
+    unbilled: 'Not billed',
   },
 
   sel: {
@@ -140,6 +143,8 @@ const en: Messages = {
     tagColour: 'Tag colour',
     info: 'Note',
     infoLabel: 'Note',
+    billing: 'Billing',
+    billed: 'Count in the rental total',
     infoPlaceholder: 'A note; an i button shows above the item',
     rotate: 'Rotate',
     ccw15: '15° anticlockwise (Q)',

@@ -17,6 +17,7 @@ import {
   TABLES,
   footprintOf,
   onTableOnly,
+  priceOf,
   type Footprint,
   applyPeople,
   type FurnitureType,
@@ -60,6 +61,8 @@ export interface SelectionInfo {
   tagColor?: string
   /** Its note (補充資訊; '' when none) */
   info: string
+  /** Rented items: whether it counts toward the rental total */
+  billed?: boolean
   /** 人員 items: how many figures, their colour, and whether they sit on a seat */
   people?: { n: number; color: string; sit: boolean }
   /** 區域 items: width × depth in metres and colour */
@@ -469,6 +472,46 @@ export class VenueEditor {
     else delete s.userData.tag
     this.updSel()
     this.commit()
+  }
+
+  /**
+   * Count items toward the rental total or leave them out: the ones at these layout indices
+   * (as in `serialize()`), or the selected item. One undo step for the lot.
+   */
+  setBilled(on: boolean, indices?: readonly number[]) {
+    const list = indices
+      ? indices.flatMap((k) => this.placed.children[k] ?? [])
+      : this.selected
+        ? [this.selected]
+        : []
+    const change = list.filter((o) => !o.userData.unbilled !== on)
+    if (!change.length) return
+    this.pushUndo()
+    for (const o of change)
+      if (on) delete o.userData.unbilled
+      else o.userData.unbilled = true
+    if (this.selected) this.updSel()
+    this.commit()
+  }
+
+  /**
+   * Fly to the item at this layout index, keeping the way the camera looks but coming in
+   * close enough to see it; in edit mode it is selected too (unless it is hidden).
+   */
+  focusItem(index: number) {
+    const o = this.placed.children[index]
+    if (!o) return
+    const target = o.position.clone()
+    const back = this.camera.position.clone().sub(this.controls.target)
+    const dist = THREE.MathUtils.clamp(back.length(), 5, 14)
+    this.fly = {
+      t0: performance.now(),
+      p0: this.camera.position.clone(),
+      g0: this.controls.target.clone(),
+      p1: target.clone().add(back.setLength(dist)),
+      g1: target,
+    }
+    if (this.editable && o.visible) this.select(o)
   }
 
   /** Give the selected item a note (補充資訊); an empty one removes it. */
@@ -926,6 +969,7 @@ export class VenueEditor {
     tag,
     tagColor,
     info,
+    unbilled,
     n,
     color,
     sit,
@@ -942,6 +986,7 @@ export class VenueEditor {
     if (tag) o.userData.tag = tag
     if (tagColor) o.userData.tagColor = tagColor
     if (info) o.userData.info = info
+    if (unbilled) o.userData.unbilled = true
     if (t === 'person' && (n || color || sit)) applyPeople(o, n, color, sit)
     if (t === 'zone' && w && d) applyZone(o, { w, d, color })
     if (t === 'laptop' && open !== undefined) setLaptopOpen(o, open)
@@ -971,6 +1016,7 @@ export class VenueEditor {
       ...(ud.tag ? { tag: ud.tag as string } : {}),
       ...(ud.tagColor ? { tagColor: ud.tagColor as string } : {}),
       ...(ud.info ? { info: ud.info as string } : {}),
+      ...(ud.unbilled ? { unbilled: true } : {}),
       ...(ud.n ? { n: ud.n as number } : {}),
       ...(ud.color ? { color: ud.color as string } : {}),
       ...(ud.sit ? { sit: true } : {}),
@@ -1480,6 +1526,7 @@ export class VenueEditor {
       ...(hasFace(s) ? { image: { hasImage: !!s.userData.img } } : {}),
       tag: (s.userData.tag as string | undefined) ?? '',
       info: (s.userData.info as string | undefined) ?? '',
+      ...(priceOf(s.userData.type as FurnitureType) ? { billed: !s.userData.unbilled } : {}),
       ...(ownTagColor(s)
         ? { tagColor: (s.userData.tagColor as string | undefined) ?? TAG_COLOR }
         : {}),

@@ -42,6 +42,18 @@ describe('planner store', () => {
     expect(usePlannerStore().sidebarCollapsed).toBe(true)
   })
 
+  it('lists where the items of each rented kind are, and how many are billed', () => {
+    const store = usePlannerStore()
+    store.items = [
+      { t: 'table2', x: 0, z: 0, r: 0 },
+      { t: 'person', x: 0, z: 0, r: 0 },
+      { t: 'table2', x: 1, z: 0, r: 0, unbilled: true },
+    ]
+    expect(store.cost.lines.map((l) => [l.type, l.indices, l.billed])).toEqual([
+      ['table2', [0, 2], 1],
+    ])
+  })
+
   it('hides and shows kinds of item without duplicates', () => {
     const store = usePlannerStore()
     store.setTypesVisible(['table2', 'person'], false)

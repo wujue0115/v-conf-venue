@@ -1,13 +1,35 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, reactive } from 'vue'
 import { storeToRefs } from 'pinia'
 import SectionTitle from './SectionTitle.vue'
+import TriCheckbox from './TriCheckbox.vue'
+import { useVenueEditor } from '@/composables/useVenueEditor'
 import { usePlannerStore } from '@/stores/planner'
-import { MAX_SLOTS, formatNT, type PriceMode } from '@/venue/layout'
+import { priceOf, type FurnitureType } from '@/venue/furniture'
+import { MAX_SLOTS, formatNT, type CostLine, type PriceMode } from '@/venue/layout'
 import { nameOf, t } from '@/i18n'
 
 const store = usePlannerStore()
+const editor = useVenueEditor()
 const { items, cost, priceMode, slots, fixedSeats } = storeToRefs(store)
+
+/** Kinds whose list of items is open */
+const open = reactive<Partial<Record<FurnitureType, boolean>>>({})
+
+/** One item's rent for the chosen pricing and slots */
+const each = (type: FurnitureType) => (priceOf(type)?.[priceMode.value] ?? 0) * slots.value
+const lineState = (l: CostLine) =>
+  l.billed === l.count ? 'on' : l.billed === 0 ? 'off' : ('some' as const)
+/** A ticked box leaves them all out of the total; an empty or partial one counts them all */
+const toggleLine = (l: CostLine) => editor.value?.setBilled(lineState(l) !== 'on', l.indices)
+const isBilled = (k: number) => !items.value[k]?.unbilled
+const toggleItem = (k: number) => editor.value?.setBilled(!isBilled(k), [k])
+/** An item in a kind's list: its number, and its tag when it has one */
+const itemLabel = (k: number, n: number) => {
+  const tag = items.value[k]?.tag
+  return tag ? `#${n} · ${tag}` : `#${n}`
+}
+const goTo = (k: number) => editor.value?.focusItem(k)
 
 const modeName = (m: PriceMode) => (m ? t().summary.carried : t().summary.selfCarry)
 const PRICE_MODES = computed(() =>
@@ -44,12 +66,88 @@ function onSlotsInput(e: Event) {
   </div>
 
   <div class="counts">
-    <div v-for="l in cost.lines" :key="l.type" class="crow">
-      <span
-        >{{ nameOf(l.type) }} <em>× {{ l.count }}</em></span
+    <template v-for="l in cost.lines" :key="l.type">
+      <!--
+        A row is one control: a single item's row goes to it, a kind's row opens its list.
+        The checkbox is its own control, so its click stays out of the row's.
+      -->
+      <div
+        v-if="l.count === 1"
+        class="crow"
+        role="button"
+        tabindex="0"
+        :title="t().summary.goTo(nameOf(l.type))"
+        @click="goTo(l.indices[0]!)"
+        @keydown.enter.space.self.prevent="goTo(l.indices[0]!)"
       >
-      <em>{{ formatNT(l.subtotal) }}</em>
-    </div>
+        <TriCheckbox
+          :state="lineState(l)"
+          :label="t().summary.billed(nameOf(l.type))"
+          @click.stop
+          @toggle="toggleLine(l)"
+        />
+        <span class="name">{{ nameOf(l.type) }}</span>
+        <em :class="{ off: !l.billed }">{{
+          l.billed ? formatNT(l.subtotal) : t().summary.unbilled
+        }}</em>
+      </div>
+
+      <template v-else>
+        <div
+          class="crow"
+          role="button"
+          tabindex="0"
+          :aria-expanded="!!open[l.type]"
+          @click="open[l.type] = !open[l.type]"
+          @keydown.enter.space.self.prevent="open[l.type] = !open[l.type]"
+        >
+          <TriCheckbox
+            :state="lineState(l)"
+            :label="t().summary.billed(nameOf(l.type))"
+            @click.stop
+            @toggle="toggleLine(l)"
+          />
+          <span class="name">
+            {{ nameOf(l.type) }}
+            <em>× {{ l.billed === l.count ? l.count : `${l.billed}/${l.count}` }}</em>
+            <svg
+              class="chev"
+              :class="{ closed: !open[l.type] }"
+              viewBox="0 0 16 16"
+              aria-hidden="true"
+            >
+              <path d="M4 6l4 4 4-4" />
+            </svg>
+          </span>
+          <em :class="{ off: !l.billed }">{{
+            l.billed ? formatNT(l.subtotal) : t().summary.unbilled
+          }}</em>
+        </div>
+        <div v-if="open[l.type]" class="kids">
+          <div
+            v-for="(k, n) in l.indices"
+            :key="k"
+            class="crow kid"
+            role="button"
+            tabindex="0"
+            :title="t().summary.goTo(itemLabel(k, n + 1))"
+            @click="goTo(k)"
+            @keydown.enter.space.self.prevent="goTo(k)"
+          >
+            <TriCheckbox
+              :state="isBilled(k) ? 'on' : 'off'"
+              :label="t().summary.billed(itemLabel(k, n + 1))"
+              @click.stop
+              @toggle="toggleItem(k)"
+            />
+            <span class="name">{{ itemLabel(k, n + 1) }}</span>
+            <em :class="{ off: !isBilled(k) }">{{
+              isBilled(k) ? formatNT(each(l.type)) : t().summary.unbilled
+            }}</em>
+          </div>
+        </div>
+      </template>
+    </template>
     <div v-if="!cost.lines.length" class="empty">{{ t().summary.empty }}</div>
   </div>
 
@@ -107,21 +205,71 @@ function onSlotsInput(e: Event) {
 }
 .crow {
   display: flex;
-  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
   font-size: 13px;
-  padding: 6px;
+  padding: 4px 6px;
   border-radius: 6px;
 }
-.crow:nth-child(odd) {
+.crow:hover {
   background: var(--paper);
 }
-.crow em {
+.crow > em {
+  margin-left: auto;
+  font: 500 12px var(--mono);
+  font-style: normal;
+  white-space: nowrap;
+}
+.crow > em.off {
+  color: var(--faint);
+  font-family: inherit;
+}
+.crow[role='button'] {
+  cursor: pointer;
+  user-select: none;
+}
+.crow[role='button']:focus-visible {
+  outline: 2px solid var(--yel);
+  outline-offset: -2px;
+}
+.name {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 0;
+}
+.name em {
+  color: var(--faint);
   font: 500 12px var(--mono);
   font-style: normal;
 }
-.crow span em {
-  color: var(--faint);
-  margin-left: 4px;
+.chev {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: var(--faint);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform 0.2s;
+}
+.chev.closed {
+  transform: rotate(-90deg);
+}
+.kids {
+  margin: 0 0 4px 13px;
+  padding-left: 10px;
+  border-left: 1px solid var(--line);
+}
+.kid {
+  font-size: 12.5px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .chev {
+    transition: none;
+  }
 }
 .empty {
   font-size: 12.5px;

@@ -1,5 +1,5 @@
 import { computed, shallowRef, watch } from 'vue'
-import { defineStore } from 'pinia'
+import { acceptHMRUpdate, defineStore } from 'pinia'
 import type { SelectionInfo } from '@/venue/VenueEditor'
 import type { FurnitureType } from '@/venue/furniture'
 import {
@@ -124,3 +124,7 @@ export const usePlannerStore = defineStore('planner', () => {
     notify,
   }
 })
+
+// In dev, swap in the store's new setup when it (or a module it uses, like layout.ts) changes;
+// otherwise the running store keeps the old code, e.g. a stale cost summary
+if (import.meta.hot) import.meta.hot.accept(acceptHMRUpdate(usePlannerStore, import.meta.hot))

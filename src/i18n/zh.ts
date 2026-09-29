@@ -116,6 +116,9 @@ const zh = {
     empty: '尚未擺放物件，從上方拖曳到場地。',
     total: '租借總金額',
     free: '不計費',
+    billed: (name: string) => `${name}計入租借金額`,
+    goTo: (name: string) => `前往${name}`,
+    unbilled: '不計費',
   },
 
   sel: {
@@ -146,6 +149,8 @@ const zh = {
     tagColour: '標籤顏色',
     info: '資訊',
     infoLabel: '補充資訊',
+    billing: '計費',
+    billed: '計入租借金額',
     infoPlaceholder: '補充資訊，會在物件上方顯示 i 按鈕',
     rotate: '旋轉',
     ccw15: '逆時針 15° (Q)',

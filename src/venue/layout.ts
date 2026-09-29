@@ -36,6 +36,8 @@ export interface LayoutItem {
   tagColor?: string
   /** A note (補充資訊) opened from the ⓘ button above the item */
   info?: string
+  /** Rented items only: left out of the rental total (absent means it's billed) */
+  unbilled?: boolean
   /** People only: how many figures the item shows (1–6; absent means 1) */
   n?: number
   /** People and zones: colour as #rrggbb (absent means the default) */
@@ -56,7 +58,11 @@ export type PriceMode = 0 | 1
 /** One kind's rental cost; its name is shown with nameOf (i18n) */
 export interface CostLine {
   type: FurnitureType
+  /** Where this kind's items are in the layout, in order */
+  indices: number[]
+  /** How many are placed, and how many of those are billed */
   count: number
+  billed: number
   subtotal: number
 }
 
@@ -88,14 +94,24 @@ export const formatNT = (n: number) => 'NT$ ' + n.toLocaleString('en-US')
 
 export const clampSlots = (n: number) => Math.max(1, Math.min(MAX_SLOTS, Math.trunc(n) || 1))
 
+/** Rental cost per kind; items marked `unbilled` are listed but not charged */
 export function summarizeCost(items: readonly LayoutItem[], priceMode: PriceMode, slots: number) {
-  const counts = new Map<FurnitureType, number>()
-  for (const i of items) counts.set(i.t, (counts.get(i.t) ?? 0) + 1)
+  const byType = new Map<FurnitureType, number[]>()
+  items.forEach((i, k) => byType.set(i.t, [...(byType.get(i.t) ?? []), k]))
   const lines: CostLine[] = FURNITURE_TYPES.flatMap((t) => {
-    const count = counts.get(t) ?? 0
+    const indices = byType.get(t) ?? []
     const price = priceOf(t)
-    if (!count || !price) return []
-    return [{ type: t, count, subtotal: price[priceMode] * count * slots }]
+    if (!indices.length || !price) return []
+    const billed = indices.filter((k) => !items[k]!.unbilled).length
+    return [
+      {
+        type: t,
+        indices,
+        count: indices.length,
+        billed,
+        subtotal: price[priceMode] * billed * slots,
+      },
+    ]
   })
   return { lines, total: lines.reduce((s, l) => s + l.subtotal, 0) }
 }
@@ -148,6 +164,7 @@ export function parseLayout(data: unknown): LayoutItem[] {
         ...(tagColor ? { tagColor } : {}),
         ...(info ? { info } : {}),
         ...(sit ? { sit } : {}),
+        ...(priceOf(t) && i.unbilled === true ? { unbilled: true } : {}),
         ...(t === 'laptop' && i.open !== undefined ? { open: clampLid(i.open) } : {}),
         ...(t === 'zone' ? { w: clampZone(i.w, 2), d: clampZone(i.d, 2) } : {}),
       },

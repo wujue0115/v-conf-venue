@@ -280,3 +280,29 @@ describe('laptops', () => {
     expect(w16).toBeGreaterThan(w13)
   })
 })
+
+describe('billing', () => {
+  it('lists unbilled items but leaves them out of the total', () => {
+    const items = parseLayout([
+      { t: 'table2', x: 0, z: 0, r: 0 },
+      { t: 'table2', x: 1, z: 0, r: 0, unbilled: true },
+      { t: 'studentChair', x: 0, z: 1, r: 0, unbilled: true },
+    ])
+    const { lines, total } = summarizeCost(items, 0, 1)
+    expect(lines.map((l) => [l.type, l.indices, l.count, l.billed])).toEqual([
+      ['studentChair', [2], 1, 0],
+      ['table2', [0, 1], 2, 1],
+    ])
+    expect(lines.find((l) => l.type === 'studentChair')?.subtotal).toBe(0)
+    expect(total).toBe(lines.find((l) => l.type === 'table2')!.subtotal)
+    expect(total).toBeGreaterThan(0)
+  })
+
+  it('keeps the flag only on rented items', () => {
+    const [a, b] = parseLayout([
+      { t: 'table2', x: 0, z: 0, r: 0, unbilled: true },
+      { t: 'person', x: 0, z: 0, r: 0, unbilled: true },
+    ])
+    expect([a?.unbilled, b?.unbilled]).toEqual([true, undefined])
+  })
+})
