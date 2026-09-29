@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, shallowRef, useTemplateRef } from 'vue'
+import ColorPickerDialog from './ColorPickerDialog.vue'
 import { t } from '@/i18n'
 
 /*
@@ -42,19 +43,24 @@ function confirmEdit() {
 
 const dialog = useTemplateRef('dialog')
 const grid = useTemplateRef('grid')
-const tuner = useTemplateRef('tuner')
+/** Every colour here is chosen in vue-color's ChromePicker, in its own small window */
+const picker = useTemplateRef('picker')
 
-/** A colour from the picker: applied, and added to the row if it's new */
-function pickCustom(e: Event) {
-  const c = (e.target as HTMLInputElement).value.toLowerCase()
+/**
+ * The custom chip: a colour chosen in the picker is applied (one undo step, on 確定), and
+ * added to the row if it's new
+ */
+async function pickCustom() {
+  const c = await picker.value?.open(props.value)
+  if (!c) return
   emit('pick', c)
   if (!props.colors.includes(c)) emit('update:colors', [...props.colors, c])
 }
 
 /** + in the editor: a new colour joins the end of the draft (without being applied) */
-function addColour(e: Event) {
-  const c = (e.target as HTMLInputElement).value.toLowerCase()
-  if (!draft.value.includes(c)) draft.value = [...draft.value, c]
+async function addColour() {
+  const c = await picker.value?.open(draft.value.at(-1) ?? props.value)
+  if (c && !draft.value.includes(c)) draft.value = [...draft.value, c]
 }
 
 function remove(i: number) {
@@ -66,26 +72,14 @@ function onDialogClick(e: MouseEvent) {
   if (e.target === dialog.value) dialog.value?.close()
 }
 
-/** Retuning a chip: the picker opens on its colour, and its choice replaces it in place */
-let tuning = -1
-function tune(i: number) {
-  const input = tuner.value
-  if (!input) return
-  tuning = i
-  input.value = draft.value[i]!
-  try {
-    input.showPicker()
-  } catch {
-    input.click()
-  }
-}
-function onTuned(e: Event) {
-  if (tuning < 0) return
+/** Retuning a line: the picker opens on its colour, and its choice replaces it in place */
+async function tune(i: number) {
+  const c = await picker.value?.open(draft.value[i]!)
+  if (!c) return
   const list = [...draft.value]
-  list[tuning] = (e.target as HTMLInputElement).value.toLowerCase()
+  list[i] = c
   // a colour the row already has merges into its earlier line
   draft.value = once(list)
-  tuning = -1
 }
 
 /*
@@ -181,15 +175,15 @@ onBeforeUnmount(unlisten)
       :aria-label="c"
       @click="emit('pick', c)"
     ></button>
-    <!-- the colour picker applies on close (change), so dragging through colours isn't one undo step each -->
-    <label
+    <button
       class="chip custom"
       :class="{ on: !colors.includes(value) }"
       :style="colors.includes(value) ? undefined : { background: value }"
+      type="button"
       :title="t().customColour"
-    >
-      <input type="color" :value="value" :aria-label="t().customColour" @change="pickCustom" />
-    </label>
+      :aria-label="t().customColour"
+      @click="pickCustom"
+    ></button>
     <button
       class="chip tool"
       type="button"
@@ -253,11 +247,10 @@ onBeforeUnmount(unlisten)
               </div>
             </div>
           </TransitionGroup>
-          <label class="line add">
+          <button class="line add" type="button" @click="addColour">
             <span class="chip plus" aria-hidden="true">+</span>
             {{ t().colourRow.add }}
-            <input type="color" :aria-label="t().colourRow.add" @change="addColour" />
-          </label>
+          </button>
         </div>
         <div class="foot">
           <button class="txt reset" type="button" @click="draft = [...defaults]">
@@ -270,17 +263,9 @@ onBeforeUnmount(unlisten)
             {{ t().colourRow.done }}
           </button>
         </div>
-        <!-- the picker a tapped chip is retuned with -->
-        <input
-          ref="tuner"
-          class="tuner"
-          type="color"
-          tabindex="-1"
-          aria-hidden="true"
-          @change="onTuned"
-        />
       </div>
     </dialog>
+    <ColorPickerDialog ref="picker" />
   </div>
 </template>
 
@@ -314,15 +299,6 @@ onBeforeUnmount(unlisten)
 /* rainbow until a custom colour is chosen */
 .custom {
   background: conic-gradient(#f44, #fd4, #4d6, #4bf, #84f, #f4a, #f44);
-}
-.custom input,
-.add input {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  opacity: 0;
-  cursor: pointer;
 }
 .tool {
   display: grid;
@@ -474,6 +450,10 @@ p {
 }
 .add {
   position: relative;
+  width: 100%;
+  border: 0;
+  font: inherit;
+  text-align: left;
   gap: 10px;
   /* line padding + grip + gap + the colour button's padding: its circle sits under theirs */
   padding-left: calc(4px + 20px + 6px + 4px);
@@ -517,16 +497,6 @@ p {
   background: var(--yel);
   color: var(--ink);
   font-weight: 600;
-}
-/* hidden, but able to open its picker near the window */
-.tuner {
-  position: absolute;
-  left: 16px;
-  bottom: 16px;
-  width: 1px;
-  height: 1px;
-  opacity: 0;
-  pointer-events: none;
 }
 .chip-move {
   transition: transform 0.2s ease;

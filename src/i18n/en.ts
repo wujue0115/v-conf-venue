@@ -219,6 +219,7 @@ const en: Messages = {
     remove: (c: string) => `Remove ${c}`,
     reset: 'Reset',
     cancel: 'Cancel',
+    ok: 'OK',
     done: 'Done',
   },
 

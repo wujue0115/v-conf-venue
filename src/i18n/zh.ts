@@ -223,6 +223,7 @@ const zh = {
     remove: (c: string) => `刪除 ${c}`,
     reset: '重設',
     cancel: '取消',
+    ok: '確定',
     done: '完成',
   },
 

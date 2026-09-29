@@ -21,6 +21,7 @@
     "pinia": "^4.0.3",
     "three": "^0.184.0",
     "vue": "^3.5.42",
+    "vue-color": "^3.3.3",
     "vue-router": "^5.3.1"
   },
   "devDependencies": {
