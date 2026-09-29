@@ -210,6 +210,17 @@ const en: Messages = {
     add: (tag: string) => `Add “${tag}”`,
   },
   customColour: 'Custom colour',
+  colourRow: {
+    edit: 'Edit colours',
+    editHint: 'Drag a handle to reorder, tap a colour to change it, × to remove it',
+    drag: 'Drag to reorder',
+    add: 'Add a colour',
+    tune: (c: string) => `Change ${c}`,
+    remove: (c: string) => `Remove ${c}`,
+    reset: 'Reset',
+    cancel: 'Cancel',
+    done: 'Done',
+  },
 
   settings: {
     title: 'Settings',

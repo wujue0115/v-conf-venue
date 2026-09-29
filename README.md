@@ -27,6 +27,7 @@ photos in the rental chart (家具設備租借費用圖表). Both are kept in [`
 * Rotate, duplicate, delete, or lay out selected items in rows and columns
 * Show or hide items, their tags or their notes by kind from the settings panel
 * Switch the interface between 中文 and English in the settings panel (the first visit follows the browser's language)
+* Colour rows grow with every custom colour you pick, and can be reordered by dragging, retuned, pruned or reset (kept in the browser and exported with the layout)
 * Pick a colour for pieces that come in more than one (high stool, shaped sofa)
 * Place stanchions and have belts link neighbouring posts automatically; click a belt to remove it
 * Add people to the venue and seat them on chairs, sofas or A2's fixed seats

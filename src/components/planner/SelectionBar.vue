@@ -5,11 +5,11 @@ import TagCombobox from './TagCombobox.vue'
 import TriCheckbox from './TriCheckbox.vue'
 import { useFurnitureThumbnails } from '@/composables/useFurnitureThumbnails'
 import { useVenueEditor } from '@/composables/useVenueEditor'
+import { DEFAULT_PALETTES, usePalettesStore } from '@/stores/palettes'
 import { usePlannerStore } from '@/stores/planner'
 import {
   FURNITURE,
   PEOPLE_MAX,
-  PERSON_COLOR,
   TAG_COLOR,
   isWallItem,
   onTableOnly,
@@ -22,7 +22,6 @@ import { POSTER_PRESETS, readPosterImage, type PosterFit } from '@/venue/poster'
 import { INFO_MAX, TAG_MAX, formatNT } from '@/venue/layout'
 import { nameOf, t, variantLabel, variantName } from '@/i18n'
 import { BELT_MAX } from '@/venue/stanchions'
-import { ZONE_COLOR } from '@/venue/zone'
 
 const store = usePlannerStore()
 const editor = useVenueEditor()
@@ -34,14 +33,8 @@ const dx = shallowRef(1)
 const dz = shallowRef(1)
 
 const sel = computed(() => store.selection)
-/**
- * Quick picks for people's colour: a light skin tone by default, then soft tints so figures
- * don't overpower the furniture. The last chip opens a colour picker.
- */
-const PERSON_COLORS = [PERSON_COLOR, '#42b883', '#8fb3d9', '#f2cf73', '#ec9a93', '#8a8f99']
-const ZONE_COLORS = [ZONE_COLOR, '#4a90d9', '#edb32a', '#e57373', '#9575cd', '#8a8f99']
-/** Quick picks for a tag on anything but a person or zone */
-const TAG_COLORS = [TAG_COLOR, '#42b883', '#4a90d9', '#edb32a', '#e57373', '#9575cd']
+/** The colour rows people pick from (and can edit): people's, zones' and tags' */
+const palettes = usePalettesStore()
 /**
  * Tags already used in the layout, most used first. Zones keep their own tag list, so a zone
  * never suggests another item's tag and the other way round.
@@ -273,7 +266,9 @@ const generate = () =>
       <div class="ctl">
         <ColorChips
           :value="sel.groupColor ?? TAG_COLOR"
-          :colors="TAG_COLORS"
+          :colors="palettes.palettes.tag"
+          @update:colors="palettes.setPalette('tag', $event)"
+          :defaults="DEFAULT_PALETTES.tag"
           :label="t().sel.tagColour"
           @pick="editor?.setGroupColor($event)"
         />
@@ -438,7 +433,9 @@ const generate = () =>
         <div class="ctl">
           <ColorChips
             :value="sel.people.color"
-            :colors="PERSON_COLORS"
+            :colors="palettes.palettes.person"
+            @update:colors="palettes.setPalette('person', $event)"
+            :defaults="DEFAULT_PALETTES.person"
             :label="t().sel.personColour"
             @pick="editor?.setPeople({ color: $event })"
           />
@@ -477,7 +474,9 @@ const generate = () =>
         <div class="ctl">
           <ColorChips
             :value="sel.zone.color"
-            :colors="ZONE_COLORS"
+            :colors="palettes.palettes.zone"
+            @update:colors="palettes.setPalette('zone', $event)"
+            :defaults="DEFAULT_PALETTES.zone"
             :label="t().sel.zoneColour"
             @pick="editor?.setZone({ color: $event })"
           />
@@ -494,7 +493,9 @@ const generate = () =>
         <div class="ctl">
           <ColorChips
             :value="sel.tagColor"
-            :colors="TAG_COLORS"
+            :colors="palettes.palettes.tag"
+            @update:colors="palettes.setPalette('tag', $event)"
+            :defaults="DEFAULT_PALETTES.tag"
             :label="t().sel.tagColour"
             @pick="editor?.setTagColor($event)"
           />

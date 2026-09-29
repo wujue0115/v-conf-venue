@@ -214,6 +214,17 @@ const zh = {
     add: (tag: string) => `新增「${tag}」`,
   },
   customColour: '自訂顏色',
+  colourRow: {
+    edit: '編輯顏色',
+    editHint: '拖曳左側把手調整順序，點顏色調整，× 刪除',
+    drag: '拖曳調整順序',
+    add: '新增顏色',
+    tune: (c: string) => `調整 ${c}`,
+    remove: (c: string) => `刪除 ${c}`,
+    reset: '重設',
+    cancel: '取消',
+    done: '完成',
+  },
 
   settings: {
     title: '設定',

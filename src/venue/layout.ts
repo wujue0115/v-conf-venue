@@ -222,8 +222,21 @@ export function parseLayout(data: unknown): LayoutItem[] {
   })
 }
 
-export function exportLayout(items: readonly LayoutItem[]) {
-  return JSON.stringify({ venue: 'NCCU-CPBAE-A2F', event: 'VueConf Taiwan 2026', items }, null, 2)
+/** The exported file: the items, and (when given) the colour rows people pick from */
+export function exportLayout(
+  items: readonly LayoutItem[],
+  palettes?: Record<string, readonly string[]>,
+) {
+  return JSON.stringify(
+    {
+      venue: 'NCCU-CPBAE-A2F',
+      event: 'VueConf Taiwan 2026',
+      items,
+      ...(palettes ? { palettes } : {}),
+    },
+    null,
+    2,
+  )
 }
 
 export function demoLayout(): LayoutItem[] {

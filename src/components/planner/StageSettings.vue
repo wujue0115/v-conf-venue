@@ -5,8 +5,10 @@ import { LOCALES, LOCALE_NAMES, locale, t } from '@/i18n'
 import { useVenueEditor } from '@/composables/useVenueEditor'
 import { usePlannerStore } from '@/stores/planner'
 import { exportLayout, parseLayout } from '@/venue/layout'
+import { usePalettesStore } from '@/stores/palettes'
 
 const store = usePlannerStore()
+const palettes = usePalettesStore()
 const editor = useVenueEditor()
 const open = shallowRef(false)
 const root = useTemplateRef('root')
@@ -52,7 +54,9 @@ function stamp(d = new Date()) {
 }
 
 function download() {
-  const blob = new Blob([exportLayout(store.items)], { type: 'application/json' })
+  const blob = new Blob([exportLayout(store.items, palettes.palettes)], {
+    type: 'application/json',
+  })
   const a = document.createElement('a')
   a.href = URL.createObjectURL(blob)
   a.download = `v-conf-taiwan-venue-${stamp()}.json`
@@ -65,7 +69,10 @@ async function onFile(e: Event) {
   const f = input.files?.[0]
   if (!f) return
   try {
-    editor.value?.load(parseLayout(JSON.parse(await f.text())), { record: true })
+    const file: unknown = JSON.parse(await f.text())
+    editor.value?.load(parseLayout(file), { record: true })
+    // the colour rows it was made with come along too
+    palettes.importPalettes(file)
     store.notify(t().settings.imported)
   } catch {
     store.notify(t().settings.badFile)
