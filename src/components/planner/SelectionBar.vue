@@ -63,6 +63,25 @@ watch(
 )
 const saveInfo = () => editor.value?.setInfo(info.value)
 
+// A selected group's note, saved (one undo step) when the box loses focus
+const groupInfo = shallowRef('')
+watch(
+  () => sel.value?.groupInfo,
+  (v) => (groupInfo.value = v ?? ''),
+  { immediate: true },
+)
+/** Tags already on groups, most used first */
+const usedGroupTags = computed(() => {
+  const n = new Map<string, number>()
+  const seen = new Set<string>()
+  for (const i of store.items)
+    if (i.group && i.groupTag && !seen.has(i.group)) {
+      seen.add(i.group)
+      n.set(i.groupTag, (n.get(i.groupTag) ?? 0) + 1)
+    }
+  return [...n].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([tag]) => tag)
+})
+
 // A group's name, renamed when the box is committed; a name another group has is refused
 const groupName = shallowRef('')
 watch(
@@ -238,6 +257,39 @@ const generate = () =>
           @keydown.enter="($event.target as HTMLInputElement).blur()"
         />
         <button class="btn" @click="editor?.ungroup()">{{ t().grouping.ungroup }}</button>
+      </div>
+
+      <span class="lbl">{{ t().sel.tag }}</span>
+      <div class="ctl">
+        <TagCombobox
+          :value="sel.groupTag ?? ''"
+          :options="usedGroupTags"
+          @commit="editor?.setGroupTag($event)"
+        />
+      </div>
+
+      <!-- also the colour of the frame round the group while it is selected -->
+      <span class="lbl">{{ t().sel.tagColour }}</span>
+      <div class="ctl">
+        <ColorChips
+          :value="sel.groupColor ?? TAG_COLOR"
+          :colors="TAG_COLORS"
+          :label="t().sel.tagColour"
+          @pick="editor?.setGroupColor($event)"
+        />
+      </div>
+
+      <span class="lbl">{{ t().sel.info }}</span>
+      <div class="ctl">
+        <textarea
+          v-model="groupInfo"
+          class="info"
+          rows="2"
+          :maxlength="INFO_MAX"
+          :placeholder="t().sel.infoPlaceholder"
+          :aria-label="t().sel.infoLabel"
+          @change="editor?.setGroupInfo(groupInfo)"
+        ></textarea>
       </div>
     </div>
     <div v-else class="ctl">

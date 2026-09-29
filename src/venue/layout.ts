@@ -40,6 +40,13 @@ export interface LayoutItem {
   unbilled?: boolean
   /** The name of the group (群組) it belongs to; items with the same name are one group */
   group?: string
+  /**
+   * Its group's tag, tag colour (#rrggbb; also the frame round the selected group) and note.
+   * Every member carries them, so they travel with copies and survive any member's removal.
+   */
+  groupTag?: string
+  groupColor?: string
+  groupInfo?: string
   /** People only: how many figures the item shows (1–6; absent means 1) */
   n?: number
   /** People and zones: colour as #rrggbb (absent means the default) */
@@ -172,6 +179,9 @@ export function parseLayout(data: unknown): LayoutItem[] {
     const tag = cleanTag(i.tag)
     const info = cleanInfo(i.info)
     const group = cleanTag(i.group)
+    const groupTag = group ? cleanTag(i.groupTag) : ''
+    const groupColor = group && isHexColor(i.groupColor) ? i.groupColor.toLowerCase() : ''
+    const groupInfo = group ? cleanInfo(i.groupInfo) : ''
     const sit = t === 'person' && i.sit === true
     const n = t === 'person' && !sit ? clampPeople(i.n) : 1
     const coloured = t === 'person' || t === 'zone'
@@ -202,6 +212,9 @@ export function parseLayout(data: unknown): LayoutItem[] {
         ...(sit ? { sit } : {}),
         ...(priceOf(t) && i.unbilled === true ? { unbilled: true } : {}),
         ...(group ? { group } : {}),
+        ...(groupTag ? { groupTag } : {}),
+        ...(groupColor ? { groupColor } : {}),
+        ...(groupInfo ? { groupInfo } : {}),
         ...(t === 'laptop' && i.open !== undefined ? { open: clampLid(i.open) } : {}),
         ...(t === 'zone' ? { w: clampZone(i.w, 2), d: clampZone(i.d, 2) } : {}),
       },

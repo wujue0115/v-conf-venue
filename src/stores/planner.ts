@@ -50,6 +50,9 @@ export const usePlannerStore = defineStore('planner', () => {
   const hiddenTypes = shallowRef<readonly FurnitureType[]>([])
   /** Kinds of item whose tags are hidden (設定 → 標籤顯示); the tags are kept */
   const hiddenTagTypes = shallowRef<readonly FurnitureType[]>([])
+  /** Whether groups' tags and groups' ⓘ notes show (設定 → 標籤顯示 / 資訊顯示) */
+  const showGroupTags = shallowRef(true)
+  const showGroupInfo = shallowRef(true)
   /** Kinds of item whose ⓘ note buttons are hidden (設定 → 資訊顯示); the notes are kept */
   const hiddenInfoTypes = shallowRef<readonly FurnitureType[]>([])
   const toggled = (
@@ -124,6 +127,8 @@ export const usePlannerStore = defineStore('planner', () => {
     setTagTypesVisible,
     hiddenInfoTypes,
     setInfoTypesVisible,
+    showGroupTags,
+    showGroupInfo,
     sidebarCollapsed,
     toast,
     cost,

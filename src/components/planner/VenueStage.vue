@@ -50,6 +50,11 @@ watch([editor, () => store.hiddenTagTypes], ([ed, types]) => ed?.setHiddenTagTyp
 watch([editor, () => store.hiddenInfoTypes], ([ed, types]) => ed?.setHiddenInfoTypes(types), {
   immediate: true,
 })
+watch(
+  [editor, () => store.showGroupTags, () => store.showGroupInfo],
+  ([ed, tags, info]) => ed?.setGroupLabelsVisible({ tags, info }),
+  { immediate: true },
+)
 </script>
 
 <template>

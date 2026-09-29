@@ -9,9 +9,8 @@ import type { LayoutItem } from '@/venue/layout'
 
 /*
  * Show or hide something (items, their tags or notes) by kind. The root opens into 場地物件
- * and 其他物件, which open into each kind, plus an optional extra switch of its own (the
- * venue's room names under 標籤顯示); a parent's box is ticked, empty, or partial for its
- * children.
+ * and 其他物件, which open into each kind, plus optional switches of their own (the venue's
+ * room names, groups); a parent's box is ticked, empty, or partial for its children.
  */
 
 const props = defineProps<{
@@ -22,11 +21,11 @@ const props = defineProps<{
   /** Which placed items the counts include */
   count: (i: LayoutItem) => boolean
   /** A further on/off row under the root, not tied to a kind of item */
-  extra?: { label: string; on: boolean }
+  extras?: readonly { key: string; label: string; on: boolean }[]
 }>()
 const emit = defineEmits<{
   set: [types: readonly FurnitureType[], on: boolean]
-  extra: [on: boolean]
+  extra: [key: string, on: boolean]
 }>()
 
 const store = usePlannerStore()
@@ -48,17 +47,18 @@ function stateOf(types: readonly FurnitureType[]) {
 /** A ticked box hides all of its kinds; an empty or partial one shows them all */
 const toggle = (types: readonly FurnitureType[]) => emit('set', types, stateOf(types) !== 'on')
 
-/** The root counts the extra row as one more child */
+/** The root counts each extra row as one more child */
 const rootState = computed(() => {
-  const x = props.extra
-  if (!x) return stateOf(FURNITURE_TYPES)
-  const hidden = FURNITURE_TYPES.filter((t) => props.hidden.includes(t)).length + (x.on ? 0 : 1)
-  return hidden === 0 ? 'on' : hidden === FURNITURE_TYPES.length + 1 ? 'off' : 'some'
+  const xs = props.extras ?? []
+  const hidden =
+    FURNITURE_TYPES.filter((t) => props.hidden.includes(t)).length + xs.filter((x) => !x.on).length
+  const all = FURNITURE_TYPES.length + xs.length
+  return hidden === 0 ? 'on' : hidden === all ? 'off' : 'some'
 })
 function toggleRoot() {
   const on = rootState.value !== 'on'
   emit('set', FURNITURE_TYPES, on)
-  if (props.extra) emit('extra', on)
+  for (const x of props.extras ?? []) emit('extra', x.key, on)
 }
 
 const groups = computed(() =>
@@ -85,13 +85,13 @@ const groups = computed(() =>
 
     <CollapseBody :open="!!open.all">
       <div class="kids">
-        <label v-if="extra" class="node leaf">
+        <label v-for="x in extras" :key="x.key" class="node leaf">
           <TriCheckbox
-            :state="extra.on ? 'on' : 'off'"
-            :label="extra.label"
-            @toggle="emit('extra', !extra.on)"
+            :state="x.on ? 'on' : 'off'"
+            :label="x.label"
+            @toggle="emit('extra', x.key, !x.on)"
           />
-          <span class="name">{{ extra.label }}</span>
+          <span class="name">{{ x.label }}</span>
         </label>
         <template v-for="g in groups" :key="g.id">
           <div class="node">

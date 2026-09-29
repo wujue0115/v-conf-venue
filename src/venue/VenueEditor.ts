@@ -43,6 +43,10 @@ export interface SelectionInfo {
   count: number
   /** The group (群組) every selected item is in, if they share one */
   group?: string
+  /** That group's tag ('' when none), tag colour and note ('' when none) */
+  groupTag?: string
+  groupColor?: string
+  groupInfo?: string
   type: FurnitureType
   x: number
   z: number
@@ -222,17 +226,23 @@ export class VenueEditor {
   /** Per tag layer: where its tags are drawn, and each tagged object's element */
   private readonly tags: Record<
     TagKind,
-    { layer: HTMLElement | null; els: Map<THREE.Object3D, HTMLElement> }
+    /** keyed by the tagged item, or by `group:<name>` for a group's row */
+    { layer: HTMLElement | null; els: Map<THREE.Object3D | string, HTMLElement> }
   > = {
     item: { layer: null, els: new Map() },
     zone: { layer: null, els: new Map() },
   }
   /** Kinds of item whose tags are hidden (see setHiddenTagTypes) */
   private hiddenTags = new Set<FurnitureType>()
+  /** Whether groups' tags, and groups' ⓘ notes, are hidden (設定 → 標籤顯示 / 資訊顯示) */
+  private hiddenGroupTags = false
+  private hiddenGroupInfo = false
+  /** A frame around each group whose members are all selected, in the group's tag colour */
+  private readonly groupFrames = new Map<string, { box: THREE.Box3; helper: THREE.Box3Helper }>()
   /** Kinds of item whose ⓘ note buttons are hidden (see setHiddenInfoTypes) */
   private hiddenInfo = new Set<FurnitureType>()
   /** The item whose note (補充資訊) box is open from its ⓘ button */
-  private infoOpen: THREE.Object3D | null = null
+  private infoOpen: THREE.Object3D | string | null = null
   /** An unselected zone under the pointer: a click selects it, a drag still pans the camera */
   private zoneClick: THREE.Object3D | null = null
   private selected: THREE.Object3D | null = null
@@ -470,6 +480,12 @@ export class VenueEditor {
     this.hiddenTags = new Set(types)
   }
 
+  /** Show or hide groups' tags and groups' ⓘ notes (both are kept). */
+  setGroupLabelsVisible({ tags, info }: { tags?: boolean; info?: boolean }) {
+    if (tags !== undefined) this.hiddenGroupTags = !tags
+    if (info !== undefined) this.hiddenGroupInfo = !info
+  }
+
   /** Hide the ⓘ note buttons of every placed item of these kinds (the notes are kept). */
   setHiddenInfoTypes(types: readonly FurnitureType[]) {
     this.hiddenInfo = new Set(types)
@@ -695,11 +711,106 @@ export class VenueEditor {
     this.commit()
   }
 
-  /** The group every selected item is in, if they share one, as `{ group }` */
-  private sharedGroup() {
+  /** The group every selected item is in, if they share one, with its tag, colour and note */
+  private sharedGroup(): Pick<SelectionInfo, 'group' | 'groupTag' | 'groupColor' | 'groupInfo'> {
     const names = new Set(this.selection.map((o) => o.userData.group as string | undefined))
     const [g] = names
-    return names.size === 1 && g ? { group: g } : {}
+    if (names.size !== 1 || !g) return {}
+    const m = this.groupMeta(g)
+    return { group: g, groupTag: m.tag ?? '', groupColor: m.color, groupInfo: m.info ?? '' }
+  }
+
+  /**
+   * A group's tag, tag colour and note. Every member carries them; should they differ (after
+   * a merge), the first member that has one wins.
+   */
+  private groupMeta(name: string) {
+    let tag: string | undefined
+    let color: string | undefined
+    let info: string | undefined
+    for (const o of this.placed.children) {
+      if (o.userData.group !== name) continue
+      tag ??= o.userData.groupTag as string | undefined
+      color ??= o.userData.groupColor as string | undefined
+      info ??= o.userData.groupInfo as string | undefined
+    }
+    return { tag, color: color ?? TAG_COLOR, info }
+  }
+
+  /** Every group with members on show, and those members */
+  private groupsShown() {
+    const out = new Map<string, THREE.Object3D[]>()
+    for (const o of this.placed.children) {
+      const g = o.userData.group as string | undefined
+      if (g && o.visible) out.set(g, [...(out.get(g) ?? []), o])
+    }
+    return out
+  }
+
+  /** Set the shared group's tag, colour or note on all of its members (one undo step) */
+  private setGroupMeta(key: 'groupTag' | 'groupColor' | 'groupInfo', value: string) {
+    const g = this.sharedGroup().group
+    if (!g) return
+    const members = this.placed.children.filter((o) => o.userData.group === g)
+    if (members.every((o) => (o.userData[key] ?? '') === value)) return
+    this.pushUndo()
+    for (const o of members)
+      if (value) o.userData[key] = value
+      else delete o.userData[key]
+    this.updSel()
+    this.commit()
+  }
+
+  /** Tag the selected group; an empty tag removes it. */
+  setGroupTag(tag: string) {
+    this.setGroupMeta('groupTag', cleanTag(tag))
+  }
+
+  /** Colour the selected group's tag, and its frame when it is selected (#rrggbb). */
+  setGroupColor(color: string) {
+    if (isHexColor(color)) this.setGroupMeta('groupColor', color.toLowerCase())
+  }
+
+  /** Give the selected group a note; an empty one removes it. */
+  setGroupInfo(info: string) {
+    this.setGroupMeta('groupInfo', cleanInfo(info))
+  }
+
+  /**
+   * Frame each group whose shown members are all selected, in its tag colour, and let its
+   * members go without their own outlines while it is. Run every frame.
+   */
+  private updGroupFrames() {
+    const sel = new Set(this.selection)
+    const whole = new Map<string, THREE.Object3D[]>()
+    if (sel.size > 1)
+      for (const [name, members] of this.groupsShown())
+        if (members.length > 1 && members.every((o) => sel.has(o))) whole.set(name, members)
+    for (const [name, { helper }] of this.groupFrames)
+      if (!whole.has(name)) {
+        this.scene.remove(helper)
+        helper.dispose()
+        this.groupFrames.delete(name)
+      }
+    const framed = new Set([...whole.values()].flat())
+    for (const [name, members] of whole) {
+      let f = this.groupFrames.get(name)
+      if (!f) {
+        const box = new THREE.Box3()
+        const helper = new THREE.Box3Helper(box)
+        ;(helper.material as THREE.Material).depthTest = false
+        helper.renderOrder = 999
+        this.scene.add(helper)
+        f = { box, helper }
+        this.groupFrames.set(name, f)
+      }
+      f.box.makeEmpty()
+      for (const o of members) f.box.expandByObject(o)
+      f.box.expandByScalar(0.12)
+      ;(f.helper.material as THREE.LineBasicMaterial).color.set(this.groupMeta(name).color)
+    }
+    this.selHelper.visible = !!this.selected && !framed.has(this.selected)
+    for (const [o, { helper }] of this.groupBoxes) helper.visible = !framed.has(o)
   }
 
   /** Put the selected items into a new group (群組), named 群組 1, 群組 2… */
@@ -710,7 +821,11 @@ export class VenueEditor {
     let n = 1
     while (used.has(t().grouping.defaultName(n))) n++
     this.pushUndo()
-    for (const o of all) o.userData.group = t().grouping.defaultName(n)
+    for (const o of all) {
+      o.userData.group = t().grouping.defaultName(n)
+      // a new group starts with no tag or note of its own
+      for (const k of ['groupTag', 'groupColor', 'groupInfo']) delete o.userData[k]
+    }
     this.updSel()
     this.commit()
   }
@@ -720,7 +835,8 @@ export class VenueEditor {
     const all = this.selection.filter((o) => o.userData.group)
     if (!all.length) return
     this.pushUndo()
-    for (const o of all) delete o.userData.group
+    for (const o of all)
+      for (const k of ['group', 'groupTag', 'groupColor', 'groupInfo']) delete o.userData[k]
     this.updSel()
     this.commit()
   }
@@ -1131,6 +1247,9 @@ export class VenueEditor {
     info,
     unbilled,
     group,
+    groupTag,
+    groupColor,
+    groupInfo,
     n,
     color,
     sit,
@@ -1149,6 +1268,9 @@ export class VenueEditor {
     if (info) o.userData.info = info
     if (unbilled) o.userData.unbilled = true
     if (group) o.userData.group = group
+    if (groupTag) o.userData.groupTag = groupTag
+    if (groupColor) o.userData.groupColor = groupColor
+    if (groupInfo) o.userData.groupInfo = groupInfo
     if (t === 'person' && (n || color || sit)) applyPeople(o, n, color, sit)
     if (t === 'zone' && w && d) applyZone(o, { w, d, color })
     if (t === 'laptop' && open !== undefined) setLaptopOpen(o, open)
@@ -1180,6 +1302,9 @@ export class VenueEditor {
       ...(ud.info ? { info: ud.info as string } : {}),
       ...(ud.unbilled ? { unbilled: true } : {}),
       ...(ud.group ? { group: ud.group as string } : {}),
+      ...(ud.group && ud.groupTag ? { groupTag: ud.groupTag as string } : {}),
+      ...(ud.group && ud.groupColor ? { groupColor: ud.groupColor as string } : {}),
+      ...(ud.group && ud.groupInfo ? { groupInfo: ud.groupInfo as string } : {}),
       ...(ud.n ? { n: ud.n as number } : {}),
       ...(ud.color ? { color: ud.color as string } : {}),
       ...(ud.sit ? { sit: true } : {}),
@@ -2459,6 +2584,7 @@ export class VenueEditor {
       if (this.handles.visible) this.updHandles()
     }
     for (const [o, { box }] of this.groupBoxes) box.setFromObject(o)
+    this.updGroupFrames()
     this.renderer.render(this.scene, camera)
     if (this.labelsVisible) this.layoutLabels()
     this.layoutTags('item')
@@ -2469,59 +2595,33 @@ export class VenueEditor {
    * Keep one tag row per tagged or annotated object of this kind and pin it on screen: people's
    * above their head, other items' just above their top, zones' raised above the zone's centre
    * on a leader line. A row is the tag pill (unless its kind's tags are hidden) and, for an
-   * item with a note, an ⓘ button to its right that opens the note in a box above.
+   * item with a note, an ⓘ button to its right that opens the note in a box above. Groups'
+   * rows (with the items') sit above the middle of the whole group.
    */
   private layoutTags(kind: TagKind) {
     const { layer, els } = this.tags[kind]
     if (!layer) return
-    const w = this.stageEl.clientWidth
-    const h = this.stageEl.clientHeight
-    const v = this.v
-    const seen = new Set<THREE.Object3D>()
+    const seen = new Set<THREE.Object3D | string>()
+    const row = (key: THREE.Object3D | string) => {
+      seen.add(key)
+      let el = els.get(key)
+      if (!el) {
+        el = this.tagRow(key, kind)
+        layer.append(el)
+        els.set(key, el)
+      }
+      return el
+    }
     for (const o of this.placed.children) {
       const tag = o.userData.tag as string | undefined
       const type = o.userData.type as FurnitureType
       const info = this.hiddenInfo.has(type) ? undefined : (o.userData.info as string | undefined)
       const showTag = !!tag && !this.hiddenTags.has(type)
       if (!o.visible || tagKindOf(o) !== kind || (!showTag && !info)) continue
-      seen.add(o)
-      let el = els.get(o)
-      if (!el) {
-        el = this.tagRow(o, kind)
-        layer.append(el)
-        els.set(o, el)
-      }
-      const pill = el.children[0] as HTMLElement
-      const btn = el.children[1] as HTMLElement
-      const box = el.children[2] as HTMLElement
-      pill.hidden = !showTag
-      // beside a tag the ⓘ wears the tag's colour; alone it stays light
-      el.classList.toggle('tagged', showTag)
-      if (showTag && pill.textContent !== tag) pill.textContent = tag
-      btn.hidden = !info
-      // follows the language, which can change while the row is up
-      const label = t().sel.infoLabel
-      if (info && btn.title !== label) {
-        btn.title = label
-        btn.setAttribute('aria-label', label)
-      }
-      const open = !!info && this.infoOpen === o
-      box.hidden = !open
-      if (open && box.textContent !== info) box.textContent = info
-      // items' rows sit over zones', and the row with an open note over everything
-      el.style.zIndex = open ? '2' : kind === 'item' ? '1' : ''
-      // a person's or zone's tag wears its colour, anything else's its own tag colour, with
-      // dark or white text depending on how light it is
+      // a person's or zone's tag wears its colour, anything else's its own tag colour
       const c = ownTagColor(o)
         ? ((o.userData.tagColor as string | undefined) ?? TAG_COLOR)
         : ((o.userData.color as string | undefined) ?? (isZone(o) ? ZONE_COLOR : PERSON_COLOR))
-      if (el.dataset.c !== c) {
-        el.dataset.c = c
-        el.style.setProperty('--tc', c)
-        el.style.setProperty('--tt', isLight(c) ? '#1f2126' : '#fff')
-        // the tag's colour as a line or text on white: a pale one is darkened to stay visible
-        el.style.setProperty('--ti', isLight(c) ? `color-mix(in srgb, ${c} 55%, #000)` : c)
-      }
       const above = isZone(o)
         ? 0.02
         : isPerson(o)
@@ -2529,31 +2629,87 @@ export class VenueEditor {
             ? SEATED_TAG_Y
             : PERSON_TAG_Y
           : tagBox.setFromObject(o).max.y - o.position.y + TAG_CLEARANCE
-      v.set(o.position.x, o.position.y + above, o.position.z).project(this.camera)
-      if (v.z > 1 || Math.abs(v.x) > 1.2 || Math.abs(v.y) > 1.2) {
-        el.style.display = 'none'
-        continue
-      }
-      el.style.display = ''
-      // the tag (or, without one, the ⓘ) is centred over the point; the ⓘ follows to its right
-      const anchor = showTag ? pill : btn
-      const x = ((v.x + 1) / 2) * w - anchor.offsetLeft - anchor.offsetWidth / 2
-      // the row sits above its point; a zone's is raised on a leader line down to its centre
-      const lift = kind === 'zone' && showTag ? ZONE_TAG_LIFT : 0
-      const y = ((1 - v.y) / 2) * h - el.offsetHeight - lift
-      el.style.transform = `translate(${x.toFixed(1)}px,${y.toFixed(1)}px)`
-      if (open) box.style.left = `${btn.offsetLeft + btn.offsetWidth / 2}px`
+      this.v.set(o.position.x, o.position.y + above, o.position.z)
+      this.placeRow(row(o), kind, showTag ? tag : undefined, info, c, this.infoOpen === o)
     }
-    for (const [o, el] of els)
-      if (!seen.has(o)) {
+    if (kind === 'item')
+      for (const [name, members] of this.groupsShown()) {
+        const m = this.groupMeta(name)
+        const tag = this.hiddenGroupTags ? undefined : m.tag
+        const info = this.hiddenGroupInfo ? undefined : m.info
+        if (!tag && !info) continue
+        const key = `group:${name}`
+        tagBox.makeEmpty()
+        for (const o of members) tagBox.expandByObject(o)
+        tagBox.getCenter(this.v).setY(tagBox.max.y + TAG_CLEARANCE)
+        this.placeRow(row(key), kind, tag, info, m.color, this.infoOpen === key)
+      }
+    for (const [key, el] of els)
+      if (!seen.has(key)) {
         el.remove()
-        els.delete(o)
-        if (this.infoOpen === o) this.infoOpen = null
+        els.delete(key)
+        if (this.infoOpen === key) this.infoOpen = null
       }
   }
 
-  /** A tag row's elements: the pill, the ⓘ button (toggles its item's note) and the note box */
-  private tagRow(o: THREE.Object3D, kind: TagKind) {
+  /**
+   * Fill in and pin one tag row over the world point in `this.v`: its tag pill (when `tag`),
+   * its ⓘ (when `info`) and, when `open`, the note, all in colour `c` with readable text.
+   */
+  private placeRow(
+    el: HTMLElement,
+    kind: TagKind,
+    tag: string | undefined,
+    info: string | undefined,
+    c: string,
+    open: boolean,
+  ) {
+    const pill = el.children[0] as HTMLElement
+    const btn = el.children[1] as HTMLElement
+    const box = el.children[2] as HTMLElement
+    pill.hidden = !tag
+    // beside a tag the ⓘ wears the tag's colour; alone it stays light
+    el.classList.toggle('tagged', !!tag)
+    if (tag && pill.textContent !== tag) pill.textContent = tag
+    btn.hidden = !info
+    // follows the language, which can change while the row is up
+    const label = t().sel.infoLabel
+    if (info && btn.title !== label) {
+      btn.title = label
+      btn.setAttribute('aria-label', label)
+    }
+    open &&= !!info
+    box.hidden = !open
+    if (open && box.textContent !== info) box.textContent = info!
+    // items' rows sit over zones', and the row with an open note over everything
+    el.style.zIndex = open ? '2' : kind === 'item' ? '1' : ''
+    if (el.dataset.c !== c) {
+      el.dataset.c = c
+      el.style.setProperty('--tc', c)
+      el.style.setProperty('--tt', isLight(c) ? '#1f2126' : '#fff')
+      // the tag's colour as a line or text on white: a pale one is darkened to stay visible
+      el.style.setProperty('--ti', isLight(c) ? `color-mix(in srgb, ${c} 55%, #000)` : c)
+    }
+    const v = this.v.project(this.camera)
+    if (v.z > 1 || Math.abs(v.x) > 1.2 || Math.abs(v.y) > 1.2) {
+      el.style.display = 'none'
+      return
+    }
+    el.style.display = ''
+    // the tag (or, without one, the ⓘ) is centred over the point; the ⓘ follows to its right
+    const anchor = tag ? pill : btn
+    const w = this.stageEl.clientWidth
+    const h = this.stageEl.clientHeight
+    const x = ((v.x + 1) / 2) * w - anchor.offsetLeft - anchor.offsetWidth / 2
+    // the row sits above its point; a zone's is raised on a leader line down to its centre
+    const lift = kind === 'zone' && tag ? ZONE_TAG_LIFT : 0
+    const y = ((1 - v.y) / 2) * h - el.offsetHeight - lift
+    el.style.transform = `translate(${x.toFixed(1)}px,${y.toFixed(1)}px)`
+    if (open) box.style.left = `${btn.offsetLeft + btn.offsetWidth / 2}px`
+  }
+
+  /** A tag row's elements: the pill, the ⓘ button (toggles its note) and the note box */
+  private tagRow(key: THREE.Object3D | string, kind: TagKind) {
     const el = document.createElement('div')
     el.className = 'trow'
     const pill = document.createElement('span')
@@ -2563,7 +2719,7 @@ export class VenueEditor {
     btn.className = 'tinfo'
     btn.textContent = 'i'
     btn.addEventListener('click', () => {
-      this.infoOpen = this.infoOpen === o ? null : o
+      this.infoOpen = this.infoOpen === key ? null : key
     })
     const box = document.createElement('div')
     box.className = 'tbox'

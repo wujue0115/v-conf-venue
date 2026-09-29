@@ -178,9 +178,14 @@ onBeforeUnmount(unlisten)
           :root="t().settings.allTags"
           :hidden="store.hiddenTagTypes"
           :count="(i) => !!i.tag"
-          :extra="{ label: t().settings.roomLabels, on: store.showLabels }"
+          :extras="[
+            { key: 'rooms', label: t().settings.roomLabels, on: store.showLabels },
+            { key: 'groups', label: t().grouping.label, on: store.showGroupTags },
+          ]"
           @set="store.setTagTypesVisible"
-          @extra="store.showLabels = $event"
+          @extra="
+            (key, on) => (key === 'rooms' ? (store.showLabels = on) : (store.showGroupTags = on))
+          "
         />
       </section>
 
@@ -190,7 +195,9 @@ onBeforeUnmount(unlisten)
           :root="t().settings.allNotes"
           :hidden="store.hiddenInfoTypes"
           :count="(i) => !!i.info"
+          :extras="[{ key: 'groups', label: t().grouping.label, on: store.showGroupInfo }]"
           @set="store.setInfoTypesVisible"
+          @extra="(_, on) => (store.showGroupInfo = on)"
         />
       </section>
 

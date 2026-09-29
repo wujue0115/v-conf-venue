@@ -326,6 +326,25 @@ describe('groups', () => {
     expect(groups[0]!.subtotal).toBe(lines[0]!.subtotal)
   })
 
+  it('keeps the tag, colour and note of a group only on grouped items', () => {
+    const [a, b] = parseLayout([
+      {
+        t: 'table2',
+        x: 0,
+        z: 0,
+        r: 0,
+        group: '報到區',
+        groupTag: ' 報到 ',
+        groupColor: '#E57373',
+        groupInfo: '9:00 開放\r\n',
+      },
+      { t: 'table2', x: 1, z: 0, r: 0, groupTag: '報到', groupColor: '#e57373' },
+    ])
+    expect([a?.groupTag, a?.groupColor, a?.groupInfo]).toEqual(['報到', '#e57373', '9:00 開放'])
+    expect(b).not.toHaveProperty('groupTag')
+    expect(b).not.toHaveProperty('groupColor')
+  })
+
   it('drops blank group names', () => {
     const [a] = parseLayout([{ t: 'table2', x: 0, z: 0, r: 0, group: '   ' }])
     expect(a).not.toHaveProperty('group')
