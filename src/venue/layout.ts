@@ -11,7 +11,6 @@ import {
   priceOf,
   resolveVariant,
   takesImage,
-  takesTag,
   PEOPLE_MAX,
   type FurnitureType,
 } from './furniture'
@@ -32,8 +31,10 @@ export interface LayoutItem {
   img?: string
   /** Resizable items only: aspect ratio locked while resizing */
   lock?: boolean
-  /** People only: name tag shown above them */
+  /** Name tag: above the item, or on a zone's middle */
   tag?: string
+  /** Tag colour as #rrggbb, for anything but people and zones (theirs is `color`) */
+  tagColor?: string
   /** People only: how many figures the item shows (1–6; absent means 1) */
   n?: number
   /** People and zones: colour as #rrggbb (absent means the default) */
@@ -109,11 +110,12 @@ export function parseLayout(data: unknown): LayoutItem[] {
     const cut: unknown[] = Array.isArray(i.cut) ? i.cut : []
     const cuts = cut.filter((c): c is number => Number.isFinite(c))
     const [dw, dh] = defaultSizeOf(t)
-    const tag = takesTag(t) ? cleanTag(i.tag) : ''
+    const tag = cleanTag(i.tag)
     const sit = t === 'person' && i.sit === true
     const n = t === 'person' && !sit ? clampPeople(i.n) : 1
     const coloured = t === 'person' || t === 'zone'
     const color = coloured && isHexColor(i.color) ? i.color.toLowerCase() : ''
+    const tagColor = !coloured && tag && isHexColor(i.tagColor) ? i.tagColor.toLowerCase() : ''
     return [
       {
         t,
@@ -134,6 +136,7 @@ export function parseLayout(data: unknown): LayoutItem[] {
         ...(tag ? { tag } : {}),
         ...(n > 1 ? { n } : {}),
         ...(color ? { color } : {}),
+        ...(tagColor ? { tagColor } : {}),
         ...(sit ? { sit } : {}),
         ...(t === 'laptop' && i.open !== undefined ? { open: clampLid(i.open) } : {}),
         ...(t === 'zone' ? { w: clampZone(i.w, 2), d: clampZone(i.d, 2) } : {}),

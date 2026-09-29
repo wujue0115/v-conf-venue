@@ -41,10 +41,7 @@ watch([editor, () => store.shadows], ([ed, on]) => ed?.setShadows(on), { immedia
 watch([editor, () => store.hiddenTypes], ([ed, types]) => ed?.setHiddenTypes(types), {
   immediate: true,
 })
-watch([editor, () => store.showPersonTags], ([ed, on]) => ed?.setTagsVisible('person', on), {
-  immediate: true,
-})
-watch([editor, () => store.showZoneTags], ([ed, on]) => ed?.setTagsVisible('zone', on), {
+watch([editor, () => store.hiddenTagTypes], ([ed, types]) => ed?.setHiddenTagTypes(types), {
   immediate: true,
 })
 </script>
@@ -53,8 +50,8 @@ watch([editor, () => store.showZoneTags], ([ed, on]) => ed?.setTagsVisible('zone
   <main ref="stage" class="stage">
     <canvas ref="canvas" tabindex="0"></canvas>
     <VenueLabels v-show="store.showLabels" />
-    <TagLayer v-show="store.showZoneTags" kind="zone" />
-    <TagLayer v-show="store.showPersonTags" kind="person" />
+    <TagLayer kind="zone" />
+    <TagLayer kind="item" />
     <StageToolbar />
     <StageToast />
     <SelectionBar />

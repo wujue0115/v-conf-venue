@@ -3,11 +3,23 @@ import { computed, reactive } from 'vue'
 import TriCheckbox from './TriCheckbox.vue'
 import { usePlannerStore } from '@/stores/planner'
 import { FURNITURE, FURNITURE_GROUPS, FURNITURE_TYPES, type FurnitureType } from '@/venue/furniture'
+import type { LayoutItem } from '@/venue/layout'
 
 /*
- * 物件顯示: show or hide placed items by kind. 全部物件 opens into 場地物件 and 其他物件,
- * which open into each kind; a parent's box is ticked, empty, or partial for its children.
+ * Show or hide something (items, or their tags) by kind. The root opens into 場地物件 and
+ * 其他物件, which open into each kind; a parent's box is ticked, empty, or partial for its
+ * children.
  */
+
+const props = defineProps<{
+  /** The root row's name */
+  root: string
+  /** Kinds currently hidden */
+  hidden: readonly FurnitureType[]
+  /** Which placed items the counts include */
+  count: (i: LayoutItem) => boolean
+}>()
+const emit = defineEmits<{ set: [types: readonly FurnitureType[], on: boolean] }>()
 
 const store = usePlannerStore()
 /** Which branches are open; all start closed */
@@ -15,19 +27,18 @@ const open = reactive<Record<string, boolean>>({})
 
 const counts = computed(() => {
   const n = new Map<FurnitureType, number>()
-  for (const i of store.items) n.set(i.t, (n.get(i.t) ?? 0) + 1)
+  for (const i of store.items) if (props.count(i)) n.set(i.t, (n.get(i.t) ?? 0) + 1)
   return n
 })
 const countOf = (types: readonly FurnitureType[]) =>
   types.reduce((s, t) => s + (counts.value.get(t) ?? 0), 0)
 
 function stateOf(types: readonly FurnitureType[]) {
-  const hidden = types.filter((t) => store.hiddenTypes.includes(t)).length
+  const hidden = types.filter((t) => props.hidden.includes(t)).length
   return hidden === 0 ? 'on' : hidden === types.length ? 'off' : 'some'
 }
 /** A ticked box hides all of its kinds; an empty or partial one shows them all */
-const toggle = (types: readonly FurnitureType[]) =>
-  store.setTypesVisible(types, stateOf(types) !== 'on')
+const toggle = (types: readonly FurnitureType[]) => emit('set', types, stateOf(types) !== 'on')
 
 const groups = FURNITURE_GROUPS.map((g) => ({
   ...g,
@@ -40,11 +51,11 @@ const groups = FURNITURE_GROUPS.map((g) => ({
     <div class="node">
       <TriCheckbox
         :state="stateOf(FURNITURE_TYPES)"
-        label="全部物件"
+        :label="root"
         @toggle="toggle(FURNITURE_TYPES)"
       />
       <button class="head" type="button" :aria-expanded="!!open.all" @click="open.all = !open.all">
-        <b>全部物件</b>
+        <b>{{ root }}</b>
         <span class="n">{{ countOf(FURNITURE_TYPES) }}</span>
         <svg class="chev" :class="{ closed: !open.all }" viewBox="0 0 16 16" aria-hidden="true">
           <path d="M4 6l4 4 4-4" />

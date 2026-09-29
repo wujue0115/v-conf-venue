@@ -43,13 +43,23 @@ export const usePlannerStore = defineStore('planner', () => {
   const wallsCut = shallowRef(false)
   const showLabels = shallowRef(true)
   const shadows = shallowRef(true)
-  const showPersonTags = shallowRef(true)
-  const showZoneTags = shallowRef(true)
   /** Kinds of item hidden from the scene (設定 → 物件顯示); they stay in the layout */
   const hiddenTypes = shallowRef<readonly FurnitureType[]>([])
+  /** Kinds of item whose tags are hidden (設定 → 標籤顯示); the tags are kept */
+  const hiddenTagTypes = shallowRef<readonly FurnitureType[]>([])
+  const toggled = (
+    list: readonly FurnitureType[],
+    types: readonly FurnitureType[],
+    on: boolean,
+  ) => {
+    const rest = list.filter((t) => !types.includes(t))
+    return on ? rest : [...rest, ...types]
+  }
   function setTypesVisible(types: readonly FurnitureType[], on: boolean) {
-    const rest = hiddenTypes.value.filter((t) => !types.includes(t))
-    hiddenTypes.value = on ? rest : [...rest, ...types]
+    hiddenTypes.value = toggled(hiddenTypes.value, types, on)
+  }
+  function setTagTypesVisible(types: readonly FurnitureType[], on: boolean) {
+    hiddenTagTypes.value = toggled(hiddenTagTypes.value, types, on)
   }
   const savedSidebar = readJSON(SIDEBAR_KEY)
   // First visit on a phone: start collapsed so the venue is visible
@@ -95,10 +105,10 @@ export const usePlannerStore = defineStore('planner', () => {
     wallsCut,
     showLabels,
     shadows,
-    showPersonTags,
-    showZoneTags,
     hiddenTypes,
     setTypesVisible,
+    hiddenTagTypes,
+    setTagTypesVisible,
     sidebarCollapsed,
     toast,
     cost,

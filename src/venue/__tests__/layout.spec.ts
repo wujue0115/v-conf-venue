@@ -137,8 +137,8 @@ describe('易拉展', () => {
   })
 })
 
-describe('person tags', () => {
-  it('keeps trimmed tags on people only, capped in length', () => {
+describe('tags', () => {
+  it('keeps trimmed tags on any item, capped in length', () => {
     const [a, b, c] = parseLayout([
       { t: 'person', x: 0, z: 0, r: 0, tag: '  報到組  ' },
       { t: 'person', x: 0, z: 0, r: 0, tag: 'x'.repeat(40) },
@@ -146,7 +146,22 @@ describe('person tags', () => {
     ])
     expect(a?.tag).toBe('報到組')
     expect(b?.tag).toHaveLength(24)
-    expect(c).not.toHaveProperty('tag')
+    expect(c?.tag).toBe('報到組')
+  })
+
+  it('keeps a tag colour on tagged items that are not people or zones', () => {
+    const [a, b, c, d] = parseLayout([
+      { t: 'table2', x: 0, z: 0, r: 0, tag: '報到', tagColor: '#E57373' },
+      { t: 'table2', x: 0, z: 0, r: 0, tagColor: '#e57373' },
+      { t: 'person', x: 0, z: 0, r: 0, tag: '報到', tagColor: '#e57373' },
+      { t: 'laptop', x: 0, z: 0, r: 0, tag: '報到', tagColor: 'red' },
+    ])
+    expect([a?.tagColor, b?.tagColor, c?.tagColor, d?.tagColor]).toEqual([
+      '#e57373',
+      undefined,
+      undefined,
+      undefined,
+    ])
   })
 
   it('drops empty tags and does not charge for people', () => {

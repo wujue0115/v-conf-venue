@@ -9,6 +9,7 @@ import {
   FURNITURE,
   PEOPLE_MAX,
   PERSON_COLOR,
+  TAG_COLOR,
   isWallItem,
   onTableOnly,
   priceOf,
@@ -37,9 +38,11 @@ const sel = computed(() => store.selection)
  */
 const PERSON_COLORS = [PERSON_COLOR, '#42b883', '#8fb3d9', '#f2cf73', '#ec9a93', '#8a8f99']
 const ZONE_COLORS = [ZONE_COLOR, '#4a90d9', '#edb32a', '#e57373', '#9575cd', '#8a8f99']
+/** Quick picks for a tag on anything but a person or zone */
+const TAG_COLORS = [TAG_COLOR, '#42b883', '#4a90d9', '#edb32a', '#e57373', '#9575cd']
 /**
- * Tags already used in the layout, most used first. People and zones keep separate tag
- * lists, so a zone never suggests a person's tag and the other way round.
+ * Tags already used in the layout, most used first. Zones keep their own tag list, so a zone
+ * never suggests another item's tag and the other way round.
  */
 const usedTags = computed(() => {
   const zone = sel.value?.type === 'zone'
@@ -353,10 +356,20 @@ const generate = () =>
         </div>
       </template>
 
-      <template v-if="sel.tag !== undefined">
-        <span class="lbl">標籤</span>
+      <span class="lbl">標籤</span>
+      <div class="ctl">
+        <TagCombobox :value="sel.tag" :options="usedTags" @commit="editor?.setTag($event)" />
+      </div>
+
+      <template v-if="sel.tag && sel.tagColor">
+        <span class="lbl">標籤顏色</span>
         <div class="ctl">
-          <TagCombobox :value="sel.tag" :options="usedTags" @commit="editor?.setTag($event)" />
+          <ColorChips
+            :value="sel.tagColor"
+            :colors="TAG_COLORS"
+            label="標籤顏色"
+            @pick="editor?.setTagColor($event)"
+          />
         </div>
       </template>
 

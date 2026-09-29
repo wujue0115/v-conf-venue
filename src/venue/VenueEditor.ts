@@ -8,9 +8,9 @@ import {
   isResizable,
   isWallItem,
   takesImage,
-  takesTag,
   PERSON_COLOR,
   PERSON_TAG_Y,
+  TAG_COLOR,
   SEATED_TAG_Y,
   SEATS,
   TABLES,
@@ -53,8 +53,10 @@ export interface SelectionInfo {
   size?: { w: number; h: number; lock: boolean; presets: boolean }
   /** Items with a printable face */
   image?: { hasImage: boolean }
-  /** People: their name tag ('' when none) */
-  tag?: string
+  /** Its name tag ('' when none) */
+  tag: string
+  /** Anything but people and zones: its tag's colour (theirs wear the item's colour) */
+  tagColor?: string
   /** 人員 items: how many figures, their colour, and whether they sit on a seat */
   people?: { n: number; color: string; sit: boolean }
   /** 區域 items: width × depth in metres and colour */
@@ -114,9 +116,14 @@ function isLight(hex: string) {
 const ZONE_TAG_LIFT = 26
 /** Turns a wall-facing handle to lie flat on the floor */
 const FLAT = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2)
-/** Separate tag systems: people's tags float above them, zones' sit in their middle */
-export type TagKind = 'person' | 'zone'
-const tagKindOf = (o: THREE.Object3D): TagKind => (isZone(o) ? 'zone' : 'person')
+/** Separate tag layers: most tags float above their item, zones' sit in their middle */
+export type TagKind = 'item' | 'zone'
+const tagKindOf = (o: THREE.Object3D): TagKind => (isZone(o) ? 'zone' : 'item')
+/** People and zones colour their tag with their own colour; everything else picks one */
+const ownTagColor = (o: THREE.Object3D) => !isPerson(o) && !isZone(o)
+/** Metres a floating tag sits above the top of its item (people use PERSON_TAG_Y instead) */
+const TAG_CLEARANCE = 0.12
+const tagBox = new THREE.Box3()
 const seatOf = (o: THREE.Object3D) => SEATS[o.userData.type as string]
 const tableOf = (o: THREE.Object3D) => TABLES[o.userData.type as string]
 const onTable = (o: THREE.Object3D) => onTableOnly(o.userData.type as FurnitureType)
@@ -195,14 +202,16 @@ export class VenueEditor {
 
   private labels: (LabelAnchor & { p: THREE.Vector3 })[] = []
   private labelsVisible = true
-  /** Per tag system: where its tags are drawn, whether they show, and each tagged object's element */
+  /** Per tag layer: where its tags are drawn, and each tagged object's element */
   private readonly tags: Record<
     TagKind,
-    { layer: HTMLElement | null; visible: boolean; els: Map<THREE.Object3D, HTMLElement> }
+    { layer: HTMLElement | null; els: Map<THREE.Object3D, HTMLElement> }
   > = {
-    person: { layer: null, visible: true, els: new Map() },
-    zone: { layer: null, visible: true, els: new Map() },
+    item: { layer: null, els: new Map() },
+    zone: { layer: null, els: new Map() },
   }
+  /** Kinds of item whose tags are hidden (see setHiddenTagTypes) */
+  private hiddenTags = new Set<FurnitureType>()
   /** An unselected zone under the pointer: a click selects it, a drag still pans the camera */
   private zoneClick: THREE.Object3D | null = null
   private selected: THREE.Object3D | null = null
@@ -399,8 +408,9 @@ export class VenueEditor {
     t.layer = el
   }
 
-  setTagsVisible(kind: TagKind, on: boolean) {
-    this.tags[kind].visible = on
+  /** Hide the tags of every placed item of these kinds (the tags themselves are kept). */
+  setHiddenTagTypes(types: readonly FurnitureType[]) {
+    this.hiddenTags = new Set(types)
   }
 
   /** Change the selected zone's size (metres, on the zone grid, about its centre) and/or colour. */
@@ -436,15 +446,27 @@ export class VenueEditor {
     this.commit()
   }
 
-  /** Name the selected person; an empty tag removes it. */
+  /** Name the selected item; an empty tag removes it. */
   setTag(tag: string) {
     const s = this.selected
-    if (!s || !takesTag(s.userData.type as FurnitureType)) return
+    if (!s) return
     const t = cleanTag(tag)
     if ((s.userData.tag ?? '') === t) return
     this.pushUndo()
     if (t) s.userData.tag = t
     else delete s.userData.tag
+    this.updSel()
+    this.commit()
+  }
+
+  /** Colour the selected item's tag (#rrggbb); people and zones use their own colour instead. */
+  setTagColor(color: string) {
+    const s = this.selected
+    if (!s || !ownTagColor(s) || !isHexColor(color)) return
+    const c = color.toLowerCase()
+    if (((s.userData.tagColor as string | undefined) ?? TAG_COLOR) === c) return
+    this.pushUndo()
+    s.userData.tagColor = c
     this.updSel()
     this.commit()
   }
@@ -865,7 +887,26 @@ export class VenueEditor {
   }
 
   /** Place an item; with no `y` it is dropped onto the floor below (x, z). */
-  private add({ t, x, y, z, r, v, cut, w, h, d, img, lock, tag, n, color, sit, open }: LayoutItem) {
+  private add({
+    t,
+    x,
+    y,
+    z,
+    r,
+    v,
+    cut,
+    w,
+    h,
+    d,
+    img,
+    lock,
+    tag,
+    tagColor,
+    n,
+    color,
+    sit,
+    open,
+  }: LayoutItem) {
     if (!isFurnitureType(t)) return null
     const o = buildFurniture(t, v, w && h ? { w, h } : undefined)
     o.position.set(x, y ?? this.floorY(x, z), z)
@@ -875,6 +916,7 @@ export class VenueEditor {
     else if (img) setFaceImage(o, img)
     if (lock) o.userData.lock = true
     if (tag) o.userData.tag = tag
+    if (tagColor) o.userData.tagColor = tagColor
     if (t === 'person' && (n || color || sit)) applyPeople(o, n, color, sit)
     if (t === 'zone' && w && d) applyZone(o, { w, d, color })
     if (t === 'laptop' && open !== undefined) setLaptopOpen(o, open)
@@ -902,6 +944,7 @@ export class VenueEditor {
       ...(ud.variant ? { v: ud.variant as string } : {}),
       ...(cut?.length ? { cut: cut.map((c) => +c.toFixed(3)) } : {}),
       ...(ud.tag ? { tag: ud.tag as string } : {}),
+      ...(ud.tagColor ? { tagColor: ud.tagColor as string } : {}),
       ...(ud.n ? { n: ud.n as number } : {}),
       ...(ud.color ? { color: ud.color as string } : {}),
       ...(ud.sit ? { sit: true } : {}),
@@ -1409,8 +1452,9 @@ export class VenueEditor {
           }
         : {}),
       ...(hasFace(s) ? { image: { hasImage: !!s.userData.img } } : {}),
-      ...(takesTag(s.userData.type as FurnitureType)
-        ? { tag: (s.userData.tag as string | undefined) ?? '' }
+      tag: (s.userData.tag as string | undefined) ?? '',
+      ...(ownTagColor(s)
+        ? { tagColor: (s.userData.tagColor as string | undefined) ?? TAG_COLOR }
         : {}),
       ...(s.userData.type === 'person'
         ? {
@@ -1912,24 +1956,26 @@ export class VenueEditor {
     }
     this.renderer.render(this.scene, camera)
     if (this.labelsVisible) this.layoutLabels()
-    this.layoutTags('person')
+    this.layoutTags('item')
     this.layoutTags('zone')
   }
 
   /**
    * Keep one tag element per tagged object of this kind and pin it on screen: people's above
-   * their head, zones' raised above the zone's centre on a leader line.
+   * their head, other items' just above their top, zones' raised above the zone's centre on a
+   * leader line.
    */
   private layoutTags(kind: TagKind) {
-    const { layer, visible, els } = this.tags[kind]
-    if (!layer || !visible) return
+    const { layer, els } = this.tags[kind]
+    if (!layer) return
     const w = this.stageEl.clientWidth
     const h = this.stageEl.clientHeight
     const v = this.v
     const seen = new Set<THREE.Object3D>()
     for (const o of this.placed.children) {
       const tag = o.userData.tag as string | undefined
-      if (!tag || !o.visible || tagKindOf(o) !== kind) continue
+      const type = o.userData.type as FurnitureType
+      if (!tag || !o.visible || tagKindOf(o) !== kind || this.hiddenTags.has(type)) continue
       seen.add(o)
       let el = els.get(o)
       if (!el) {
@@ -1939,15 +1985,23 @@ export class VenueEditor {
         els.set(o, el)
       }
       if (el.textContent !== tag) el.textContent = tag
-      // a tag wears its item's colour, with dark or white text depending on how light it is
-      const c =
-        (o.userData.color as string | undefined) ?? (kind === 'zone' ? ZONE_COLOR : PERSON_COLOR)
+      // a person's or zone's tag wears its colour, anything else's its own tag colour, with
+      // dark or white text depending on how light it is
+      const c = ownTagColor(o)
+        ? ((o.userData.tagColor as string | undefined) ?? TAG_COLOR)
+        : ((o.userData.color as string | undefined) ?? (isZone(o) ? ZONE_COLOR : PERSON_COLOR))
       if (el.dataset.c !== c) {
         el.dataset.c = c
         el.style.setProperty('--tc', c)
         el.style.setProperty('--tt', isLight(c) ? '#1f2126' : '#fff')
       }
-      const above = kind === 'zone' ? 0.02 : o.userData.sit ? SEATED_TAG_Y : PERSON_TAG_Y
+      const above = isZone(o)
+        ? 0.02
+        : isPerson(o)
+          ? o.userData.sit
+            ? SEATED_TAG_Y
+            : PERSON_TAG_Y
+          : tagBox.setFromObject(o).max.y - o.position.y + TAG_CLEARANCE
       v.set(o.position.x, o.position.y + above, o.position.z).project(this.camera)
       if (v.z > 1 || Math.abs(v.x) > 1.2 || Math.abs(v.y) > 1.2) {
         el.style.display = 'none'

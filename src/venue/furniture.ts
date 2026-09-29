@@ -393,6 +393,8 @@ export const SEATS: Partial<Record<string, { y: number; z: number }>> = {
 
 /** Default figure colour, and the most people one 人員 item can stand for */
 export const PERSON_COLOR = '#f1d3b3'
+/** Default colour of a tag on anything but a person or zone (theirs wear the item's colour) */
+export const TAG_COLOR = '#35495e'
 export const PEOPLE_MAX = 6
 /** Where each figure stands for a group of n (x, z in metres): rows of up to three */
 const FORMATIONS: Record<number, [number, number][]> = {
@@ -545,8 +547,6 @@ export interface FurnitureDef {
   wall?: boolean
   /** Has a printable face that can carry an uploaded graphic */
   image?: boolean
-  /** Can carry a name tag (人員標籤) shown above it */
-  tag?: boolean
   /** Width × height can be edited in the selection panel, in metres */
   resizable?: [number, number]
 }
@@ -702,7 +702,6 @@ export const FURNITURE = {
     name: '人員',
     size: 'H1700',
     build: person,
-    tag: true,
     arr: [0.6, 0.8],
   },
   snack: {
@@ -731,7 +730,6 @@ export const FURNITURE = {
     name: '區域',
     size: '可調整尺寸',
     build: buildZone,
-    tag: true,
     arr: [2.25, 2.25],
   },
   rollup: {
@@ -781,8 +779,6 @@ export const onTableOnly = (type: FurnitureType) => !!(FURNITURE[type] as Furnit
 /** An on-table item's footprint (length along x, width along z), or none */
 export const footprintOf = (type: FurnitureType, v?: string, open?: number): Footprint =>
   (FURNITURE[type] as FurnitureDef).onTable?.(v, open) ?? [0, 0]
-/** Can carry a name tag */
-export const takesTag = (type: FurnitureType) => !!(FURNITURE[type] as FurnitureDef).tag
 export const isResizable = (type: FurnitureType) => !!(FURNITURE[type] as FurnitureDef).resizable
 /** Default width × height in metres, for resizable items */
 export const defaultSizeOf = (type: FurnitureType): readonly [number, number] =>
