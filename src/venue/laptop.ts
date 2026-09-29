@@ -207,7 +207,19 @@ function textures() {
   return (tex = { keys, screen, env })
 }
 
-const dark = mat('#101114', { roughness: 0.4, name: 'bezel' })
+/**
+ * The keys, trackpad, grilles, bezel and screen are flat layers a fraction of a millimetre
+ * above the surface under them. From across the hall that gap is below the depth buffer's
+ * precision and they flicker (z-fight), so like a poster's face each is also biased toward
+ * the camera in depth terms: `layer` 1 sits on the body, 2 on top of a layer 1.
+ */
+const layer = (n: number) => ({
+  polygonOffset: true,
+  polygonOffsetFactor: -n,
+  polygonOffsetUnits: -n,
+})
+
+const dark = mat('#101114', { roughness: 0.4, name: 'bezel', ...layer(1) })
 /** Anodised / bead-blasted aluminium in each colour */
 const metals = new Map<string, THREE.Material>()
 function metal(colour: string, roughness: number) {
@@ -258,8 +270,13 @@ function padMats(colour: string) {
         roughness: 0.12,
         envMap: textures().env,
         name: 'trackpad',
+        ...layer(2),
       }),
-      seam: mat(c.clone().multiplyScalar(0.45), { roughness: 0.6, name: 'trackpad_seam' }),
+      seam: mat(c.clone().multiplyScalar(0.45), {
+        roughness: 0.6,
+        name: 'trackpad_seam',
+        ...layer(1),
+      }),
     }
     pads.set(colour, p)
   }
@@ -280,7 +297,12 @@ export function buildLaptop(g: THREE.Group, v?: string) {
   const kd = m.d * 0.42
   const keys = new THREE.Mesh(
     new THREE.PlaneGeometry(kw, kd).rotateX(-Math.PI / 2),
-    new THREE.MeshStandardMaterial({ map: t.keys, roughness: 0.6, name: 'keyboard' }),
+    new THREE.MeshStandardMaterial({
+      map: t.keys,
+      roughness: 0.6,
+      name: 'keyboard',
+      ...layer(1),
+    }),
   )
   keys.position.set(0, base + 0.0004, -m.d / 2 + 0.018 + kd / 2)
   root.add(keys)
@@ -297,7 +319,7 @@ export function buildLaptop(g: THREE.Group, v?: string) {
     for (const sx of [-1, 1]) {
       const grille = new THREE.Mesh(
         new THREE.PlaneGeometry((m.w - kw) / 2 - 0.014, kd).rotateX(-Math.PI / 2),
-        mat('#1b1c20', { roughness: 0.9, name: 'grille' }),
+        mat('#1b1c20', { roughness: 0.9, name: 'grille', ...layer(1) }),
       )
       grille.position.set((sx * (m.w / 2 + kw / 2)) / 2, base + 0.0003, keys.position.z)
       root.add(grille)
@@ -328,6 +350,7 @@ export function buildLaptop(g: THREE.Group, v?: string) {
       emissiveIntensity: 0.55,
       roughness: 0.25,
       name: 'display',
+      ...layer(2),
     }),
   )
   screen.position.set(0, m.d / 2 + 0.004, 0.0006)
