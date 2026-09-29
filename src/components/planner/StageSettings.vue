@@ -40,11 +40,20 @@ function clearAll() {
   editor.value?.clear()
 }
 
+/** Local time as YYYYMMDD-HHmmss, so exports sort by when they were made */
+function stamp(d = new Date()) {
+  const p = (n: number) => String(n).padStart(2, '0')
+  return (
+    `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}` +
+    `-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`
+  )
+}
+
 function download() {
   const blob = new Blob([exportLayout(store.items)], { type: 'application/json' })
   const a = document.createElement('a')
   a.href = URL.createObjectURL(blob)
-  a.download = 'vueconf2026-layout.json'
+  a.download = `v-conf-taiwan-venue-${stamp()}.json`
   a.click()
   URL.revokeObjectURL(a.href)
 }
