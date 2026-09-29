@@ -290,10 +290,10 @@ export function demoLayout(): LayoutItem[] {
     }
   }
   L.push(
-    { t: 'whiteSofa', x: 20.6, z: 26.2, r: 0 },
-    { t: 'whiteSofa', x: 22.2, z: 26.2, r: 0 },
-    { t: 'teaWhite', x: 21.4, z: 27.4, r: 0 },
-    { t: 'armchair', x: 21.4, z: 28.7, r: Math.PI },
+    { t: 'whiteSofa', x: 20.6, z: 26.6, r: 0 },
+    { t: 'whiteSofa', x: 22.2, z: 26.6, r: 0 },
+    { t: 'teaWhite', x: 21.4, z: 27.8, r: 0 },
+    { t: 'armchair', x: 21.4, z: 28.9, r: Math.PI },
   )
   L.push({ t: 'woodLectern', x: 31.6, y: 0.9, z: 35.5, r: -Math.PI / 2 })
   return L
