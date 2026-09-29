@@ -145,11 +145,43 @@ function flyTo(view: CameraView, i: number) {
   margin-left: auto;
 }
 
-/* Narrow screens: the bars wrap onto two rows; line the views up on the right too */
-@media (max-width: 500px) {
+/*
+ * Wide screens: the views sit in the middle of the whole screen (the row starts at the screen's
+ * edge, under the sidebar, and lets the pointer through there), the tools at its right
+ */
+@media (min-width: 1025px) {
+  .topbars {
+    left: 14px;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+  }
+  .views {
+    grid-column: 2;
+  }
+  .tools {
+    grid-column: 3;
+    justify-self: end;
+  }
+}
+/*
+ * Tablets and phones: everything packs to the right, the views just before the tools (or
+ * above them, right-aligned too, once the bars wrap onto two rows)
+ */
+@media (max-width: 1024px) {
+  .topbars {
+    justify-content: flex-end;
+  }
   .views {
     justify-content: flex-end;
-    margin-left: auto;
+  }
+  .tools {
+    margin-left: 0;
+  }
+}
+/* Narrower still: always two rows, the views above the tools, both on the right */
+@media (max-width: 871px) {
+  .views {
+    flex-basis: 100%;
   }
 }
 
