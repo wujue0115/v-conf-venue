@@ -365,7 +365,10 @@ const generate = () =>
         <div class="ctl">
           <button class="btn" title="逆時針 15° (Q)" @click="rotate(15)">⟲ 15°</button>
           <button class="btn" title="順時針 15° (E)" @click="rotate(-15)">⟳ 15°</button>
+          <button class="btn" title="逆時針 45° (Shift+Q)" @click="rotate(45)">⟲ 45°</button>
+          <button class="btn" title="順時針 45° (Shift+E)" @click="rotate(-45)">⟳ 45°</button>
           <button class="btn" title="順時針 90° (R)" @click="rotate(-90)">⟳ 90°</button>
+          <button class="btn" title="轉 180° (Shift+R)" @click="rotate(180)">180°</button>
           <button class="btn dup" title="複製 (⌘D)" @click="editor?.duplicate()">複製</button>
         </div>
 

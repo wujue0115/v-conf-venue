@@ -1772,9 +1772,9 @@ export class VenueEditor {
     } else if (e.key === 'Delete' || e.key === 'Backspace') {
       e.preventDefault()
       this.remove()
-    } else if (kk === 'q') this.rotate(15)
-    else if (kk === 'e') this.rotate(-15)
-    else if (kk === 'r') this.rotate(-90)
+    } else if (kk === 'q') this.rotate(e.shiftKey ? 45 : 15)
+    else if (kk === 'e') this.rotate(e.shiftKey ? -45 : -15)
+    else if (kk === 'r') this.rotate(e.shiftKey ? 180 : -90)
     else if (e.key === 'Escape') this.select(null)
     else if (e.key.startsWith('Arrow') && onWall(s)) {
       // posters slide along their wall: left/right sideways, up/down in height
