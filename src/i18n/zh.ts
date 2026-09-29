@@ -69,6 +69,7 @@ const zh = {
   grouping: {
     label: '群組',
     defaultName: (n: number) => `群組 ${n}`,
+    copyName: (name: string, n: number) => `${name} ${n}`,
     make: '建立群組',
     ungroup: '取消群組',
     leave: '移出群組',
@@ -294,6 +295,7 @@ const zh = {
     onCentreWall: (name: string) => `已將「${name}」貼在畫面中央的牆上，可拖曳調整`,
     atCentre: (name: string) => `已放置「${name}」於畫面中央，可拖曳調整`,
     beltCut: '已拆除紅帶，選取紅龍柱可恢復連接',
+    copySkipped: (n: number) => `有 ${n} 個物件沒有複製（牆上的海報，或新位置沒有桌子的桌上物件）`,
     saveFailed: '配置含圖片過大，無法自動存在瀏覽器，請記得匯出 JSON',
   },
 }

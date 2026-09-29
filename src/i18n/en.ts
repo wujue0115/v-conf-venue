@@ -63,6 +63,7 @@ const en: Messages = {
   grouping: {
     label: 'Group',
     defaultName: (n: number) => `Group ${n}`,
+    copyName: (name: string, n: number) => `${name} ${n}`,
     make: 'Group',
     ungroup: 'Ungroup',
     leave: 'Leave group',
@@ -294,6 +295,8 @@ const en: Messages = {
       `Hung “${name}” on the wall in the middle of the view; drag to adjust`,
     atCentre: (name: string) => `Placed “${name}” in the middle of the view; drag to adjust`,
     beltCut: 'Belt removed; select a stanchion to link it again',
+    copySkipped: (n: number) =>
+      `${n} ${n === 1 ? 'item wasn’t' : 'items weren’t'} copied (posters on walls, or table-top items with no table at the new spot)`,
     saveFailed: 'The layout’s images are too large to save in the browser; remember to export JSON',
   },
 }

@@ -634,7 +634,8 @@ export class VenueEditor {
 
   duplicate() {
     const s = this.selected
-    if (!s || this.group.size) return
+    if (!s) return
+    if (this.group.size) return this.duplicateGroup()
     this.pushUndo()
     const type = s.userData.type as FurnitureType
     const item = this.itemOf(s)
@@ -738,6 +739,62 @@ export class VenueEditor {
     this.updSel()
     this.commit()
     return true
+  }
+
+  /**
+   * Copy every selected item beside the selection, to the right on screen (along the nearest
+   * world axis), clear of it and on the grid; the copies keep their places around each other
+   * and become the selection. People on a copied seat and things on a copied table come too;
+   * a copied group gets a new name (報到區 2). Posters, and table-top things with no table at
+   * their new spot, are left out.
+   */
+  private duplicateGroup() {
+    const all = this.selection
+    const ax = this.screenAxis('ArrowRight')
+    if (!all.length || !ax) return
+    const box = new THREE.Box3()
+    for (const o of all) box.expandByObject(o)
+    const span = ax.x ? box.max.x - box.min.x : box.max.z - box.min.z
+    const step = Math.ceil((span + 0.5) / 0.25) * 0.25
+    const [ox, oz] = [ax.x * step, ax.z * step]
+    // each copied group gets the next free name after its own
+    const used = new Set(this.placed.children.map((o) => o.userData.group as string | undefined))
+    const renamed = new Map<string, string>()
+    for (const o of all) {
+      const g = o.userData.group as string | undefined
+      if (!g || renamed.has(g)) continue
+      let n = 2
+      while (used.has(t().grouping.copyName(g, n))) n++
+      used.add(t().grouping.copyName(g, n))
+      renamed.set(g, t().grouping.copyName(g, n))
+    }
+    this.pushUndo()
+    const copies: THREE.Object3D[] = []
+    let skipped = 0
+    // floor things first, so table-top copies find the copied tables under them
+    for (const o of [...all.filter((o) => !onTable(o)), ...all.filter(onTable)]) {
+      if (onWall(o)) {
+        skipped++
+        continue
+      }
+      const item = this.itemOf(o)
+      const [x, z] = [item.x + ox, item.z + oz]
+      const y = onTable(o)
+        ? this.tableTopAt(x, z)
+        : (item.y ?? 0) + this.floorY(x, z) - this.floorY(item.x, item.z)
+      if (y === null) {
+        skipped++
+        continue
+      }
+      const c = this.add({ ...item, x, y, z, group: item.group && renamed.get(item.group) })
+      if (!c) continue
+      // a seated copy takes the copied seat under it (or stands up if there is none)
+      this.settle(c)
+      copies.push(c)
+    }
+    this.setSelection(copies)
+    this.commit()
+    if (skipped) this.cb.onToast(t().toast.copySkipped(skipped))
   }
 
   /** Deselect everything. */

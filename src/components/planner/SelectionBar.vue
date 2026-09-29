@@ -218,6 +218,9 @@ const generate = () =>
         <div class="pos">{{ t().sel.multiHint }}</div>
       </div>
       <button class="btn" @click="editor?.clearSelection()">{{ t().sel.deselect }}</button>
+      <button class="btn" :title="t().sel.duplicateTitle" @click="editor?.duplicate()">
+        {{ t().sel.duplicate }}
+      </button>
       <button class="btn danger" :title="t().sel.deleteTitle" @click="editor?.remove()">
         {{ t().sel.delete }}
       </button>
