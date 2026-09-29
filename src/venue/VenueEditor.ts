@@ -39,6 +39,8 @@ import { bearing, linkPosts, withoutCutToward, type Post } from './stanchions'
 import { ZONE_COLOR, ZONE_MIN, applyZone, clampZone, onZoneGrid } from './zone'
 
 export interface SelectionInfo {
+  /** How many items are selected; the rest describes the first of them */
+  count: number
   type: FurnitureType
   x: number
   z: number
@@ -150,6 +152,13 @@ const TABLE_REACH = 1
 /** How close (metres, on the floor plan) a person must be dropped to a seat to sit on it */
 const SIT_REACH = 0.35
 
+/** A member of a multiple selection being moved, from where it started */
+interface GroupMember {
+  o: THREE.Object3D
+  start: THREE.Vector3
+  riders: Rider[]
+}
+
 /** Someone sitting on a seat, remembered in the seat's frame so they move with it */
 interface Rider {
   o: THREE.Object3D
@@ -225,6 +234,27 @@ export class VenueEditor {
   /** An unselected zone under the pointer: a click selects it, a drag still pans the camera */
   private zoneClick: THREE.Object3D | null = null
   private selected: THREE.Object3D | null = null
+  /** Items selected along with `selected` (Shift/⌘-click, or a Shift-drag box) */
+  private readonly group = new Set<THREE.Object3D>()
+  /** An outline for each item in `group` */
+  private readonly groupBoxes = new Map<
+    THREE.Object3D,
+    { box: THREE.Box3; helper: THREE.Box3Helper }
+  >()
+  /**
+   * A selection box being drawn on the stage (Shift-drag, or any drag in 多選 mode). A touch
+   * one is `pending` until it moves: the camera also saw that finger go down, so a second
+   * finger can still turn it into a pinch or orbit instead.
+   */
+  private marquee: {
+    x0: number
+    y0: number
+    el: HTMLDivElement
+    id: number
+    pending: boolean
+  } | null = null
+  /** 多選 mode (see setMultiSelect) */
+  private multi = false
   /** View mode turns this off: the camera still moves, but nothing can be placed or changed */
   private editable = true
   private snap = true
@@ -238,6 +268,10 @@ export class VenueEditor {
     moved: boolean
     /** people sitting on a dragged seat, carried along with it */
     riders?: Rider[]
+    /** Dragging a multiple selection: every member (but posters) from where it started */
+    group?: GroupMember[]
+    /** 多選 mode: a tap without a drag takes the item out of the selection */
+    tapToggles?: boolean
   } | null = null
   private resizing: {
     o: THREE.Object3D
@@ -401,6 +435,14 @@ export class VenueEditor {
     this.snap = on
   }
 
+  /**
+   * 多選 mode, for touch screens (no Shift key): a tap adds an item to the selection or takes
+   * it out, and a drag on empty space draws a selection box instead of panning.
+   */
+  setMultiSelect(on: boolean) {
+    this.multi = on
+  }
+
   setWallsCut(on: boolean) {
     this.archi.wallsG.scale.y = on ? 0.28 : 1
   }
@@ -548,7 +590,8 @@ export class VenueEditor {
     for (const o of this.placed.children)
       if (o !== this.placing?.obj) o.visible = !this.hidden.has(o.userData.type as FurnitureType)
     this.belts.visible = !this.hidden.has('stanchion')
-    if (this.selected && !this.selected.visible) this.select(null)
+    if (this.selection.some((o) => !o.visible))
+      this.setSelection(this.selection.filter((o) => o.visible))
   }
 
   setLabelsVisible(on: boolean) {
@@ -574,7 +617,8 @@ export class VenueEditor {
 
   rotate(deg: number) {
     const s = this.selected
-    if (!s || onWall(s)) return
+    // turning and copying are for one item at a time
+    if (!s || onWall(s) || this.group.size) return
     this.pushUndo()
     const riders = this.ridersOf(s)
     s.rotation.y += THREE.MathUtils.degToRad(deg)
@@ -585,7 +629,7 @@ export class VenueEditor {
 
   duplicate() {
     const s = this.selected
-    if (!s) return
+    if (!s || this.group.size) return
     this.pushUndo()
     const type = s.userData.type as FurnitureType
     const item = this.itemOf(s)
@@ -627,19 +671,27 @@ export class VenueEditor {
     this.commit()
   }
 
+  /** Delete the selected item, or every selected item. */
   remove() {
-    const s = this.selected
-    if (!s) return
+    const all = this.selection
+    if (!all.length) return
     this.pushUndo()
-    const riders = this.ridersOf(s)
-    this.placed.remove(s)
-    // people get up; trays go with their table
-    for (const r of riders) {
-      if (onTable(r.o)) this.placed.remove(r.o)
-      else this.standUp(r.o)
+    for (const s of all) {
+      const riders = this.ridersOf(s)
+      this.placed.remove(s)
+      // people get up; trays go with their table
+      for (const r of riders) {
+        if (onTable(r.o)) this.placed.remove(r.o)
+        else this.standUp(r.o)
+      }
     }
     this.select(null)
     this.commit()
+  }
+
+  /** Deselect everything. */
+  clearSelection() {
+    this.select(null)
   }
 
   /** Repeat the selected object `cols` to its right and `rows` behind it. */
@@ -1317,7 +1369,8 @@ export class VenueEditor {
   /** Position the resize handles on the selected poster's corners, sized for the current zoom. */
   private updHandles() {
     const s = this.selected
-    this.handles.visible = !!s && (resizable(s) || isZone(s))
+    // resizing is for one item at a time
+    this.handles.visible = !!s && !this.group.size && (resizable(s) || isZone(s))
     if (!s || !this.handles.visible) return
     s.updateMatrixWorld()
     // a zone's handles take its colour; everything else keeps the selection yellow
@@ -1484,6 +1537,8 @@ export class VenueEditor {
 
   private select(o: THREE.Object3D | null) {
     this.lidLive = false
+    this.group.clear()
+    this.syncGroupBoxes()
     this.selected = o
     this.selHelper.visible = !!o
     if (o) this.updSel()
@@ -1491,6 +1546,169 @@ export class VenueEditor {
       this.updHandles()
       this.cb.onSelect(null)
     }
+  }
+
+  /** Everything selected: the first item, then the rest of the group */
+  private get selection(): THREE.Object3D[] {
+    return this.selected ? [this.selected, ...this.group] : []
+  }
+
+  /** Select these items together; the first one is the one the panel describes */
+  private setSelection(list: readonly THREE.Object3D[]) {
+    const [first, ...rest] = [...new Set(list)]
+    this.select(first ?? null)
+    for (const o of rest) this.group.add(o)
+    this.syncGroupBoxes()
+    if (first) this.updSel()
+  }
+
+  /** Add an item to the selection, or take it out if it's in */
+  private toggleSelected(o: THREE.Object3D) {
+    const all = this.selection
+    this.setSelection(all.includes(o) ? all.filter((x) => x !== o) : [...all, o])
+  }
+
+  /** Keep one outline per grouped item, matching the first item's */
+  private syncGroupBoxes() {
+    for (const [o, { helper }] of this.groupBoxes)
+      if (!this.group.has(o)) {
+        this.scene.remove(helper)
+        helper.dispose()
+        this.groupBoxes.delete(o)
+      }
+    for (const o of this.group) {
+      if (this.groupBoxes.has(o)) continue
+      const box = new THREE.Box3().setFromObject(o)
+      const helper = new THREE.Box3Helper(box, new THREE.Color(YEL))
+      ;(helper.material as THREE.Material).depthTest = false
+      helper.renderOrder = 999
+      this.scene.add(helper)
+      this.groupBoxes.set(o, { box, helper })
+    }
+  }
+
+  /**
+   * Move a multiple selection by (ox, oz) from where its members started: floor items move
+   * with it, people on a moved seat and things on a moved table ride along, and anything else
+   * on a table goes too if a table is under its new spot. Posters stay on their walls.
+   */
+  private offsetGroup(members: readonly GroupMember[], ox: number, oz: number) {
+    const riding = new Set(members.flatMap((m) => m.riders.map((r) => r.o)))
+    const free = members.filter((m) => !riding.has(m.o))
+    for (const { o, start } of free) {
+      if (onTable(o)) continue
+      const [x, z] = [start.x + ox, start.z + oz]
+      o.position.set(x, this.floorY(x, z), z)
+    }
+    for (const m of members) if (m.riders.length) this.carry(m.o, m.riders)
+    for (const { o, start } of free) {
+      if (onTable(o)) {
+        const [x, z] = [start.x + ox, start.z + oz]
+        const y = this.tableTopAt(x, z)
+        if (y !== null) o.position.set(x, y, z)
+        else o.position.copy(start)
+      } else if (isPerson(o)) this.settle(o)
+    }
+    if (members.some((m) => isPost(m.o))) this.updateBelts()
+    this.updSel()
+  }
+
+  /** Start moving the whole selection by dragging one of its items */
+  private startGroupDrag(e: PointerEvent, o: THREE.Object3D, tapToggles: boolean) {
+    const p = this.floorHit(e) ?? o.position.clone()
+    this.drag = {
+      o,
+      dx: o.position.x - p.x,
+      dz: o.position.z - p.z,
+      moved: false,
+      group: this.groupMembers(),
+      tapToggles,
+    }
+    this.controls.enabled = false
+    this.canvas.style.cursor = 'grabbing'
+  }
+
+  /** Begin a selection box at the pointer */
+  private startMarquee(e: PointerEvent) {
+    const el = document.createElement('div')
+    Object.assign(el.style, {
+      position: 'absolute',
+      left: '0',
+      top: '0',
+      border: `1.5px dashed ${YEL}`,
+      borderRadius: '2px',
+      background: 'rgba(237, 179, 42, 0.12)',
+      pointerEvents: 'none',
+    })
+    this.stageEl.append(el)
+    const pending = e.pointerType === 'touch'
+    this.marquee = { x0: e.clientX, y0: e.clientY, el, id: e.pointerId, pending }
+    if (!pending) this.controls.enabled = false
+    this.drawMarquee(e)
+  }
+
+  /** Drop the selection box without selecting anything (a second finger came down) */
+  private cancelMarquee() {
+    this.marquee?.el.remove()
+    this.marquee = null
+    this.controls.enabled = true
+  }
+
+  /** The selection box from where it started to the pointer, in client pixels */
+  private marqueeRect(e: PointerEvent) {
+    const m = this.marquee!
+    return {
+      l: Math.min(m.x0, e.clientX),
+      t: Math.min(m.y0, e.clientY),
+      r: Math.max(m.x0, e.clientX),
+      b: Math.max(m.y0, e.clientY),
+    }
+  }
+
+  private drawMarquee(e: PointerEvent) {
+    const m = this.marquee
+    if (!m) return
+    if (m.pending && Math.hypot(e.clientX - m.x0, e.clientY - m.y0) > 4) {
+      // one finger dragging: it's a box after all, so the camera stops following it
+      m.pending = false
+      this.controls.enabled = false
+    }
+    const { l, t, r, b } = this.marqueeRect(e)
+    const s = this.stageEl.getBoundingClientRect()
+    Object.assign(m.el.style, {
+      transform: `translate(${l - s.left}px,${t - s.top}px)`,
+      width: `${r - l}px`,
+      height: `${b - t}px`,
+    })
+  }
+
+  /** Add every shown item whose base falls inside the box to the selection */
+  private endMarquee(e: PointerEvent) {
+    const m = this.marquee
+    if (!m) return
+    const { l, t, r, b } = this.marqueeRect(e)
+    m.el.remove()
+    this.marquee = null
+    this.controls.enabled = true
+    if (r - l < 4 && b - t < 4) return
+    const s = this.canvas.getBoundingClientRect()
+    const v = this.v
+    const inside = this.placed.children.filter((o) => {
+      if (!o.visible) return false
+      v.copy(o.position).project(this.camera)
+      if (v.z > 1) return false
+      const x = s.left + ((v.x + 1) / 2) * s.width
+      const y = s.top + ((1 - v.y) / 2) * s.height
+      return x >= l && x <= r && y >= t && y <= b
+    })
+    if (inside.length) this.setSelection([...this.selection, ...inside])
+  }
+
+  /** The selection's members as they stand now, ready to be moved together */
+  private groupMembers(): GroupMember[] {
+    return this.selection
+      .filter((o) => !onWall(o))
+      .map((o) => ({ o, start: o.position.clone(), riders: this.ridersOf(o) }))
   }
 
   private updSel() {
@@ -1506,6 +1724,7 @@ export class VenueEditor {
     }
     this.updHandles()
     this.cb.onSelect({
+      count: this.group.size + 1,
       type: s.userData.type,
       x: s.position.x,
       y: s.position.y,
@@ -1713,6 +1932,11 @@ export class VenueEditor {
       this.stageEl,
       'pointerdown',
       (e) => {
+        if (this.marquee && e.pointerId !== this.marquee.id) {
+          // a second finger: a pinch or orbit, not a box (the camera takes it from here)
+          this.cancelMarquee()
+          return
+        }
         if (e.target !== canvas || e.button !== 0) return
         this.infoOpen = null
         canvas.focus()
@@ -1743,14 +1967,46 @@ export class VenueEditor {
           return
         }
         const o = this.pickObj(e)
-        if (!o) return
-        if (isZone(o) && o !== this.selected) {
+        const keyed = e.shiftKey || e.metaKey || e.ctrlKey
+        if (o && this.multi && !keyed && this.selection.includes(o) && !onWall(o) && !onTable(o)) {
+          // 多選: dragging a selected item moves them all; a tap takes it out
+          e.stopPropagation()
+          e.preventDefault()
+          this.startGroupDrag(e, o, true)
+          return
+        }
+        if (o && (keyed || this.multi)) {
+          // Shift / ⌘ / Ctrl + click (or a tap in 多選) adds the item to the selection, or
+          // takes it out
+          e.stopPropagation()
+          e.preventDefault()
+          this.toggleSelected(o)
+          return
+        }
+        if (!o) {
+          // Shift + drag (or any drag in 多選) on empty space draws a box; what's inside joins
+          // the selection. A touch one lets the camera see the finger too, for a pinch.
+          if (e.shiftKey || this.multi) {
+            if (e.pointerType !== 'touch') {
+              e.stopPropagation()
+              e.preventDefault()
+            }
+            this.startMarquee(e)
+          }
+          return
+        }
+        if (isZone(o) && !this.selection.includes(o)) {
           // leave the drag to the camera; a plain click selects the zone (pointerup)
           this.zoneClick = o
           return
         }
         e.stopPropagation()
         e.preventDefault()
+        if (this.group.size && this.selection.includes(o) && !onWall(o) && !onTable(o)) {
+          // grabbing one of several selected items moves them all
+          this.startGroupDrag(e, o, false)
+          return
+        }
         this.select(o)
         if (onWall(o)) {
           // remember where on the poster it was grabbed, in its own (right, up) axes
@@ -1787,7 +2043,24 @@ export class VenueEditor {
         this.resizeTo(e)
         return
       }
+      if (this.marquee) {
+        if (e.pointerId === this.marquee.id) this.drawMarquee(e)
+        return
+      }
       const d = this.drag
+      if (d?.group) {
+        const p = this.floorHit(e)
+        if (!p) return
+        if (!d.moved) {
+          this.pushUndo()
+          d.moved = true
+          this.grid.visible = true
+        }
+        // the grabbed item snaps to the grid; the rest keep their places around it
+        const lead = d.group.find((m) => m.o === d.o)!.start
+        this.offsetGroup(d.group, this.sn(p.x + d.dx) - lead.x, this.sn(p.z + d.dz) - lead.z)
+        return
+      }
       if (d && onWall(d.o)) {
         const hit = this.wallHit(e)
         if (!hit) return
@@ -1843,6 +2116,11 @@ export class VenueEditor {
       }
     })
     this.listen(window, 'pointerup', (e) => {
+      if (this.marquee?.id === e.pointerId) {
+        this.endMarquee(e)
+        this.downPt = null
+        return
+      }
       if (this.resizing) {
         const { o, moved } = this.resizing
         if (moved) {
@@ -1858,6 +2136,10 @@ export class VenueEditor {
       }
       if (this.drag) {
         if (this.drag.moved) this.commit()
+        // a tap in 多選 takes the item out; a plain click (no drag) on one of several selected
+        // items selects just that one
+        else if (this.drag.tapToggles) this.toggleSelected(this.drag.o)
+        else if (this.drag.group) this.select(this.drag.o)
         this.drag = null
         this.controls.enabled = true
         this.grid.visible = false
@@ -1918,7 +2200,16 @@ export class VenueEditor {
     else if (kk === 'e') this.rotate(e.shiftKey ? -45 : -15)
     else if (kk === 'r') this.rotate(e.shiftKey ? 180 : -90)
     else if (e.key === 'Escape') this.select(null)
-    else if (e.key.startsWith('Arrow') && onWall(s)) {
+    else if (e.key.startsWith('Arrow') && this.group.size) {
+      // several selected: nudge them all together, like one floor item
+      e.preventDefault()
+      const ax = this.screenAxis(e.key)
+      if (!ax) return
+      const st = e.shiftKey ? 1 : 0.25
+      this.pushUndo()
+      this.offsetGroup(this.groupMembers(), ax.x * st, ax.z * st)
+      this.commit()
+    } else if (e.key.startsWith('Arrow') && onWall(s)) {
       // posters slide along their wall: left/right sideways, up/down in height
       e.preventDefault()
       const st = e.shiftKey ? 0.25 : 0.05
@@ -1957,22 +2248,8 @@ export class VenueEditor {
       // nudge the selection along the world axis closest to the screen direction
       e.preventDefault()
       const st = e.shiftKey ? 1 : 0.25
-      const f = new THREE.Vector3()
-      this.camera.getWorldDirection(f)
-      f.y = 0
-      f.normalize()
-      const rgt = new THREE.Vector3(-f.z, 0, f.x)
-      const v = {
-        ArrowUp: f,
-        ArrowDown: f.clone().negate(),
-        ArrowRight: rgt,
-        ArrowLeft: rgt.clone().negate(),
-      }[e.key]
-      if (!v) return
-      const ax =
-        Math.abs(v.x) > Math.abs(v.z)
-          ? new THREE.Vector3(Math.sign(v.x), 0, 0)
-          : new THREE.Vector3(0, 0, Math.sign(v.z))
+      const ax = this.screenAxis(e.key)
+      if (!ax) return
       this.pushUndo()
       const riders = this.ridersOf(s)
       const p = s.position
@@ -1983,6 +2260,25 @@ export class VenueEditor {
       this.updSel()
       this.commit()
     }
+  }
+
+  /** The world axis (x or z) closest to an arrow key's direction on screen */
+  private screenAxis(key: string) {
+    const f = new THREE.Vector3()
+    this.camera.getWorldDirection(f)
+    f.y = 0
+    f.normalize()
+    const rgt = new THREE.Vector3(-f.z, 0, f.x)
+    const v = {
+      ArrowUp: f,
+      ArrowDown: f.clone().negate(),
+      ArrowRight: rgt,
+      ArrowLeft: rgt.clone().negate(),
+    }[key]
+    if (!v) return null
+    return Math.abs(v.x) > Math.abs(v.z)
+      ? new THREE.Vector3(Math.sign(v.x), 0, 0)
+      : new THREE.Vector3(0, 0, Math.sign(v.z))
   }
 
   /** WASD / arrow-key camera walking */
@@ -2034,6 +2330,7 @@ export class VenueEditor {
       this.selBox.setFromObject(this.selected)
       if (this.handles.visible) this.updHandles()
     }
+    for (const [o, { box }] of this.groupBoxes) box.setFromObject(o)
     this.renderer.render(this.scene, camera)
     if (this.labelsVisible) this.layoutLabels()
     this.layoutTags('item')

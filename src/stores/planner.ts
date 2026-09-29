@@ -41,6 +41,8 @@ export const usePlannerStore = defineStore('planner', () => {
   const mode = shallowRef<PlannerMode>(readJSON(MODE_KEY) === 'edit' ? 'edit' : 'view')
   const editing = computed(() => mode.value === 'edit')
   const snap = shallowRef(true)
+  /** 多選: taps add to the selection and drags on empty space box-select (for touch screens) */
+  const multiSelect = shallowRef(false)
   const wallsCut = shallowRef(false)
   const showLabels = shallowRef(true)
   const shadows = shallowRef(true)
@@ -108,6 +110,7 @@ export const usePlannerStore = defineStore('planner', () => {
     mode,
     editing,
     snap,
+    multiSelect,
     wallsCut,
     showLabels,
     shadows,

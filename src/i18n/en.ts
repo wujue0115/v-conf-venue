@@ -88,6 +88,13 @@ const en: Messages = {
     a2: 'A2 Hall',
   },
 
+  multi: {
+    label: 'Multi',
+    title:
+      'When on, tap items to add or remove them and drag on empty space to box-select; dragging a selected item moves them all',
+    editOnly: 'Switch to Edit mode to select several items',
+  },
+
   modes: {
     label: 'Mode',
     view: { label: 'View', title: 'Look around without moving anything' },
@@ -116,6 +123,10 @@ const en: Messages = {
   },
 
   sel: {
+    multi: (n: number) => `${n} items selected`,
+    multiHint:
+      'Drag any of them or use the arrow keys to move them together; Shift/⌘-click adds or removes one',
+    deselect: 'Deselect',
     delete: 'Delete',
     deleteTitle: 'Delete (Del)',
     wallPos: (xz: string, y: string) => `${xz} · centre ${y} m up`,
@@ -235,6 +246,9 @@ const en: Messages = {
         title: 'Items (Edit mode)',
         rows: [
           ['Drag', 'Move an item'],
+          ['Shift/⌘ + click', 'Add to or take out of the selection'],
+          ['Shift + drag on empty space', 'Box-select items to move together'],
+          ['Multi (toolbar)', 'Select several on touch: tap to add, drag on empty space to box'],
           ['Arrows', 'Nudge 0.25 m (Shift 1 m)'],
           ['Q / E', 'Rotate 15° (Shift 45°)'],
           ['R', 'Rotate 90° (Shift 180°)'],

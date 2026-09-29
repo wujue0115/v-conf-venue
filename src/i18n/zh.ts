@@ -94,6 +94,12 @@ const zh = {
     a2: 'A2 會議廳',
   },
 
+  multi: {
+    label: '多選',
+    title: '開啟後點物件可加選或取消，拖曳空白處可框選；拖曳已選物件會一起移動',
+    editOnly: '切換到編輯模式才能多選',
+  },
+
   modes: {
     label: '模式',
     view: { label: '檢視', title: '只瀏覽場地，不會動到物件' },
@@ -124,6 +130,9 @@ const zh = {
   sel: {
     delete: '刪除',
     deleteTitle: '刪除 (Del)',
+    multi: (n: number) => `已選取 ${n} 個物件`,
+    multiHint: '拖曳任一個或按方向鍵一起移動；Shift／⌘ 點選可加入或移除',
+    deselect: '取消選取',
     wallPos: (xz: string, y: string) => `${xz} · 中心離地 ${y} m`,
     lid: '開合',
     lidAngle: '螢幕開合角度',
@@ -241,6 +250,9 @@ const zh = {
         title: '物件（編輯模式）',
         rows: [
           ['拖曳', '移動物件'],
+          ['Shift／⌘ + 點擊', '加選或取消選取'],
+          ['Shift + 拖曳空白處', '框選多個物件，一起移動'],
+          ['多選（工具列）', '手機也能多選：點物件加選，拖曳空白處框選'],
           ['方向鍵', '微調 0.25m（Shift 1m）'],
           ['Q／E', '旋轉 15°（Shift 45°）'],
           ['R', '旋轉 90°（Shift 180°）'],

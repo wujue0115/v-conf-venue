@@ -184,7 +184,23 @@ const generate = () =>
 </script>
 
 <template>
-  <div v-if="sel && def" class="sel" data-stage-ui>
+  <!-- several items: they move, nudge and delete together -->
+  <div v-if="sel && sel.count > 1" class="sel" data-stage-ui>
+    <div class="head">
+      <div class="meta">
+        <div class="title">
+          <b>{{ t().sel.multi(sel.count) }}</b>
+        </div>
+        <div class="pos">{{ t().sel.multiHint }}</div>
+      </div>
+      <button class="btn" @click="editor?.clearSelection()">{{ t().sel.deselect }}</button>
+      <button class="btn danger" :title="t().sel.deleteTitle" @click="editor?.remove()">
+        {{ t().sel.delete }}
+      </button>
+    </div>
+  </div>
+
+  <div v-else-if="sel && def" class="sel" data-stage-ui>
     <div class="head">
       <img :src="thumb" alt="" />
       <div class="meta">
