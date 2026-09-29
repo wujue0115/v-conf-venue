@@ -98,7 +98,11 @@ export const usePlannerStore = defineStore('planner', () => {
   })
   watch([priceMode, slots], ([m, s]) => savePricing(m, s))
   watch(sidebarCollapsed, (v) => writeJSON(SIDEBAR_KEY, v))
-  watch(mode, (v) => writeJSON(MODE_KEY, v))
+  watch(mode, (v) => {
+    writeJSON(MODE_KEY, v)
+    // every switch of mode starts with 多選 off, so a tap selects just one item again
+    multiSelect.value = false
+  })
 
   return {
     initialItems,

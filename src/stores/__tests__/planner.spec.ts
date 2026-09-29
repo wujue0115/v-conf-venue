@@ -54,6 +54,20 @@ describe('planner store', () => {
     ])
   })
 
+  it('turns 多選 off whenever the mode changes', async () => {
+    const store = usePlannerStore()
+    store.mode = 'edit'
+    await nextTick()
+    store.multiSelect = true
+    store.mode = 'view'
+    await nextTick()
+    expect(store.multiSelect).toBe(false)
+    store.multiSelect = true
+    store.mode = 'edit'
+    await nextTick()
+    expect(store.multiSelect).toBe(false)
+  })
+
   it('hides and shows kinds of item without duplicates', () => {
     const store = usePlannerStore()
     store.setTypesVisible(['table2', 'person'], false)
