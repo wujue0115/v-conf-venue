@@ -16,9 +16,10 @@ A201, A215, the A223 VIP lounge, and the A2 international conference hall.
 The team can furnish the space and check the rental cost as they go.
 
 The floor plan is modelled in metres from the venue's official dimension
-drawings. The furniture catalogue follows the venue's rental price list
-(附件五 家具設備租借費用表), and each 3D model is shaped and coloured after the
-photos in the rental chart (家具設備租借費用圖表). Both are kept in [`docs/`](docs/).
+drawings in [`docs/floorplans/`](docs/floorplans/).
+
+The furniture catalogue, with each item's size, price and look, follows the
+venue's rental documents in [`docs/furniture/`](docs/furniture/).
 
 ## Experience
 
@@ -26,18 +27,18 @@ photos in the rental chart (家具設備租借費用圖表). Both are kept in [`
 * Drag furniture from the sidebar straight into the 3D venue
 * Rotate, duplicate, delete, or lay out selected items in rows and columns
 * Show or hide items, their tags or their notes by kind from the settings panel
-* Switch the interface between 中文 and English in the settings panel (the first visit follows the browser's language)
+* Switch the interface between Chinese and English in the settings panel (the first visit follows the browser's language)
 * Colour rows grow with every custom colour you pick, and can be reordered by dragging, retuned, pruned or reset (kept in the browser and exported with the layout)
 * Pick a colour for pieces that come in more than one (high stool, shaped sofa)
 * Place stanchions and have belts link neighbouring posts automatically; click a belt to remove it
 * Add people to the venue and seat them on chairs, sofas or A2's fixed seats
 * Tag anything: a tag floats above its item (a person's wears their colour; pick a colour for any other item's) and you pick an existing tag or type a new one
-* Add a note (補充資訊) to anything: a small ⓘ appears above it (right of its tag) and opens the note
+* Add a note to anything: a small ⓘ appears above it (right of its tag) and opens the note
 * Set snack trays (cream puffs, black forest cake or egg tarts) and aluminium laptops (13"–16" and six colours, picked separately, with the lid opened to any angle and your own image on the screen) on tables; they move with their table
 * Mark zones on the floor: drop one in and drag its corners to size it on the grid, each with its own colour and tag (a separate tag list from other items')
 * Hang your own posters on any wall, resize them by dragging a corner or typing a size, and upload an image that is saved with the layout and its JSON export (posters are not charged)
 * See the rental total update live, with self-carry or carrying-service pricing across multiple time slots (both are saved in the exported JSON, so an import works the total out the same way)
-* Group items (群組): clicking one picks up the whole group to move together, framed in the group's colour; a group has its own tag, tag colour and note above it, and 目前配置 lists each group on its own
+* Group items: clicking one picks up the whole group to move together, framed in the group's colour; a group has its own tag, tag colour and note above it, and the layout list shows each group on its own
 * Tick items in or out of the total, per kind or one by one (in the layout list or an item's panel), and click one in the list to fly to it (and select it in Edit mode)
 * Jump between preset views: overview, top-down, A201, the A215 atrium, and the A2 hall
 * Toggle grid snapping, cut-away walls, and room labels
@@ -84,8 +85,7 @@ src/
 └── views/PlannerView.vue
 docs/
 ├── floorplans/             # source floor plans used for modelling
-├── 附件五_家具設備租借費用表_.pdf   # rental price list
-└── 家具設備租借費用圖表_.pdf        # rental chart with furniture photos
+└── furniture/              # rental price list and rental chart with furniture photos
 ```
 
 ## Development
