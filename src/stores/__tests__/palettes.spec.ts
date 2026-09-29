@@ -49,7 +49,7 @@ describe('colour rows', () => {
   it('travel in the exported file and come back on import', () => {
     const store = usePalettesStore()
     store.setPalette('person', ['#111111', '#222222'])
-    const file = JSON.parse(exportLayout([], store.palettes))
+    const file = JSON.parse(exportLayout([], { palettes: store.palettes }))
     setActivePinia(createPinia())
     localStorage.clear()
     const fresh = usePalettesStore()

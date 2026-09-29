@@ -4,7 +4,7 @@ import VisibilityTree from './VisibilityTree.vue'
 import { LOCALES, LOCALE_NAMES, locale, t } from '@/i18n'
 import { useVenueEditor } from '@/composables/useVenueEditor'
 import { usePlannerStore } from '@/stores/planner'
-import { exportLayout, parseLayout } from '@/venue/layout'
+import { exportLayout, parseLayout, readPricing } from '@/venue/layout'
 import { usePalettesStore } from '@/stores/palettes'
 
 const store = usePlannerStore()
@@ -54,7 +54,8 @@ function stamp(d = new Date()) {
 }
 
 function download() {
-  const blob = new Blob([exportLayout(store.items, palettes.palettes)], {
+  const pricing = { priceMode: store.priceMode, slots: store.slots }
+  const blob = new Blob([exportLayout(store.items, { pricing, palettes: palettes.palettes })], {
     type: 'application/json',
   })
   const a = document.createElement('a')
@@ -71,7 +72,10 @@ async function onFile(e: Event) {
   try {
     const file: unknown = JSON.parse(await f.text())
     editor.value?.load(parseLayout(file), { record: true })
-    // the colour rows it was made with come along too
+    // the pricing its total was worked out with, and its colour rows, come along too
+    const pricing = readPricing(file)
+    if (pricing.priceMode !== undefined) store.priceMode = pricing.priceMode
+    if (pricing.slots !== undefined) store.setSlots(pricing.slots)
     palettes.importPalettes(file)
     store.notify(t().settings.imported)
   } catch {

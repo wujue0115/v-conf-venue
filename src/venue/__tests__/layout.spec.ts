@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   clampSlots,
   demoLayout,
+  exportLayout,
+  readPricing,
   formatNT,
   parseLayout,
   summarizeCost,
@@ -348,5 +350,49 @@ describe('groups', () => {
   it('drops blank group names', () => {
     const [a] = parseLayout([{ t: 'table2', x: 0, z: 0, r: 0, group: '   ' }])
     expect(a).not.toHaveProperty('group')
+  })
+})
+
+describe('export', () => {
+  it('brings back every field an item can be given, through export and import', () => {
+    const img = 'data:image/jpeg;base64,AAAA'
+    const items: LayoutItem[] = [
+      {
+        t: 'table2',
+        x: 1,
+        y: 0.4,
+        z: 2,
+        r: 0.5,
+        tag: '報到',
+        tagColor: '#e57373',
+        info: '9:00 開放',
+        unbilled: true,
+        group: '報到區',
+        groupTag: '入口',
+        groupColor: '#4a90d9',
+        groupInfo: '工作人員 2 位',
+      },
+      { t: 'person', x: 0, y: 0.5, z: 0, r: 0, n: 3, color: '#42b883', tag: '志工' },
+      { t: 'person', x: 1, y: 0.4, z: 0, r: 0, sit: true },
+      { t: 'laptop', x: 1, y: 0.71, z: 2, r: 0, v: 's16-black', open: 95, img },
+      { t: 'poster', x: 3, y: 1.5, z: 0, r: 0, w: 0.6, h: 0.9, lock: true, img },
+      { t: 'zone', x: 5, y: 0, z: 5, r: 0, w: 3, d: 2, color: '#9575cd', tag: 'A 區' },
+      { t: 'stanchion', x: 7, y: 0, z: 7, r: 0, cut: [1.571] },
+      { t: 'shapeSofa', x: 9, y: 0, z: 9, r: 0, v: 'green' },
+    ]
+    expect(parseLayout(JSON.parse(exportLayout(items)))).toEqual(items)
+  })
+})
+
+describe('pricing in the exported file', () => {
+  it('comes back as it was exported', () => {
+    const file = JSON.parse(exportLayout([], { pricing: { priceMode: 1, slots: 3 } }))
+    expect(readPricing(file)).toEqual({ priceMode: 1, slots: 3 })
+  })
+
+  it('keeps only what is usable, and nothing from a file without it', () => {
+    expect(readPricing({ items: [] })).toEqual({})
+    expect(readPricing({ pricing: { priceMode: 2, slots: 40 } })).toEqual({ slots: 9 })
+    expect(readPricing({ pricing: { priceMode: 0, slots: 'x' } })).toEqual({ priceMode: 0 })
   })
 })

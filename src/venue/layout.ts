@@ -222,21 +222,45 @@ export function parseLayout(data: unknown): LayoutItem[] {
   })
 }
 
-/** The exported file: the items, and (when given) the colour rows people pick from */
+/** How the rent is worked out: 自助搬運 or 含搬運, and how many 時段 (the price list's unit) */
+export interface Pricing {
+  priceMode: PriceMode
+  slots: number
+}
+
+/**
+ * The exported file: the items, and (when given) the pricing the total was worked out with
+ * and the colour rows people pick from
+ */
 export function exportLayout(
   items: readonly LayoutItem[],
-  palettes?: Record<string, readonly string[]>,
+  { pricing, palettes }: { pricing?: Pricing; palettes?: Record<string, readonly string[]> } = {},
 ) {
   return JSON.stringify(
     {
       venue: 'NCCU-CPBAE-A2F',
       event: 'VueConf Taiwan 2026',
       items,
+      ...(pricing ? { pricing } : {}),
       ...(palettes ? { palettes } : {}),
     },
     null,
     2,
   )
+}
+
+/** The pricing in an exported file (`pricing`); each part only when it is usable */
+export function readPricing(file: unknown): Partial<Pricing> {
+  const p = (file as { pricing?: unknown } | null)?.pricing as
+    | { priceMode?: unknown; slots?: unknown }
+    | undefined
+  if (!p || typeof p !== 'object') return {}
+  return {
+    ...(p.priceMode === 0 || p.priceMode === 1 ? { priceMode: p.priceMode } : {}),
+    ...(typeof p.slots === 'number' && Number.isFinite(p.slots)
+      ? { slots: clampSlots(p.slots) }
+      : {}),
+  }
 }
 
 export function demoLayout(): LayoutItem[] {
