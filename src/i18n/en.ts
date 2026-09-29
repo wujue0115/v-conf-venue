@@ -136,7 +136,7 @@ const en: Messages = {
   sel: {
     multi: (n: number) => `${n} items selected`,
     multiHint:
-      'Drag any of them or use the arrow keys to move them together; Shift/⌘-click adds or removes one',
+      'Drag any of them or use the arrow keys to move them together, Q/E/R to turn them round their middle; Shift/⌘-click adds or removes one',
     deselect: 'Deselect',
     delete: 'Delete',
     deleteTitle: 'Delete (Del)',
@@ -277,7 +277,7 @@ const en: Messages = {
           ],
           ['Multi (toolbar)', 'Select several on touch: tap to add, drag on empty space to box'],
           ['Arrows', 'Nudge 0.25 m (Shift 1 m)'],
-          ['Q / E', 'Rotate 15° (Shift 45°)'],
+          ['Q / E', 'Rotate 15° (Shift 45°); several selected turn together'],
           ['R', 'Rotate 90° (Shift 180°)'],
           ['⌘D', 'Copy'],
           ['Del', 'Delete'],

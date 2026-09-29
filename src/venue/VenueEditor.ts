@@ -638,8 +638,10 @@ export class VenueEditor {
 
   rotate(deg: number) {
     const s = this.selected
-    // turning and copying are for one item at a time
-    if (!s || onWall(s) || this.group.size) return
+    if (!s) return
+    // several selected: they turn together, round the middle of the selection
+    if (this.group.size) return this.rotateGroup(deg)
+    if (onWall(s)) return
     this.pushUndo()
     const riders = this.ridersOf(s)
     s.rotation.y += THREE.MathUtils.degToRad(deg)
@@ -1847,6 +1849,41 @@ export class VenueEditor {
     }
     if (members.some((m) => isPost(m.o))) this.updateBelts()
     this.updSel()
+  }
+
+  /**
+   * Turn a multiple selection by `deg` round the middle of its floor items, each item turning
+   * with it: people on a turned seat and things on a turned table ride along, and anything else
+   * on a table goes too if a table is under its new spot. Posters stay on their walls.
+   */
+  private rotateGroup(deg: number) {
+    const members = this.groupMembers()
+    const riding = new Set(members.flatMap((m) => m.riders.map((r) => r.o)))
+    const free = members.filter((m) => !riding.has(m.o))
+    if (!free.length) return
+    const box = new THREE.Box3().setFromPoints(free.map((m) => m.start))
+    const mid = box.getCenter(new THREE.Vector3()).setY(0)
+    const a = THREE.MathUtils.degToRad(deg)
+    const turned = (p: THREE.Vector3) => p.clone().setY(0).sub(mid).applyAxisAngle(UP, a).add(mid)
+    this.pushUndo()
+    for (const { o, start } of free) {
+      o.rotation.y += a
+      if (onTable(o)) continue
+      const q = turned(start)
+      o.position.set(q.x, this.floorY(q.x, q.z), q.z)
+    }
+    for (const m of members) if (m.riders.length) this.carry(m.o, m.riders)
+    for (const { o, start } of free) {
+      if (onTable(o)) {
+        const q = turned(start)
+        const y = this.tableTopAt(q.x, q.z)
+        if (y !== null) o.position.set(q.x, y, q.z)
+        else o.position.copy(start)
+      } else if (isPerson(o)) this.settle(o)
+    }
+    if (members.some((m) => isPost(m.o))) this.updateBelts()
+    this.updSel()
+    this.commit()
   }
 
   /** `o` and, when it is in a group (群組), the rest of its group that is shown, `o` first */

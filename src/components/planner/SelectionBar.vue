@@ -237,58 +237,71 @@ const generate = () =>
         {{ t().sel.delete }}
       </button>
     </div>
-    <div v-if="sel.group" class="rows">
-      <span class="lbl">{{ t().grouping.label }}</span>
-      <div class="ctl">
-        <input
-          ref="gname"
-          v-model="groupName"
-          class="gname"
-          :maxlength="TAG_MAX"
-          :aria-label="t().grouping.name"
-          @change="renameGroup"
-          @keydown.enter="($event.target as HTMLInputElement).blur()"
-        />
-        <button class="btn" @click="editor?.ungroup()">{{ t().grouping.ungroup }}</button>
-      </div>
-
-      <span class="lbl">{{ t().sel.tag }}</span>
-      <div class="ctl">
-        <TagCombobox
-          :value="sel.groupTag ?? ''"
-          :options="usedGroupTags"
-          @commit="editor?.setGroupTag($event)"
-        />
-      </div>
-
-      <!-- also the colour of the frame round the group while it is selected -->
-      <span class="lbl">{{ t().sel.tagColour }}</span>
-      <div class="ctl">
-        <ColorChips
-          :value="sel.groupColor ?? TAG_COLOR"
-          :colors="palettes.palettes.tag"
-          @update:colors="palettes.setPalette('tag', $event)"
-          :defaults="DEFAULT_PALETTES.tag"
-          :label="t().sel.tagColour"
-          @pick="editor?.setGroupColor($event)"
-        />
-      </div>
-
-      <span class="lbl">{{ t().sel.info }}</span>
-      <div class="ctl">
-        <textarea
-          v-model="groupInfo"
-          class="info"
-          rows="2"
-          :maxlength="INFO_MAX"
-          :placeholder="t().sel.infoPlaceholder"
-          :aria-label="t().sel.infoLabel"
-          @change="editor?.setGroupInfo(groupInfo)"
-        ></textarea>
-      </div>
-    </div>
-    <div v-else class="ctl">
+    <div v-if="!sel.group" class="ctl">
       <button class="btn" @click="makeGroup">{{ t().grouping.make }}</button>
+    </div>
+    <div class="rows">
+      <template v-if="sel.group">
+        <span class="lbl">{{ t().grouping.label }}</span>
+        <div class="ctl">
+          <input
+            ref="gname"
+            v-model="groupName"
+            class="gname"
+            :maxlength="TAG_MAX"
+            :aria-label="t().grouping.name"
+            @change="renameGroup"
+            @keydown.enter="($event.target as HTMLInputElement).blur()"
+          />
+          <button class="btn" @click="editor?.ungroup()">{{ t().grouping.ungroup }}</button>
+        </div>
+
+        <span class="lbl">{{ t().sel.tag }}</span>
+        <div class="ctl">
+          <TagCombobox
+            :value="sel.groupTag ?? ''"
+            :options="usedGroupTags"
+            @commit="editor?.setGroupTag($event)"
+          />
+        </div>
+
+        <!-- also the colour of the frame round the group while it is selected -->
+        <span class="lbl">{{ t().sel.tagColour }}</span>
+        <div class="ctl">
+          <ColorChips
+            :value="sel.groupColor ?? TAG_COLOR"
+            :colors="palettes.palettes.tag"
+            @update:colors="palettes.setPalette('tag', $event)"
+            :defaults="DEFAULT_PALETTES.tag"
+            :label="t().sel.tagColour"
+            @pick="editor?.setGroupColor($event)"
+          />
+        </div>
+
+        <span class="lbl">{{ t().sel.info }}</span>
+        <div class="ctl">
+          <textarea
+            v-model="groupInfo"
+            class="info"
+            rows="2"
+            :maxlength="INFO_MAX"
+            :placeholder="t().sel.infoPlaceholder"
+            :aria-label="t().sel.infoLabel"
+            @change="editor?.setGroupInfo(groupInfo)"
+          ></textarea>
+        </div>
+      </template>
+
+      <!-- they turn together, round the middle of the selection -->
+      <span class="lbl">{{ t().sel.rotate }}</span>
+      <div class="ctl">
+        <button class="btn" :title="t().sel.ccw15" @click="rotate(15)">⟲ 15°</button>
+        <button class="btn" :title="t().sel.cw15" @click="rotate(-15)">⟳ 15°</button>
+        <button class="btn" :title="t().sel.ccw45" @click="rotate(45)">⟲ 45°</button>
+        <button class="btn" :title="t().sel.cw45" @click="rotate(-45)">⟳ 45°</button>
+        <button class="btn" :title="t().sel.cw90" @click="rotate(-90)">⟳ 90°</button>
+        <button class="btn" :title="t().sel.turn180" @click="rotate(180)">180°</button>
+      </div>
     </div>
   </div>
 
