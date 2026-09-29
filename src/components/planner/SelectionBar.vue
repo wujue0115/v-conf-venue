@@ -19,6 +19,7 @@ import {
 import { LID_MAX } from '@/venue/laptop'
 import { POSTER_PRESETS, readPosterImage, type PosterFit } from '@/venue/poster'
 import { INFO_MAX, formatNT } from '@/venue/layout'
+import { nameOf, t, variantLabel, variantName } from '@/i18n'
 import { BELT_MAX } from '@/venue/stanchions'
 import { ZONE_COLOR } from '@/venue/zone'
 
@@ -75,12 +76,12 @@ watch(
 )
 const def = computed(() => (sel.value ? FURNITURE[sel.value.type] : null))
 /** Quick picks for a laptop's lid */
-const LID_PRESETS = [
-  { name: '闔上', deg: 0 },
+const LID_PRESETS = computed(() => [
+  { name: t().sel.lidShut, deg: 0 },
   { name: '90°', deg: 90 },
   { name: '110°', deg: 110 },
-  { name: '全開', deg: LID_MAX },
-]
+  { name: t().sel.lidFull, deg: LID_MAX },
+])
 const axes = computed(() => (sel.value ? variantAxesOf(sel.value.type) : []))
 /** The selected option on each axis */
 const picked = computed(() => sel.value?.variant?.split('-') ?? [])
@@ -95,13 +96,13 @@ const thumb = computed(() =>
 const price = computed(() => {
   if (!sel.value) return ''
   const p = priceOf(sel.value.type)
-  return p ? formatNT(p[store.priceMode]) : '不計費'
+  return p ? formatNT(p[store.priceMode]) : t().summary.free
 })
 const position = computed(() => {
   const s = sel.value
   if (!s) return ''
   const xz = `x ${s.x.toFixed(2)} · z ${s.z.toFixed(2)}`
-  return isWallItem(s.type) ? `${xz} · 中心離地 ${s.y.toFixed(2)} m` : `${xz} · ${s.deg}°`
+  return isWallItem(s.type) ? t().sel.wallPos(xz, s.y.toFixed(2)) : `${xz} · ${s.deg}°`
 })
 
 // Size (posters and 易拉展), edited in centimetres
@@ -154,7 +155,7 @@ async function onFile(e: Event) {
     pending.value = img
     fitDialog.value?.showModal()
   } catch {
-    store.notify('無法讀取這張圖片')
+    store.notify(t().sel.imageUnreadable)
   }
 }
 function chooseFit(fit: PosterFit) {
@@ -186,18 +187,20 @@ const generate = () =>
       <img :src="thumb" alt="" />
       <div class="meta">
         <div class="title">
-          <b>{{ def.name }}</b
+          <b>{{ nameOf(sel.type) }}</b
           ><span class="price">{{ price }}</span>
         </div>
         <div class="pos">{{ position }}</div>
       </div>
-      <button class="btn danger" title="刪除 (Del)" @click="editor?.remove()">刪除</button>
+      <button class="btn danger" :title="t().sel.deleteTitle" @click="editor?.remove()">
+        {{ t().sel.delete }}
+      </button>
     </div>
 
     <div class="rows">
       <template v-for="(a, i) in axes" :key="a.label">
-        <span class="lbl">{{ a.label }}</span>
-        <div class="ctl swatches" role="radiogroup" :aria-label="a.label">
+        <span class="lbl">{{ variantLabel(a.label) }}</span>
+        <div class="ctl swatches" role="radiogroup" :aria-label="variantLabel(a.label)">
           <button
             v-for="v in a.options"
             :key="v.id"
@@ -208,13 +211,14 @@ const generate = () =>
             :aria-checked="picked[i] === v.id"
             @click="pick(i, v.id)"
           >
-            <span v-if="v.swatch" class="dot" :style="{ background: v.swatch }"></span>{{ v.name }}
+            <span v-if="v.swatch" class="dot" :style="{ background: v.swatch }"></span
+            >{{ variantName(sel.type, v.id) }}
           </button>
         </div>
       </template>
 
       <template v-if="sel.laptop">
-        <span class="lbl">開合</span>
+        <span class="lbl">{{ t().sel.lid }}</span>
         <div class="ctl lid">
           <input
             type="range"
@@ -222,7 +226,7 @@ const generate = () =>
             :max="LID_MAX"
             step="1"
             :value="sel.laptop.open"
-            aria-label="螢幕開合角度"
+            :aria-label="t().sel.lidAngle"
             @input="editor?.setLidAngle(+($event.target as HTMLInputElement).value, true)"
             @change="editor?.setLidAngle(+($event.target as HTMLInputElement).value)"
           />
@@ -240,23 +244,23 @@ const generate = () =>
       </template>
 
       <template v-if="sel.size">
-        <span class="lbl">尺寸</span>
+        <span class="lbl">{{ t().sel.size }}</span>
         <div class="ctl arr">
-          <div class="pair" role="group" aria-label="寬 × 高（公分）">
+          <div class="pair" role="group" :aria-label="t().sel.widthHeightCm">
             <input
               v-model.number="pw"
               type="number"
               inputmode="decimal"
               step="1"
-              aria-label="寬 cm"
+              :aria-label="t().sel.widthCm"
               @change="applySize"
             />
             <button
               class="lock"
               :class="{ on: sel.size.lock }"
               type="button"
-              :title="sel.size.lock ? '比例已鎖定，點擊解鎖' : '鎖定比例'"
-              :aria-label="sel.size.lock ? '解鎖比例' : '鎖定比例'"
+              :title="sel.size.lock ? t().sel.lockOn : t().sel.lock"
+              :aria-label="sel.size.lock ? t().sel.unlock : t().sel.lock"
               :aria-pressed="sel.size.lock"
               @click="editor?.setPosterLock(!sel.size.lock)"
             >
@@ -276,7 +280,7 @@ const generate = () =>
               type="number"
               inputmode="decimal"
               step="1"
-              aria-label="高 cm"
+              :aria-label="t().sel.heightCm"
               @change="applySize"
             />
             <span class="op">cm</span>
@@ -296,9 +300,9 @@ const generate = () =>
       </template>
 
       <template v-if="sel.people">
-        <span class="lbl">人數</span>
+        <span class="lbl">{{ t().sel.people }}</span>
         <div class="ctl">
-          <div class="grp count" role="radiogroup" aria-label="人數">
+          <div class="grp count" role="radiogroup" :aria-label="t().sel.people">
             <button
               v-for="k in PEOPLE_MAX"
               :key="k"
@@ -312,31 +316,31 @@ const generate = () =>
               {{ k }}
             </button>
           </div>
-          <span v-if="sel.people.sit" class="hint">坐在椅子上時為 1 人</span>
+          <span v-if="sel.people.sit" class="hint">{{ t().sel.seatedOne }}</span>
         </div>
 
-        <span class="lbl">顏色</span>
+        <span class="lbl">{{ t().sel.colour }}</span>
         <div class="ctl">
           <ColorChips
             :value="sel.people.color"
             :colors="PERSON_COLORS"
-            label="人員顏色"
+            :label="t().sel.personColour"
             @pick="editor?.setPeople({ color: $event })"
           />
         </div>
       </template>
 
       <template v-if="sel.zone">
-        <span class="lbl">尺寸</span>
+        <span class="lbl">{{ t().sel.size }}</span>
         <div class="ctl arr">
-          <div class="pair" role="group" aria-label="寬 × 深（公尺）">
+          <div class="pair" role="group" :aria-label="t().sel.widthDepthM">
             <input
               v-model.number="zw"
               type="number"
               inputmode="decimal"
               step="0.25"
               min="0.25"
-              aria-label="寬 m"
+              :aria-label="t().sel.widthM"
               @change="editor?.setZone({ w: zw })"
             />
             <span class="op">×</span>
@@ -346,77 +350,79 @@ const generate = () =>
               inputmode="decimal"
               step="0.25"
               min="0.25"
-              aria-label="深 m"
+              :aria-label="t().sel.depthM"
               @change="editor?.setZone({ d: zd })"
             />
             <span class="op">m</span>
           </div>
-          <span class="hint">拖曳角落調整</span>
+          <span class="hint">{{ t().sel.dragCorners }}</span>
         </div>
 
-        <span class="lbl">顏色</span>
+        <span class="lbl">{{ t().sel.colour }}</span>
         <div class="ctl">
           <ColorChips
             :value="sel.zone.color"
             :colors="ZONE_COLORS"
-            label="區域顏色"
+            :label="t().sel.zoneColour"
             @pick="editor?.setZone({ color: $event })"
           />
         </div>
       </template>
 
-      <span class="lbl">標籤</span>
+      <span class="lbl">{{ t().sel.tag }}</span>
       <div class="ctl">
         <TagCombobox :value="sel.tag" :options="usedTags" @commit="editor?.setTag($event)" />
       </div>
 
       <template v-if="sel.tag && sel.tagColor">
-        <span class="lbl">標籤顏色</span>
+        <span class="lbl">{{ t().sel.tagColour }}</span>
         <div class="ctl">
           <ColorChips
             :value="sel.tagColor"
             :colors="TAG_COLORS"
-            label="標籤顏色"
+            :label="t().sel.tagColour"
             @pick="editor?.setTagColor($event)"
           />
         </div>
       </template>
 
-      <span class="lbl">資訊</span>
+      <span class="lbl">{{ t().sel.info }}</span>
       <div class="ctl">
         <textarea
           v-model="info"
           class="info"
           rows="2"
           :maxlength="INFO_MAX"
-          placeholder="補充資訊，會在物件上方顯示 i 按鈕"
-          aria-label="補充資訊"
+          :placeholder="t().sel.infoPlaceholder"
+          :aria-label="t().sel.infoLabel"
           @change="saveInfo"
         ></textarea>
       </div>
 
       <template v-if="!isWallItem(sel.type)">
-        <span class="lbl">旋轉</span>
+        <span class="lbl">{{ t().sel.rotate }}</span>
         <div class="ctl">
-          <button class="btn" title="逆時針 15° (Q)" @click="rotate(15)">⟲ 15°</button>
-          <button class="btn" title="順時針 15° (E)" @click="rotate(-15)">⟳ 15°</button>
-          <button class="btn" title="逆時針 45° (Shift+Q)" @click="rotate(45)">⟲ 45°</button>
-          <button class="btn" title="順時針 45° (Shift+E)" @click="rotate(-45)">⟳ 45°</button>
-          <button class="btn" title="順時針 90° (R)" @click="rotate(-90)">⟳ 90°</button>
-          <button class="btn" title="轉 180° (Shift+R)" @click="rotate(180)">180°</button>
-          <button class="btn dup" title="複製 (⌘D)" @click="editor?.duplicate()">複製</button>
+          <button class="btn" :title="t().sel.ccw15" @click="rotate(15)">⟲ 15°</button>
+          <button class="btn" :title="t().sel.cw15" @click="rotate(-15)">⟳ 15°</button>
+          <button class="btn" :title="t().sel.ccw45" @click="rotate(45)">⟲ 45°</button>
+          <button class="btn" :title="t().sel.cw45" @click="rotate(-45)">⟳ 45°</button>
+          <button class="btn" :title="t().sel.cw90" @click="rotate(-90)">⟳ 90°</button>
+          <button class="btn" :title="t().sel.turn180" @click="rotate(180)">180°</button>
+          <button class="btn dup" :title="t().sel.duplicateTitle" @click="editor?.duplicate()">
+            {{ t().sel.duplicate }}
+          </button>
         </div>
 
         <template v-if="!sel.zone && !onTableOnly(sel.type)">
-          <span class="lbl">陣列</span>
+          <span class="lbl">{{ t().sel.array }}</span>
           <div class="ctl arr">
-            <label class="pair" title="每排數量 × 排數">
+            <label class="pair" :title="t().sel.perRowByRows">
               <input
                 v-model.number="cols"
                 type="number"
                 inputmode="numeric"
                 min="1"
-                aria-label="每排數量"
+                :aria-label="t().sel.perRow"
               />
               <span class="op">×</span>
               <input
@@ -424,17 +430,17 @@ const generate = () =>
                 type="number"
                 inputmode="numeric"
                 min="1"
-                aria-label="排數"
+                :aria-label="t().sel.rows"
               />
             </label>
-            <label class="pair" title="左右 / 前後間距（公尺）">
-              <span class="op">間距</span>
+            <label class="pair" :title="t().sel.spacingTitle">
+              <span class="op">{{ t().sel.spacing }}</span>
               <input
                 v-model.number="dx"
                 type="number"
                 inputmode="decimal"
                 step="0.05"
-                aria-label="左右間距 m"
+                :aria-label="t().sel.spacingX"
               />
               <span class="op">/</span>
               <input
@@ -442,65 +448,67 @@ const generate = () =>
                 type="number"
                 inputmode="decimal"
                 step="0.05"
-                aria-label="前後間距 m"
+                :aria-label="t().sel.spacingZ"
               />
               <span class="op">m</span>
             </label>
-            <button class="btn gen" @click="generate">產生</button>
+            <button class="btn gen" @click="generate">{{ t().sel.generate }}</button>
           </div>
         </template>
       </template>
 
       <template v-if="sel.image">
-        <span class="lbl">圖片</span>
+        <span class="lbl">{{ t().sel.image }}</span>
         <div class="ctl">
           <button class="btn" @click="fileInput?.click()">
-            {{ sel.image.hasImage ? '更換圖片' : '上傳圖片' }}
+            {{ sel.image.hasImage ? t().sel.replaceImage : t().sel.uploadImage }}
           </button>
           <button v-if="sel.image.hasImage" class="btn" @click="editor?.setPosterImage(null)">
-            移除
+            {{ t().sel.remove }}
           </button>
           <button
             v-if="isWallItem(sel.type)"
             class="btn dup"
-            title="複製 (⌘D)"
+            :title="t().sel.duplicateTitle"
             @click="editor?.duplicate()"
           >
-            複製
+            {{ t().sel.duplicate }}
           </button>
           <input ref="file" type="file" accept="image/*" hidden @change="onFile" />
           <dialog ref="fitDialog" class="fit-dialog" @close="pending = null">
             <template v-if="pending">
-              <h3>圖片比例和目前尺寸不同</h3>
-              <p>要怎麼放這張圖片？</p>
+              <h3>{{ t().sel.fitTitle }}</h3>
+              <p>{{ t().sel.fitAsk }}</p>
               <div class="choices">
                 <button class="choice" type="button" @click="chooseFit('image')">
                   <span class="frame">
                     <img :src="pending.url" alt="" :style="box(pending.aspect)" />
                   </span>
-                  <b>照圖片比例</b>
-                  <i>改成圖片的比例，完整顯示</i>
+                  <b>{{ t().sel.fitImage }}</b>
+                  <i>{{ t().sel.fitImageHint }}</i>
                 </button>
                 <button class="choice" type="button" @click="chooseFit('poster')">
                   <span class="frame">
                     <img :src="pending.url" alt="" class="crop" :style="box(sizeAspect)" />
                   </span>
-                  <b>維持目前比例</b>
-                  <i>尺寸不變，圖片裁切填滿</i>
+                  <b>{{ t().sel.fitKeep }}</b>
+                  <i>{{ t().sel.fitKeepHint }}</i>
                 </button>
               </div>
-              <button class="btn cancel" type="button" @click="fitDialog?.close()">取消</button>
+              <button class="btn cancel" type="button" @click="fitDialog?.close()">
+                {{ t().sel.cancel }}
+              </button>
             </template>
           </dialog>
         </div>
       </template>
 
       <template v-if="sel.type === 'stanchion'">
-        <span class="lbl">紅帶</span>
+        <span class="lbl">{{ t().sel.belt }}</span>
         <div class="ctl belt">
-          <span class="hint">{{ BELT_MAX }}m 內自動連接，點紅帶可拆除</span>
+          <span class="hint">{{ t().sel.beltHint(BELT_MAX) }}</span>
           <button v-if="sel.cutBelts" class="btn restore" @click="editor?.restoreBelts()">
-            恢復 {{ sel.cutBelts }} 條
+            {{ t().sel.restoreBelts(sel.cutBelts) }}
           </button>
         </div>
       </template>

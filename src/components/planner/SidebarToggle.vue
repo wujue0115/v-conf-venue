@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { t } from '@/i18n'
 
 const collapsed = defineModel<boolean>({ required: true })
-const label = computed(() => (collapsed.value ? '展開側邊欄' : '收合側邊欄'))
+const label = computed(() => (collapsed.value ? t().sidebar.expand : t().sidebar.collapse))
 </script>
 
 <template>

@@ -14,6 +14,7 @@ import {
   type PriceMode,
 } from '@/venue/layout'
 import { readJSON, writeJSON } from '@/venue/storage'
+import { t } from '@/i18n'
 
 const SIDEBAR_KEY = 'vueconf26-sidebar-collapsed'
 const MODE_KEY = 'vueconf26-mode'
@@ -90,7 +91,7 @@ export const usePlannerStore = defineStore('planner', () => {
   let saveFailed = false
   watch(items, (list) => {
     const ok = saveLayout(list)
-    if (!ok && !saveFailed) notify('配置含圖片過大，無法自動存在瀏覽器，請記得匯出 JSON')
+    if (!ok && !saveFailed) notify(t().toast.saveFailed)
     saveFailed = !ok
   })
   watch([priceMode, slots], ([m, s]) => savePricing(m, s))

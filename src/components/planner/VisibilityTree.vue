@@ -2,7 +2,8 @@
 import { computed, reactive } from 'vue'
 import TriCheckbox from './TriCheckbox.vue'
 import { usePlannerStore } from '@/stores/planner'
-import { FURNITURE, FURNITURE_GROUPS, FURNITURE_TYPES, type FurnitureType } from '@/venue/furniture'
+import { FURNITURE_GROUPS, FURNITURE_TYPES, type FurnitureType } from '@/venue/furniture'
+import { nameOf, t } from '@/i18n'
 import type { LayoutItem } from '@/venue/layout'
 
 /*
@@ -59,10 +60,13 @@ function toggleRoot() {
   if (props.extra) emit('extra', on)
 }
 
-const groups = FURNITURE_GROUPS.map((g) => ({
-  ...g,
-  items: g.types.map((t) => ({ type: t, name: FURNITURE[t].name })),
-}))
+const groups = computed(() =>
+  FURNITURE_GROUPS.map((g) => ({
+    ...g,
+    title: t().groups[g.id],
+    items: g.types.map((type) => ({ type, name: nameOf(type) })),
+  })),
+)
 </script>
 
 <template>

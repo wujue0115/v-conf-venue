@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import FurniturePalette from './FurniturePalette.vue'
 import LayoutSummary from './LayoutSummary.vue'
+import { t } from '@/i18n'
 </script>
 
 <template>
@@ -24,7 +25,7 @@ import LayoutSummary from './LayoutSummary.vue'
           </svg>
         </a>
       </div>
-      <h1>政大公企 · A 棟 2F · 場地規劃</h1>
+      <h1>{{ t().heading }}</h1>
     </div>
     <div class="scroll">
       <FurniturePalette />

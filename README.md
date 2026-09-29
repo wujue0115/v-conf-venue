@@ -26,6 +26,7 @@ photos in the rental chart (家具設備租借費用圖表). Both are kept in [`
 * Drag furniture from the sidebar straight into the 3D venue
 * Rotate, duplicate, delete, or lay out selected items in rows and columns
 * Show or hide items, their tags or their notes by kind from the settings panel
+* Switch the interface between 中文 and English in the settings panel (the first visit follows the browser's language)
 * Pick a colour for pieces that come in more than one (high stool, shaped sofa)
 * Place stanchions and have belts link neighbouring posts automatically; click a belt to remove it
 * Add people to the venue and seat them on chairs, sofas or A2's fixed seats
@@ -73,6 +74,7 @@ src/
 │   ├── materials.ts        # materials and modelling helpers
 │   ├── places.ts           # room / facility labels, camera views
 │   └── stanchions.ts       # which stanchion posts get linked by belts
+├── i18n/                   # 中文 / English messages (zh.ts is the source, en.ts matches it)
 ├── stores/planner.ts       # layout snapshot, selection, pricing, view toggles
 ├── composables/            # useVenueEditor, useFurnitureThumbnails
 ├── components/planner/     # sidebar, palette, cost summary, stage, toolbars

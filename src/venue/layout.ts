@@ -3,7 +3,6 @@ import { clampPosterSize, isImageDataUrl } from './poster'
 import { readJSON, writeJSON } from './storage'
 import { clampZone } from './zone'
 import {
-  FURNITURE,
   FURNITURE_TYPES,
   defaultSizeOf,
   isFurnitureType,
@@ -54,9 +53,9 @@ export interface LayoutItem {
 /** 0 = 自助搬運 (self-carry), 1 = 含搬運 (with carrying service) */
 export type PriceMode = 0 | 1
 
+/** One kind's rental cost; its name is shown with nameOf (i18n) */
 export interface CostLine {
   type: FurnitureType
-  name: string
   count: number
   subtotal: number
 }
@@ -96,7 +95,7 @@ export function summarizeCost(items: readonly LayoutItem[], priceMode: PriceMode
     const count = counts.get(t) ?? 0
     const price = priceOf(t)
     if (!count || !price) return []
-    return [{ type: t, name: FURNITURE[t].name, count, subtotal: price[priceMode] * count * slots }]
+    return [{ type: t, count, subtotal: price[priceMode] * count * slots }]
   })
   return { lines, total: lines.reduce((s, l) => s + l.subtotal, 0) }
 }

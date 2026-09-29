@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
+import { nameOf, t } from '@/i18n'
 import { CENTER, buildArchitecture, type Architecture } from './architecture'
 import {
   FURNITURE,
@@ -378,7 +379,7 @@ export class VenueEditor {
       i.img ? { ...i, img: this.imgByKey.get(i.img) } : i,
     )
     this.load(items)
-    this.cb.onToast('已復原')
+    this.cb.onToast(t().toast.undone)
   }
 
   /** Switch between edit mode and view-only mode. */
@@ -550,7 +551,7 @@ export class VenueEditor {
       const spot = this.freeTraySpot(s)
       if (!spot) {
         this.undoStack.pop()
-        this.cb.onToast(`桌面上沒有空位可以再放「${FURNITURE[type].name}」了`)
+        this.cb.onToast(t().toast.tableFull(nameOf(type)))
         return
       }
       o = this.add({ ...item, x: spot.x, y: spot.y, z: spot.z })
@@ -624,9 +625,7 @@ export class VenueEditor {
         if (o) this.settle(o)
       }
     this.commit()
-    this.cb.onToast(
-      `已產生 ${cols * rows - 1} 個「${FURNITURE[type].name}」（向右 ${cols} 個、向後 ${rows} 排）`,
-    )
+    this.cb.onToast(t().toast.arrayed(cols * rows - 1, nameOf(type), cols, rows))
   }
 
   /** Rebuild the selected object in another colour variant, in the same spot. */
@@ -743,7 +742,7 @@ export class VenueEditor {
       if (o !== s && isPost(o)) o.userData.cut = withoutCutToward(toPost(o), bearing(toPost(o), me))
     this.commit()
     this.updSel()
-    this.cb.onToast('已恢復紅帶連接')
+    this.cb.onToast(t().toast.beltsRestored)
   }
 
   /** Begin drag-placing a new object from the palette (call from a pointerdown). */
@@ -820,7 +819,7 @@ export class VenueEditor {
           this.ray.setFromCamera(this.ndc.set(0, 0), this.camera)
           const p = clicked ? this.tableSpotOnRay() : null
           if (!p) {
-            this.cb.onToast(`「${FURNITURE[type].name}」只能放在桌子上`)
+            this.cb.onToast(t().toast.tableOnly(nameOf(type)))
             return
           }
           this.pushUndo()
@@ -828,13 +827,13 @@ export class VenueEditor {
           const o = this.add({ t: type, x: p.x, y: p.y, z: p.z, r })
           this.select(o)
           this.commit()
-          this.cb.onToast(`已將「${FURNITURE[type].name}」放在畫面中央的桌上`)
+          this.cb.onToast(t().toast.onCentreTable(nameOf(type)))
         } else if (clicked && isWallItem(type)) {
           // hang it on whatever wall is in the middle of the view
           this.ray.setFromCamera(this.ndc.set(0, 0), this.camera)
           const hit = this.wallHitFromRay()
           if (!hit) {
-            this.cb.onToast(`請把「${FURNITURE[type].name}」拖曳到牆面上`)
+            this.cb.onToast(t().toast.dragToWall(nameOf(type)))
             return
           }
           this.pushUndo()
@@ -843,17 +842,17 @@ export class VenueEditor {
           this.hangOn(o, hit.point, hit.normal)
           this.select(o)
           this.commit()
-          this.cb.onToast(`已將「${FURNITURE[type].name}」貼在畫面中央的牆上，可拖曳調整`)
+          this.cb.onToast(t().toast.onCentreWall(nameOf(type)))
         } else if (clicked) {
           this.pushUndo()
-          const t = this.controls.target
+          const aim = this.controls.target
           const r = facesViewer(type) ? this.facingView() : 0
-          const o = this.add({ t: type, x: this.sn(t.x), z: this.sn(t.z), r })
+          const o = this.add({ t: type, x: this.sn(aim.x), z: this.sn(aim.z), r })
           if (o && seatOf(o)) o.rotation.y = this.facingTable(o) ?? r
           if (o) this.settle(o)
           this.select(o)
           this.commit()
-          this.cb.onToast(`已放置「${FURNITURE[type].name}」於畫面中央，可拖曳調整`)
+          this.cb.onToast(t().toast.atCentre(nameOf(type)))
         }
       }
     }
@@ -1428,7 +1427,7 @@ export class VenueEditor {
     ]
     this.commit()
     this.updSel()
-    this.cb.onToast('已拆除紅帶，選取紅龍柱可恢復連接')
+    this.cb.onToast(t().toast.beltCut)
   }
 
   private pushUndo() {
@@ -2028,6 +2027,12 @@ export class VenueEditor {
       el.classList.toggle('tagged', showTag)
       if (showTag && pill.textContent !== tag) pill.textContent = tag
       btn.hidden = !info
+      // follows the language, which can change while the row is up
+      const label = t().sel.infoLabel
+      if (info && btn.title !== label) {
+        btn.title = label
+        btn.setAttribute('aria-label', label)
+      }
       const open = !!info && this.infoOpen === o
       box.hidden = !open
       if (open && box.textContent !== info) box.textContent = info
@@ -2085,8 +2090,6 @@ export class VenueEditor {
     btn.type = 'button'
     btn.className = 'tinfo'
     btn.textContent = 'i'
-    btn.title = '補充資訊'
-    btn.setAttribute('aria-label', '補充資訊')
     btn.addEventListener('click', () => {
       this.infoOpen = this.infoOpen === o ? null : o
     })

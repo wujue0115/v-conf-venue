@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, shallowRef, useTemplateRef, watch } from 'vue'
 import VisibilityTree from './VisibilityTree.vue'
+import { LOCALES, LOCALE_NAMES, locale, t } from '@/i18n'
 import { useVenueEditor } from '@/composables/useVenueEditor'
 import { usePlannerStore } from '@/stores/planner'
 import { exportLayout, parseLayout } from '@/venue/layout'
@@ -12,29 +13,32 @@ const root = useTemplateRef('root')
 const fileInput = useTemplateRef('file')
 
 type Toggle = 'wallsCut' | 'shadows' | 'snap'
-const SWITCHES = computed(() => [
-  {
-    title: '顯示',
-    rows: [
-      { key: 'wallsCut' as Toggle, label: '剖切牆面', hint: '把牆面切低，看得到房間內部' },
-      { key: 'shadows' as Toggle, label: '陰影', hint: '關閉可讓較慢的裝置更順' },
-    ],
-  },
-  {
-    title: '編輯',
-    rows: [
-      {
-        key: 'snap' as Toggle,
-        label: '對齊格線',
-        hint: store.editing ? '移動時對齊 25 公分格線' : '切換到編輯模式才能調整',
-        disabled: !store.editing,
-      },
-    ],
-  },
-])
+const SWITCHES = computed(() => {
+  const m = t().settings
+  return [
+    {
+      title: m.display,
+      rows: [
+        { key: 'wallsCut' as Toggle, label: m.wallsCut, hint: m.wallsCutHint },
+        { key: 'shadows' as Toggle, label: m.shadows, hint: m.shadowsHint },
+      ],
+    },
+    {
+      title: m.edit,
+      rows: [
+        {
+          key: 'snap' as Toggle,
+          label: m.snap,
+          hint: store.editing ? m.snapHint : m.snapOff,
+          disabled: !store.editing,
+        },
+      ],
+    },
+  ]
+})
 
 function clearAll() {
-  if (!store.items.length || !confirm('確定要清空所有擺放的物件嗎？（可用復原找回）')) return
+  if (!store.items.length || !confirm(t().settings.clearConfirm)) return
   editor.value?.clear()
 }
 
@@ -62,9 +66,9 @@ async function onFile(e: Event) {
   if (!f) return
   try {
     editor.value?.load(parseLayout(JSON.parse(await f.text())), { record: true })
-    store.notify('已匯入配置')
+    store.notify(t().settings.imported)
   } catch {
-    store.notify('檔案格式錯誤')
+    store.notify(t().settings.badFile)
   }
   input.value = ''
 }
@@ -94,8 +98,8 @@ onBeforeUnmount(unlisten)
       class="gear grp"
       :class="{ on: open }"
       type="button"
-      title="設定"
-      aria-label="設定"
+      :title="t().settings.title"
+      :aria-label="t().settings.title"
       aria-controls="stage-settings"
       :aria-expanded="open"
       @click="open = !open"
@@ -112,7 +116,26 @@ onBeforeUnmount(unlisten)
       </svg>
     </button>
 
-    <div v-if="open" id="stage-settings" class="pop" role="dialog" aria-label="設定">
+    <div v-if="open" id="stage-settings" class="pop" role="dialog" :aria-label="t().settings.title">
+      <section>
+        <h4>{{ t().language }}</h4>
+        <div class="langs" role="radiogroup" :aria-label="t().language">
+          <button
+            v-for="l in LOCALES"
+            :key="l"
+            class="lang"
+            :class="{ on: locale === l }"
+            type="button"
+            role="radio"
+            :aria-checked="locale === l"
+            :lang="l === 'zh' ? 'zh-Hant' : 'en'"
+            @click="locale = l"
+          >
+            {{ LOCALE_NAMES[l] }}
+          </button>
+        </div>
+      </section>
+
       <section v-for="sec in SWITCHES" :key="sec.title">
         <h4>{{ sec.title }}</h4>
         <label
@@ -140,9 +163,9 @@ onBeforeUnmount(unlisten)
       </section>
 
       <section>
-        <h4>物件顯示</h4>
+        <h4>{{ t().settings.items }}</h4>
         <VisibilityTree
-          root="全部物件"
+          :root="t().settings.allItems"
           :hidden="store.hiddenTypes"
           :count="() => true"
           @set="store.setTypesVisible"
@@ -150,21 +173,21 @@ onBeforeUnmount(unlisten)
       </section>
 
       <section>
-        <h4>標籤顯示</h4>
+        <h4>{{ t().settings.tags }}</h4>
         <VisibilityTree
-          root="全部標籤"
+          :root="t().settings.allTags"
           :hidden="store.hiddenTagTypes"
           :count="(i) => !!i.tag"
-          :extra="{ label: '教室與設施', on: store.showLabels }"
+          :extra="{ label: t().settings.roomLabels, on: store.showLabels }"
           @set="store.setTagTypesVisible"
           @extra="store.showLabels = $event"
         />
       </section>
 
       <section>
-        <h4>資訊顯示</h4>
+        <h4>{{ t().settings.notes }}</h4>
         <VisibilityTree
-          root="全部資訊"
+          :root="t().settings.allNotes"
           :hidden="store.hiddenInfoTypes"
           :count="(i) => !!i.info"
           @set="store.setInfoTypesVisible"
@@ -172,14 +195,23 @@ onBeforeUnmount(unlisten)
       </section>
 
       <section>
-        <h4>配置</h4>
+        <h4>{{ t().settings.layout }}</h4>
         <div class="acts">
-          <button class="btn" title="復原 (⌘Z)" :disabled="!store.editing" @click="editor?.undo()">
-            復原
+          <button
+            class="btn"
+            :title="t().settings.undoTitle"
+            :disabled="!store.editing"
+            @click="editor?.undo()"
+          >
+            {{ t().settings.undo }}
           </button>
-          <button class="btn" @click="download">匯出</button>
-          <button class="btn" :disabled="!store.editing" @click="fileInput?.click()">匯入</button>
-          <button class="btn danger" :disabled="!store.editing" @click="clearAll">清空</button>
+          <button class="btn" @click="download">{{ t().settings.export }}</button>
+          <button class="btn" :disabled="!store.editing" @click="fileInput?.click()">
+            {{ t().settings.import }}
+          </button>
+          <button class="btn danger" :disabled="!store.editing" @click="clearAll">
+            {{ t().settings.clear }}
+          </button>
         </div>
       </section>
     </div>
@@ -319,6 +351,35 @@ h4 {
   outline-offset: 2px;
 }
 
+.langs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px;
+  margin-top: 4px;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--paper);
+}
+.lang {
+  height: 28px;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  font: inherit;
+  font-size: 12px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.lang.on {
+  background: var(--yel);
+  color: var(--ink);
+  font-weight: 600;
+}
+.lang:focus-visible {
+  outline: 2px solid var(--yel);
+  outline-offset: 1px;
+}
 .acts {
   display: grid;
   grid-template-columns: 1fr 1fr;

@@ -1,42 +1,11 @@
 <script setup lang="ts">
 import { onBeforeUnmount, shallowRef, useTemplateRef, watch } from 'vue'
 import { usePlannerStore } from '@/stores/planner'
+import { t } from '@/i18n'
 
 const store = usePlannerStore()
 const open = shallowRef(false)
 const root = useTemplateRef('root')
-
-const SECTIONS = [
-  {
-    title: '視角',
-    rows: [
-      ['左鍵拖曳', '前後左右移動'],
-      ['右鍵拖曳', '旋轉'],
-      ['滾輪', '縮放'],
-      ['WASD／方向鍵', '移動（Shift 加速）'],
-      ['觸控', '單指移動 · 雙指旋轉縮放'],
-    ],
-  },
-  {
-    title: '物件（編輯模式）',
-    rows: [
-      ['拖曳', '移動物件'],
-      ['方向鍵', '微調 0.25m（Shift 1m）'],
-      ['Q／E', '旋轉 15°（Shift 45°）'],
-      ['R', '旋轉 90°（Shift 180°）'],
-      ['⌘D', '複製'],
-      ['Del', '刪除'],
-      ['點紅帶', '拆除紅龍間的紅帶'],
-      ['海報', '拖曳到任何牆面'],
-      ['拖曳海報角落', '調整大小（Shift 等比例）'],
-      ['人員', '在資訊面板設定標籤'],
-      ['區域', '拖曳到地板，再拖曳角落調整大小'],
-      ['點心盤、筆記型電腦', '只能放在桌上，桌子移動時會跟著走'],
-      ['Esc', '取消選取'],
-      ['⌘Z', '復原'],
-    ],
-  },
-] as const
 
 function onPointerDown(e: PointerEvent) {
   if (!root.value?.contains(e.target as Node)) open.value = false
@@ -60,8 +29,8 @@ onBeforeUnmount(unlisten)
 
 <template>
   <div ref="root" class="help" :class="{ busy: store.selection }" data-stage-ui>
-    <div v-if="open" id="stage-help" class="pop" role="dialog" aria-label="操作說明">
-      <section v-for="s in SECTIONS" :key="s.title">
+    <div v-if="open" id="stage-help" class="pop" role="dialog" :aria-label="t().help.title">
+      <section v-for="s in t().help.sections" :key="s.title">
         <h4>{{ s.title }}</h4>
         <dl>
           <template v-for="[k, v] in s.rows" :key="k">
@@ -75,8 +44,8 @@ onBeforeUnmount(unlisten)
       class="q"
       :class="{ on: open }"
       type="button"
-      title="操作說明"
-      aria-label="操作說明"
+      :title="t().help.title"
+      :aria-label="t().help.title"
       aria-controls="stage-help"
       :aria-expanded="open"
       @click="open = !open"

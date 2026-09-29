@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { t } from '@/i18n'
+
 defineProps<{
   /** The current colour, #rrggbb */
   value: string
@@ -28,12 +30,12 @@ const emit = defineEmits<{ pick: [color: string] }>()
       class="chip custom"
       :class="{ on: !colors.includes(value) }"
       :style="colors.includes(value) ? undefined : { background: value }"
-      title="自訂顏色"
+      :title="t().customColour"
     >
       <input
         type="color"
         :value="value"
-        aria-label="自訂顏色"
+        :aria-label="t().customColour"
         @change="emit('pick', ($event.target as HTMLInputElement).value)"
       />
     </label>

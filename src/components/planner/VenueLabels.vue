@@ -3,6 +3,7 @@ import { watch, type ComponentPublicInstance } from 'vue'
 import { useVenueEditor } from '@/composables/useVenueEditor'
 import { FACILITIES, FACILITY_OFFSET, ROOMS } from '@/venue/places'
 import type { LabelAnchor } from '@/venue/VenueEditor'
+import { t } from '@/i18n'
 
 const editor = useVenueEditor()
 
@@ -38,13 +39,13 @@ watch(
       <div class="bx">
         <div class="n">
           <small>{{ r.id }}</small
-          >{{ r.name }}
+          >{{ t().rooms[r.id]?.name }}
         </div>
-        <div class="c">{{ r.cap }}</div>
+        <div class="c">{{ t().rooms[r.id]?.cap }}</div>
       </div>
     </div>
     <div v-for="(f, i) in FACILITIES" :key="i" :ref="setEl(facEls, i)" class="tag fac">
-      <div class="bx">{{ f.name }}</div>
+      <div class="bx">{{ t().facilities[f.key] }}</div>
     </div>
   </div>
 </template>

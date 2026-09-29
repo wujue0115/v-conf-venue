@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, shallowRef, useId, useTemplateRef, watch } from 'vue'
 import { TAG_MAX } from '@/venue/layout'
+import { t } from '@/i18n'
 
 const props = defineProps<{
   /** The current tag ('' when none) */
@@ -77,8 +78,8 @@ function clear() {
       type="text"
       role="combobox"
       :maxlength="TAG_MAX"
-      placeholder="選擇或輸入標籤"
-      aria-label="標籤"
+      :placeholder="t().tagBox.placeholder"
+      :aria-label="t().tagBox.label"
       aria-autocomplete="list"
       :aria-expanded="open"
       :aria-controls="listId"
@@ -92,8 +93,8 @@ function clear() {
       v-if="value"
       class="clear"
       type="button"
-      title="移除標籤"
-      aria-label="移除標籤"
+      :title="t().tagBox.remove"
+      :aria-label="t().tagBox.remove"
       @pointerdown.prevent
       @click="clear"
     >
@@ -110,7 +111,7 @@ function clear() {
         @pointerdown.prevent
         @click="commit(r.tag)"
       >
-        <template v-if="r.add">新增「{{ r.tag }}」</template>
+        <template v-if="r.add">{{ t().tagBox.add(r.tag) }}</template>
         <template v-else>{{ r.tag }}</template>
       </li>
     </ul>

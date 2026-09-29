@@ -3,34 +3,42 @@ import CollapsibleSection from './CollapsibleSection.vue'
 import { useFurnitureThumbnails } from '@/composables/useFurnitureThumbnails'
 import { useVenueEditor } from '@/composables/useVenueEditor'
 import { usePlannerStore } from '@/stores/planner'
-import { FURNITURE, FURNITURE_GROUPS, priceOf, type FurnitureType } from '@/venue/furniture'
+import { computed } from 'vue'
+import { FURNITURE_GROUPS, priceOf, type FurnitureType } from '@/venue/furniture'
+import { nameOf, sizeOf, t } from '@/i18n'
 
 const editor = useVenueEditor()
 const store = usePlannerStore()
 const thumbs = useFurnitureThumbnails()
 
-const sections = FURNITURE_GROUPS.map((g) => ({
-  id: g.id,
-  title: g.title,
-  tiles: g.types.map((type) => {
-    const { name, size } = FURNITURE[type]
-    const price = priceOf(type)
-    return { type, name, size, price: price && `$${price[0]} / $${price[1]}` }
-  }),
-}))
+const sections = computed(() =>
+  FURNITURE_GROUPS.map((g) => ({
+    id: g.id,
+    title: t().groups[g.id],
+    tiles: g.types.map((type) => {
+      const price = priceOf(type)
+      return {
+        type,
+        name: nameOf(type),
+        size: sizeOf(type),
+        price: price && `$${price[0]} / $${price[1]}`,
+      }
+    }),
+  })),
+)
 
 function onPointerDown(e: PointerEvent, type: FurnitureType) {
   // placing a kind that is hidden (設定 → 物件顯示) shows it again, or it would vanish on drop
   if (store.editing && store.hiddenTypes.includes(type)) {
     store.setTypesVisible([type], true)
-    store.notify(`已重新顯示「${FURNITURE[type].name}」`)
+    store.notify(t().palette.reshown(nameOf(type)))
   }
   editor.value?.startPlace(e, type)
 }
 </script>
 
 <template>
-  <p v-if="!store.editing" class="locked">目前是檢視模式，切換到「編輯」才能擺放物件</p>
+  <p v-if="!store.editing" class="locked">{{ t().palette.locked }}</p>
   <CollapsibleSection
     v-for="sec in sections"
     :key="sec.id"

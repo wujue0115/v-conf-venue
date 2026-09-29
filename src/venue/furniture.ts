@@ -502,16 +502,19 @@ const sign: Builder = (g) => {
   mesh(B(0.297, 0.42, 0.004), FM.white, g, 0, 1.44, 0.008, { e: null })
 }
 
+/** A variant option; its name is looked up by id (see variantName in i18n) */
 export interface FurnitureVariant {
   id: string
-  name: string
-  /** CSS colour for the swatch button */
+  /** CSS colour for the swatch button ('' for none) */
   swatch: string
 }
 
+/** What a row of variant options is called (its words come from i18n) */
+export type VariantLabel = 'colour' | 'flavour' | 'size'
+
 /** One kind of choice (size, colour…) in the selection panel; the first option is the default */
 export interface VariantAxis {
-  label: string
+  label: VariantLabel
   options: readonly FurnitureVariant[]
 }
 
@@ -521,14 +524,15 @@ export interface VariantAxis {
  */
 export type Footprint = readonly [l: number, w: number, dz?: number]
 
+/** An item kind; its name (and a size given in words) come from i18n (nameOf, sizeOf) */
 export interface FurnitureDef {
-  name: string
+  /** Dimensions shown under the name in the palette */
   size: string
   build: Builder
   /** Colour options; the first is the default */
   variants?: readonly FurnitureVariant[]
-  /** What the variants are called in the selection panel (default 顏色) */
-  variantLabel?: string
+  /** What the variants are called in the selection panel (default colour) */
+  variantLabel?: VariantLabel
   /**
    * Choices along more than one axis, in place of `variants`; a variant id joins one option
    * id per axis with '-' (e.g. `s14-silver`)
@@ -554,144 +558,125 @@ export interface FurnitureDef {
 // 附件五 家具設備租借費用表（單位 mm → m；價格：自助 / 含搬運）
 export const FURNITURE = {
   stoolHigh: {
-    name: '高腳椅',
     size: 'W500×D510×H900',
     build: stoolHigh,
     variants: [
-      { id: 'grey', name: '灰', swatch: '#5a5a5c' },
-      { id: 'brown', name: '咖啡', swatch: '#6e4b3b' },
+      { id: 'grey', swatch: '#5a5a5c' },
+      { id: 'brown', swatch: '#6e4b3b' },
     ],
     arr: [0.6, 0.7],
     price: [350, 550],
   },
   studentChair: {
-    name: '學生椅',
     size: 'W450×D420×H780',
     build: studentChair,
     arr: [0.55, 0.9],
     price: [300, 500],
   },
   foldBlack: {
-    name: '收納椅（黑）',
     size: 'W573×D552×H742',
     build: foldBlack,
     arr: [0.65, 0.95],
     price: [300, 800],
   },
   foldBeige: {
-    name: '收納椅（米）',
     size: 'W400×D410×H750',
     build: foldBeige,
     arr: [0.5, 0.9],
     price: [200, 700],
   },
   foldTable: {
-    name: '收納桌',
     size: 'W800×D800×H750',
     build: foldTable,
     arr: [0.9, 0.9],
     price: [200, 700],
   },
   table3: {
-    name: '三人桌',
     size: 'W1800×D450×H710',
     build: (g) => tableN(g, 1.8),
     arr: [1.85, 1.2],
     price: [300, 500],
   },
   table2: {
-    name: '二人桌',
     size: 'W1200×D450×H710',
     build: (g) => tableN(g, 1.2),
     arr: [1.25, 1.2],
     price: [300, 500],
   },
   redSofa: {
-    name: '紅色造型沙發',
     size: 'W600×D460×H780',
     build: redSofa,
     arr: [0.8, 0.8],
     price: [600, 1100],
   },
   armchair: {
-    name: '單人沙發',
     size: 'W800×D760×H660',
     build: armchair,
     arr: [1, 1.2],
     price: [590, 1090],
   },
   shapeSofa: {
-    name: '造型沙發',
     size: 'W660×D580×H710',
     build: shapeSofa,
     variants: [
-      { id: 'orange', name: '橘', swatch: '#c27a3e' },
-      { id: 'green', name: '綠', swatch: '#9cb23c' },
+      { id: 'orange', swatch: '#c27a3e' },
+      { id: 'green', swatch: '#9cb23c' },
     ],
     arr: [0.8, 1],
     price: [600, 1100],
   },
   whiteSofa: {
-    name: '白面沙發',
     size: 'W710×D750×H760',
     build: whiteSofa,
     arr: [0.9, 1.2],
     price: [900, 1400],
   },
   teaWhite: {
-    name: '白面圓形茶几',
     size: 'Ø500×H600',
     build: teaWhite,
     arr: [0.8, 0.8],
     price: [350, 850],
   },
   teaWood: {
-    name: '木面圓形小茶几',
     size: 'Ø500×H550',
     build: teaWood,
     arr: [0.8, 0.8],
     price: [350, 850],
   },
   liftLectern: {
-    name: '移動升降講桌',
     size: 'W610×D450×H760–1055',
     build: liftLectern,
     arr: [1, 1],
     price: [700, 900],
   },
   woodLectern: {
-    name: '木作可移動講桌',
     size: 'W800×D600×H1050',
     build: woodLectern,
     arr: [1.2, 1],
     price: [900, 1100],
   },
   infoLectern: {
-    name: '資訊可移動講桌',
     size: 'W620×D650×H1100',
     build: infoLectern,
     arr: [1, 1],
     price: [900, 1100],
   },
   woodTeacher: {
-    name: '木作講師桌',
     size: 'W800×D600×H1050',
     build: woodTeacher,
     arr: [1.2, 1],
     price: [900, 1100],
   },
   stanchion: {
-    name: '伸縮紅龍柱',
-    size: '支',
+    size: '',
     build: stanchion,
     arr: [1.5, 1.5],
     price: [100, 300],
   },
-  sign: { name: '直式立架', size: 'A1 / A3 / A4', build: sign, arr: [1, 1], price: [300, 500] },
+  sign: { size: 'A1 / A3 / A4', build: sign, arr: [1, 1], price: [300, 500] },
   // Brought by the organisers — not on the venue's rental list, so they have no price
   poster: {
-    name: '海報',
-    size: '可調整尺寸',
+    size: '',
     build: buildPoster,
     wall: true,
     image: true,
@@ -699,27 +684,24 @@ export const FURNITURE = {
     arr: [0.7, 1],
   },
   person: {
-    name: '人員',
     size: 'H1700',
     build: person,
     arr: [0.6, 0.8],
   },
   snack: {
-    name: '點心盤',
     size: 'L420×W290',
     build: buildSnack,
     variants: [
-      { id: 'puff', name: '泡芙', swatch: '#e7b45c' },
-      { id: 'cake', name: '黑森林', swatch: '#4a2a1c' },
-      { id: 'tart', name: '蛋塔', swatch: '#f6d36c' },
+      { id: 'puff', swatch: '#e7b45c' },
+      { id: 'cake', swatch: '#4a2a1c' },
+      { id: 'tart', swatch: '#f6d36c' },
     ],
-    variantLabel: '口味',
+    variantLabel: 'flavour',
     onTable: () => [TRAY_L, TRAY_W],
     arr: [0.47, 0.34],
   },
   laptop: {
-    name: '筆記型電腦',
-    size: '13–16 吋',
+    size: '',
     build: buildLaptop,
     variantAxes: LAPTOP_AXES,
     onTable: laptopFootprint,
@@ -727,14 +709,12 @@ export const FURNITURE = {
     arr: [0.4, 0.3],
   },
   zone: {
-    name: '區域',
-    size: '可調整尺寸',
+    size: '',
     build: buildZone,
     arr: [2.25, 2.25],
   },
   rollup: {
-    name: '易拉展',
-    size: '可調整尺寸',
+    size: '',
     build: rollup,
     image: true,
     resizable: [ROLLUP_W, ROLLUP_H],
@@ -761,13 +741,11 @@ const otherRank = (t: FurnitureType) => {
 /** Rented from the venue (場地物件) vs. everything else (其他物件, not charged) */
 export const FURNITURE_GROUPS: readonly {
   id: 'venue' | 'own'
-  title: string
   types: readonly FurnitureType[]
 }[] = [
-  { id: 'venue', title: '場地物件', types: FURNITURE_TYPES.filter((t) => priceOf(t)) },
+  { id: 'venue', types: FURNITURE_TYPES.filter((t) => priceOf(t)) },
   {
     id: 'own',
-    title: '其他物件',
     types: FURNITURE_TYPES.filter((t) => !priceOf(t)).sort((a, b) => otherRank(a) - otherRank(b)),
   },
 ]
@@ -788,7 +766,7 @@ export const defaultSizeOf = (type: FurnitureType): readonly [number, number] =>
 export function variantAxesOf(type: FurnitureType): readonly VariantAxis[] {
   const d = FURNITURE[type] as FurnitureDef
   if (d.variantAxes) return d.variantAxes
-  return d.variants ? [{ label: d.variantLabel ?? '顏色', options: d.variants }] : []
+  return d.variants ? [{ label: d.variantLabel ?? 'colour', options: d.variants }] : []
 }
 
 /** Every variant of a type: each combination of one option per axis */
@@ -800,7 +778,6 @@ export const variantsOf = (type: FurnitureType): readonly FurnitureVariant[] =>
         : acc.flatMap((v) =>
             a.options.map((o) => ({
               id: `${v.id}-${o.id}`,
-              name: `${v.name} ${o.name}`,
               swatch: o.swatch,
             })),
           ),

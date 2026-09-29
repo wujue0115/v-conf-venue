@@ -1,18 +1,18 @@
 <script setup lang="ts">
-import { shallowRef } from 'vue'
+import { computed, shallowRef } from 'vue'
 import StageSettings from './StageSettings.vue'
 import { useVenueEditor } from '@/composables/useVenueEditor'
 import { usePlannerStore, type PlannerMode } from '@/stores/planner'
 import { VIEWS, type CameraView } from '@/venue/places'
+import { t } from '@/i18n'
 
 const store = usePlannerStore()
 const editor = useVenueEditor()
 const activeView = shallowRef(0)
 
-const MODES: { mode: PlannerMode; label: string; title: string }[] = [
-  { mode: 'view', label: '檢視', title: '只瀏覽場地，不會動到物件' },
-  { mode: 'edit', label: '編輯', title: '擺放、移動與調整物件' },
-]
+const MODES = computed(() =>
+  (['view', 'edit'] as PlannerMode[]).map((mode) => ({ mode, ...t().modes[mode] })),
+)
 
 function flyTo(view: CameraView, i: number) {
   activeView.value = i
@@ -26,17 +26,22 @@ function flyTo(view: CameraView, i: number) {
       <div class="grp">
         <button
           v-for="(v, i) in VIEWS"
-          :key="v.name"
+          :key="v.key"
           class="btn"
           :class="{ on: activeView === i }"
           @click="flyTo(v, i)"
         >
-          {{ v.name }}
+          {{ t().views[v.key] }}
         </button>
       </div>
     </div>
     <div class="bar tools" data-stage-ui>
-      <div class="grp mode" :class="{ edit: store.editing }" role="radiogroup" aria-label="模式">
+      <div
+        class="grp mode"
+        :class="{ edit: store.editing }"
+        role="radiogroup"
+        :aria-label="t().modes.label"
+      >
         <span class="thumb" aria-hidden="true"></span>
         <button
           v-for="m in MODES"

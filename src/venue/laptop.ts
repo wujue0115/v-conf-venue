@@ -28,23 +28,23 @@ const SIZES: Record<string, Size> = {
 
 export const LAPTOP_AXES: readonly VariantAxis[] = [
   {
-    label: '尺寸',
+    label: 'size',
     options: [
-      { id: 's13', name: '13 吋', swatch: '' },
-      { id: 's14', name: '14 吋', swatch: '' },
-      { id: 's15', name: '15 吋', swatch: '' },
-      { id: 's16', name: '16 吋', swatch: '' },
+      { id: 's13', swatch: '' },
+      { id: 's14', swatch: '' },
+      { id: 's15', swatch: '' },
+      { id: 's16', swatch: '' },
     ],
   },
   {
-    label: '顏色',
+    label: 'colour',
     options: [
-      { id: 'silver', name: '銀色', swatch: '#e3e4e6' },
-      { id: 'gray', name: '太空灰', swatch: '#7d7f83' },
-      { id: 'black', name: '太空黑', swatch: '#2c2c2e' },
-      { id: 'midnight', name: '午夜色', swatch: '#2e3642' },
-      { id: 'starlight', name: '星光色', swatch: '#e6dccb' },
-      { id: 'sky', name: '天藍色', swatch: '#c5d5e2' },
+      { id: 'silver', swatch: '#e3e4e6' },
+      { id: 'gray', swatch: '#7d7f83' },
+      { id: 'black', swatch: '#2c2c2e' },
+      { id: 'midnight', swatch: '#2e3642' },
+      { id: 'starlight', swatch: '#e6dccb' },
+      { id: 'sky', swatch: '#c5d5e2' },
     ],
   },
 ]

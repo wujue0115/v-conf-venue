@@ -4,18 +4,18 @@ import { storeToRefs } from 'pinia'
 import SectionTitle from './SectionTitle.vue'
 import { usePlannerStore } from '@/stores/planner'
 import { MAX_SLOTS, formatNT, type PriceMode } from '@/venue/layout'
+import { nameOf, t } from '@/i18n'
 
 const store = usePlannerStore()
 const { items, cost, priceMode, slots, fixedSeats } = storeToRefs(store)
 
-const PRICE_MODES: { mode: PriceMode; label: string }[] = [
-  { mode: 0, label: '自助搬運' },
-  { mode: 1, label: '含搬運' },
-]
+const modeName = (m: PriceMode) => (m ? t().summary.carried : t().summary.selfCarry)
+const PRICE_MODES = computed(() =>
+  ([0, 1] as PriceMode[]).map((mode) => ({ mode, label: modeName(mode) })),
+)
 
-const note = computed(
-  () =>
-    `${priceMode.value ? '含搬運' : '自助搬運'} · ${slots.value} 個時段 · A2 固定座椅 ${fixedSeats.value} 席不計費`,
+const note = computed(() =>
+  t().summary.note(modeName(priceMode.value), slots.value, fixedSeats.value),
 )
 
 function onSlotsInput(e: Event) {
@@ -24,7 +24,7 @@ function onSlotsInput(e: Event) {
 </script>
 
 <template>
-  <SectionTitle title="目前配置" :note="`${items.length} 件`" />
+  <SectionTitle :title="t().summary.title" :note="t().summary.count(items.length)" />
   <div class="opts">
     <div class="grp">
       <button
@@ -38,23 +38,25 @@ function onSlotsInput(e: Event) {
       </button>
     </div>
     <label class="arr"
-      >時段 <input type="number" min="1" :max="MAX_SLOTS" :value="slots" @input="onSlotsInput"
+      >{{ t().summary.slots }}
+      <input type="number" min="1" :max="MAX_SLOTS" :value="slots" @input="onSlotsInput"
     /></label>
   </div>
 
   <div class="counts">
     <div v-for="l in cost.lines" :key="l.type" class="crow">
       <span
-        >{{ l.name }} <em>× {{ l.count }}</em></span
+        >{{ nameOf(l.type) }} <em>× {{ l.count }}</em></span
       >
       <em>{{ formatNT(l.subtotal) }}</em>
     </div>
-    <div v-if="!cost.lines.length" class="empty">尚未擺放物件，從上方拖曳到場地。</div>
+    <div v-if="!cost.lines.length" class="empty">{{ t().summary.empty }}</div>
   </div>
 
   <div class="sumbox">
     <div>
-      <span>租借總金額</span><b>{{ formatNT(cost.total) }}</b>
+      <span>{{ t().summary.total }}</span
+      ><b>{{ formatNT(cost.total) }}</b>
     </div>
     <i>{{ note }}</i>
   </div>
