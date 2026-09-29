@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <a href="https://v-conf.vue.tw/">v-conf Taiwan 2026</a>
+  <a href="https://v-conf.vue.tw/">v-conf Taiwan</a>
 </p>
 
 ## About
