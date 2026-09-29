@@ -413,10 +413,11 @@ export function buildArchitecture(scene: THREE.Scene): Architecture {
     hh = H,
     parent: THREE.Object3D = wallsG,
     y0 = 0,
+    bay = 1.6,
   ) {
     seg(x1, z1, x2, z2, 0.06, hh, M.glass, parent, y0)
     const L = Math.hypot(x2 - x1, z2 - z1)
-    const n = Math.max(1, Math.round(L / 1.6))
+    const n = Math.max(1, Math.round(L / bay))
     for (let i = 0; i <= n; i++) {
       const t = i / n
       mesh(B(0.1, hh, 0.1), M.dark, parent, x1 + (x2 - x1) * t, y0 + hh / 2, z1 + (z2 - z1) * t, {
@@ -468,6 +469,23 @@ export function buildArchitecture(scene: THREE.Scene): Architecture {
   // the floor south of 景觀梯, railed on its west and south
   glass(0.6, 5.9, 0.6, 9.4, 1.1, arch)
   glass(0.6, 9.4, 11.1, 9.4, 1.1, arch)
+  // 景觀梯's stairwell, open on three sides round the stair: on the north a curtain wall
+  // (mullions 124.5 apart as the plan ticks them, on to A201's corner) behind a solid parapet,
+  // glazed on the west between the corner columns; the 2F floor is railed where it meets the
+  // well east of the parapet and south of the arriving flight
+  glass(0.55, -0.4, 9.3, -0.4, H, wallsG, 0, 1.25)
+  glass(9.3, -0.4, 11.1, -0.4)
+  mesh(B(8.75, 1.5, 0.74), M.wall, wallsG, 4.925, 0.45, 0.07)
+  glass(0.5, 0.5, 0.5, 5.65)
+  ;(
+    [
+      [0, 0],
+      [0, 6.15],
+    ] as Pt[]
+  ).forEach(([x, z]) => mesh(B(1, H + 0.3, 1), M.wall, wallsG, x, (H + 0.3) / 2, z))
+  glass(9.1, 0.44, 9.1, 1.26, 1.1, arch)
+  glass(0.6, 5.9, 7.9, 5.9, 1.1, arch)
+  glass(7.9, 4.93, 7.9, 5.9, 1.1, arch)
 
   // columns (structural grid)
   ;(
@@ -638,10 +656,47 @@ export function buildArchitecture(scene: THREE.Scene): Architecture {
   })
   // 景觀梯, as 空間圖 shows it on 2F: in the stairwell, the south row is the short flight
   // arriving from below (climbing east onto 2F at x 7.9), the north row the one leaving upward
-  // (from 2F at x 9.1, climbing west). Open treads, a glass balustrade on each one's inner side.
+  // (from 2F at x 9.1, climbing west). Each turns on a landing at the west (x 1.8, where the
+  // plan draws the stair's outline), half a storey below 2F and half above. Open steel treads
+  // on a dark stringer each side, glass balustrades topped with a handrail all round.
   {
     const NORTH: [number, number] = [1.26, 2.85]
     const SOUTH: [number, number] = [3.38, 4.93]
+    const LANDING = 1.8
+    /** A plate in the plane z = `z`, running from (xa, ya) to (xb, yb) between lo and hi above that line */
+    const slant = (
+      xa: number,
+      ya: number,
+      xb: number,
+      yb: number,
+      z: number,
+      [lo, hi]: [number, number],
+      t: number,
+      m: THREE.Material,
+    ) => {
+      const o = prism(
+        [
+          [xa, -(ya + lo)],
+          [xb, -(yb + lo)],
+          [xb, -(yb + hi)],
+          [xa, -(ya + hi)],
+        ],
+        t,
+        m,
+        arch,
+        0,
+        m === M.glass ? null : EF,
+      )
+      // prism() lays its outline flat; stand it up in the x–y plane at z
+      o.rotation.x = 0
+      o.position.z = z - t / 2
+      o.castShadow = m !== M.glass
+    }
+    /** Frameless glass with a handrail along its top, level at height y */
+    const rail = (x1: number, z1: number, x2: number, z2: number, y: number) => {
+      seg(x1, z1, x2, z2, 0.03, 1, M.glass, arch, y)
+      seg(x1, z1, x2, z2, 0.06, 0.05, M.dark, arch, y + 1)
+    }
     /** A flight rising H/2 from `from` along a row, its foot at the east (dir -1) or west (1) */
     const flight = (
       x0: number,
@@ -650,19 +705,48 @@ export function buildArchitecture(scene: THREE.Scene): Architecture {
       n: number,
       from: number,
       dir: 1 | -1,
-      railZ: number,
     ) => {
       const tread = (x1 - x0) / n
       const rise = H / 2 / n
       for (let i = 0; i < n; i++) {
         const top = from + rise * (i + 1)
         const x = dir > 0 ? x0 + tread * (i + 0.5) : x1 - tread * (i + 0.5)
-        mesh(B(tread, 0.08, z2 - z1), M.dark, arch, x, top - 0.04, (z1 + z2) / 2, { e: EF })
-        glass(x - tread / 2, railZ, x + tread / 2, railZ, 1, arch, top)
+        mesh(B(tread + 0.02, 0.05, z2 - z1 - 0.1), M.dark, arch, x, top - 0.025, (z1 + z2) / 2, {
+          e: EF,
+        })
+      }
+      // the line through the treads' tops, from the foot's end of the flight to the head's
+      const [xa, xb] = dir > 0 ? [x0, x1] : [x1, x0]
+      const [ya, yb] = [from + rise / 2, from + H / 2 + rise / 2]
+      for (const z of [z1, z2]) {
+        slant(xa, ya, xb, yb, z + (z === z1 ? 0.03 : -0.03), [-0.32, 0.06], 0.06, M.dark)
+        slant(xa, ya, xb, yb, z, [0.06, 1], 0.03, M.glass)
+        slant(xa, ya, xb, yb, z, [1, 1.05], 0.06, M.dark)
       }
     }
-    flight(3.75, 7.9, SOUTH, 14, -H / 2, 1, 3.36)
-    flight(3.8, 9.1, NORTH, 17, 0, -1, 2.87)
+    flight(3.75, 7.9, SOUTH, 14, -H / 2, 1)
+    flight(3.8, 9.1, NORTH, 17, 0, -1)
+    // the landings: below 2F the arriving flight's, above it the rising one's
+    for (const [y, east] of [
+      [-H / 2, 3.75],
+      [H / 2, 3.8],
+    ] as const) {
+      const [z1, z2] = [NORTH[0], SOUTH[1]]
+      mesh(
+        B(east - LANDING, 0.2, z2 - z1),
+        M.dark,
+        arch,
+        (LANDING + east) / 2,
+        y - 0.1,
+        (z1 + z2) / 2,
+        {
+          e: EF,
+        },
+      )
+      rail(LANDING, z1, LANDING, z2, y)
+      rail(LANDING, z1, east, z1, y)
+      rail(LANDING, z2, east, z2, y)
+    }
   }
 
   /** n steps across x1–x2 from z1 to z2, each `rise` higher going south, starting from `base` */
