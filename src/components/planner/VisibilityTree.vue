@@ -6,8 +6,9 @@ import { FURNITURE, FURNITURE_GROUPS, FURNITURE_TYPES, type FurnitureType } from
 import type { LayoutItem } from '@/venue/layout'
 
 /*
- * Show or hide something (items, or their tags) by kind. The root opens into 場地物件 and
- * 其他物件, which open into each kind; a parent's box is ticked, empty, or partial for its
+ * Show or hide something (items, their tags or notes) by kind. The root opens into 場地物件
+ * and 其他物件, which open into each kind, plus an optional extra switch of its own (the
+ * venue's room names under 標籤顯示); a parent's box is ticked, empty, or partial for its
  * children.
  */
 
@@ -18,8 +19,13 @@ const props = defineProps<{
   hidden: readonly FurnitureType[]
   /** Which placed items the counts include */
   count: (i: LayoutItem) => boolean
+  /** A further on/off row under the root, not tied to a kind of item */
+  extra?: { label: string; on: boolean }
 }>()
-const emit = defineEmits<{ set: [types: readonly FurnitureType[], on: boolean] }>()
+const emit = defineEmits<{
+  set: [types: readonly FurnitureType[], on: boolean]
+  extra: [on: boolean]
+}>()
 
 const store = usePlannerStore()
 /** Which branches are open; all start closed */
@@ -40,6 +46,19 @@ function stateOf(types: readonly FurnitureType[]) {
 /** A ticked box hides all of its kinds; an empty or partial one shows them all */
 const toggle = (types: readonly FurnitureType[]) => emit('set', types, stateOf(types) !== 'on')
 
+/** The root counts the extra row as one more child */
+const rootState = computed(() => {
+  const x = props.extra
+  if (!x) return stateOf(FURNITURE_TYPES)
+  const hidden = FURNITURE_TYPES.filter((t) => props.hidden.includes(t)).length + (x.on ? 0 : 1)
+  return hidden === 0 ? 'on' : hidden === FURNITURE_TYPES.length + 1 ? 'off' : 'some'
+})
+function toggleRoot() {
+  const on = rootState.value !== 'on'
+  emit('set', FURNITURE_TYPES, on)
+  if (props.extra) emit('extra', on)
+}
+
 const groups = FURNITURE_GROUPS.map((g) => ({
   ...g,
   items: g.types.map((t) => ({ type: t, name: FURNITURE[t].name })),
@@ -49,11 +68,7 @@ const groups = FURNITURE_GROUPS.map((g) => ({
 <template>
   <div class="tree">
     <div class="node">
-      <TriCheckbox
-        :state="stateOf(FURNITURE_TYPES)"
-        :label="root"
-        @toggle="toggle(FURNITURE_TYPES)"
-      />
+      <TriCheckbox :state="rootState" :label="root" @toggle="toggleRoot" />
       <button class="head" type="button" :aria-expanded="!!open.all" @click="open.all = !open.all">
         <b>{{ root }}</b>
         <span class="n">{{ countOf(FURNITURE_TYPES) }}</span>
@@ -64,6 +79,14 @@ const groups = FURNITURE_GROUPS.map((g) => ({
     </div>
 
     <div v-if="open.all" class="kids">
+      <label v-if="extra" class="node leaf">
+        <TriCheckbox
+          :state="extra.on ? 'on' : 'off'"
+          :label="extra.label"
+          @toggle="emit('extra', !extra.on)"
+        />
+        <span class="name">{{ extra.label }}</span>
+      </label>
       <template v-for="g in groups" :key="g.id">
         <div class="node">
           <TriCheckbox :state="stateOf(g.types)" :label="g.title" @toggle="toggle(g.types)" />

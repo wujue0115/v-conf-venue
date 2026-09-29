@@ -11,13 +11,12 @@ const open = shallowRef(false)
 const root = useTemplateRef('root')
 const fileInput = useTemplateRef('file')
 
-type Toggle = 'wallsCut' | 'showLabels' | 'shadows' | 'snap'
+type Toggle = 'wallsCut' | 'shadows' | 'snap'
 const SWITCHES = computed(() => [
   {
     title: '顯示',
     rows: [
       { key: 'wallsCut' as Toggle, label: '剖切牆面', hint: '把牆面切低，看得到房間內部' },
-      { key: 'showLabels' as Toggle, label: '標籤', hint: '顯示教室與設施名稱' },
       { key: 'shadows' as Toggle, label: '陰影', hint: '關閉可讓較慢的裝置更順' },
     ],
   },
@@ -156,7 +155,9 @@ onBeforeUnmount(unlisten)
           root="全部標籤"
           :hidden="store.hiddenTagTypes"
           :count="(i) => !!i.tag"
+          :extra="{ label: '教室與設施', on: store.showLabels }"
           @set="store.setTagTypesVisible"
+          @extra="store.showLabels = $event"
         />
       </section>
 
