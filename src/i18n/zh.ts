@@ -66,6 +66,16 @@ const zh = {
     },
   } as Partial<Record<FurnitureType, Record<string, string>>>,
   groups: { venue: '場地物件', own: '其他物件' },
+  grouping: {
+    label: '群組',
+    defaultName: (n: number) => `群組 ${n}`,
+    make: '建立群組',
+    ungroup: '取消群組',
+    leave: '移出群組',
+    name: '群組名稱',
+    nameTaken: '已經有同名的群組',
+    member: (name: string, n: number) => `${name} #${n}`,
+  },
 
   rooms: {
     A201: { name: '流光展廳', cap: '140 人' },
@@ -252,6 +262,7 @@ const zh = {
           ['拖曳', '移動物件'],
           ['Shift／⌘ + 點擊', '加選或取消選取'],
           ['Shift + 拖曳空白處', '框選多個物件，一起移動'],
+          ['群組', '多選後在面板建立；點群組內物件會選取整組，再點一次只選那一個'],
           ['多選（工具列）', '手機也能多選：點物件加選，拖曳空白處框選'],
           ['方向鍵', '微調 0.25m（Shift 1m）'],
           ['Q／E', '旋轉 15°（Shift 45°）'],

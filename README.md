@@ -36,6 +36,7 @@ photos in the rental chart (家具設備租借費用圖表). Both are kept in [`
 * Mark zones on the floor: drop one in and drag its corners to size it on the grid, each with its own colour and tag (a separate tag list from other items')
 * Hang your own posters on any wall, resize them by dragging a corner or typing a size, and upload an image that is saved with the layout and its JSON export (posters are not charged)
 * See the rental total update live, with self-carry or carrying-service pricing across multiple time slots
+* Group items (群組): clicking one picks up the whole group to move together, and 目前配置 lists each group on its own
 * Tick items in or out of the total, per kind or one by one (in the layout list or an item's panel), and click one in the list to fly to it (and select it in Edit mode)
 * Jump between preset views: overview, top-down, A201, the A215 atrium, and the A2 hall
 * Toggle grid snapping, cut-away walls, and room labels

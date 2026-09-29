@@ -7,15 +7,15 @@ import TriCheckbox from './TriCheckbox.vue'
 import { useVenueEditor } from '@/composables/useVenueEditor'
 import { usePlannerStore } from '@/stores/planner'
 import { priceOf, type FurnitureType } from '@/venue/furniture'
-import { MAX_SLOTS, formatNT, type CostLine, type PriceMode } from '@/venue/layout'
+import { MAX_SLOTS, formatNT, type CostLine, type GroupLine, type PriceMode } from '@/venue/layout'
 import { nameOf, t } from '@/i18n'
 
 const store = usePlannerStore()
 const editor = useVenueEditor()
 const { items, cost, priceMode, slots, fixedSeats } = storeToRefs(store)
 
-/** Kinds whose list of items is open */
-const open = reactive<Partial<Record<FurnitureType, boolean>>>({})
+/** Kinds (by type) and groups (by `g:` + name) whose list of items is open */
+const open = reactive<Record<string, boolean>>({})
 
 /** One item's rent for the chosen pricing and slots */
 const each = (type: FurnitureType) => (priceOf(type)?.[priceMode.value] ?? 0) * slots.value
@@ -31,6 +31,23 @@ const itemLabel = (k: number, n: number) => {
   return tag ? `#${n} · ${tag}` : `#${n}`
 }
 const goTo = (k: number) => editor.value?.focusItem(k)
+
+/** A group's rented items (the ones its box counts in or out) */
+const rentedIn = (g: GroupLine) => g.indices.filter((k) => priceOf(items.value[k]!.t))
+const groupState = (g: GroupLine) =>
+  g.billed === g.rented ? 'on' : g.billed === 0 ? 'off' : ('some' as const)
+const toggleGroup = (g: GroupLine) => editor.value?.setBilled(groupState(g) !== 'on', rentedIn(g))
+/** An item in a group's list: its kind, and its tag when it has one */
+const memberLabel = (k: number) => {
+  const i = items.value[k]!
+  return i.tag ? `${nameOf(i.t)} · ${i.tag}` : nameOf(i.t)
+}
+/** What an item in a group's list costs: its rent, 不計費, or nothing for unrented kinds */
+const memberPrice = (k: number) => {
+  const i = items.value[k]!
+  if (!priceOf(i.t)) return ''
+  return i.unbilled ? t().summary.unbilled : formatNT(each(i.t))
+}
 
 const modeName = (m: PriceMode) => (m ? t().summary.carried : t().summary.selfCarry)
 const PRICE_MODES = computed(() =>
@@ -67,6 +84,72 @@ function onSlotsInput(e: Event) {
   </div>
 
   <div class="counts">
+    <!-- groups first: their items are listed here instead of under their kinds -->
+    <template v-for="g in cost.groups" :key="g.name">
+      <div
+        class="crow"
+        role="button"
+        tabindex="0"
+        :aria-expanded="!!open[`g:${g.name}`]"
+        @click="open[`g:${g.name}`] = !open[`g:${g.name}`]"
+        @keydown.enter.space.self.prevent="open[`g:${g.name}`] = !open[`g:${g.name}`]"
+      >
+        <TriCheckbox
+          v-if="g.rented"
+          :state="groupState(g)"
+          :label="t().summary.billed(g.name)"
+          @click.stop
+          @toggle="toggleGroup(g)"
+        />
+        <span v-else class="nobox" aria-hidden="true"></span>
+        <span class="name">
+          <svg class="gico" viewBox="0 0 16 16" aria-hidden="true">
+            <rect x="1.5" y="1.5" width="13" height="13" rx="2.5" stroke-dasharray="2.5 2" />
+            <rect x="4.5" y="4.5" width="3.5" height="3.5" rx="0.8" />
+            <rect x="8.5" y="8.5" width="3.5" height="3.5" rx="0.8" />
+          </svg>
+          {{ g.name }}
+          <em>× {{ g.indices.length }}</em>
+          <svg
+            class="chev"
+            :class="{ closed: !open[`g:${g.name}`] }"
+            viewBox="0 0 16 16"
+            aria-hidden="true"
+          >
+            <path d="M4 6l4 4 4-4" />
+          </svg>
+        </span>
+        <em :class="{ off: !g.subtotal }">{{
+          g.subtotal ? formatNT(g.subtotal) : t().summary.unbilled
+        }}</em>
+      </div>
+      <CollapseBody :open="!!open[`g:${g.name}`]">
+        <div class="kids">
+          <div
+            v-for="k in g.indices"
+            :key="k"
+            class="crow kid"
+            role="button"
+            tabindex="0"
+            :title="t().summary.goTo(memberLabel(k))"
+            @click="goTo(k)"
+            @keydown.enter.space.self.prevent="goTo(k)"
+          >
+            <TriCheckbox
+              v-if="priceOf(items[k]!.t)"
+              :state="isBilled(k) ? 'on' : 'off'"
+              :label="t().summary.billed(memberLabel(k))"
+              @click.stop
+              @toggle="toggleItem(k)"
+            />
+            <span v-else class="nobox" aria-hidden="true"></span>
+            <span class="name">{{ memberLabel(k) }}</span>
+            <em :class="{ off: items[k]!.unbilled }">{{ memberPrice(k) }}</em>
+          </div>
+        </div>
+      </CollapseBody>
+    </template>
+
     <template v-for="l in cost.lines" :key="l.type">
       <!--
         A row is one control: a single item's row goes to it, a kind's row opens its list.
@@ -151,7 +234,9 @@ function onSlotsInput(e: Event) {
         </CollapseBody>
       </template>
     </template>
-    <div v-if="!cost.lines.length" class="empty">{{ t().summary.empty }}</div>
+    <div v-if="!cost.lines.length && !cost.groups.length" class="empty">
+      {{ t().summary.empty }}
+    </div>
   </div>
 
   <div class="sumbox">
@@ -246,6 +331,19 @@ function onSlotsInput(e: Event) {
   color: var(--faint);
   font: 500 12px var(--mono);
   font-style: normal;
+}
+.nobox {
+  flex: none;
+  width: 16px;
+}
+.gico {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 1.4;
+  stroke-linejoin: round;
 }
 .chev {
   flex: none;

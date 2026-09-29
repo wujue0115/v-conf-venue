@@ -60,6 +60,16 @@ const en: Messages = {
     },
   },
   groups: { venue: 'Venue items', own: 'Other items' },
+  grouping: {
+    label: 'Group',
+    defaultName: (n: number) => `Group ${n}`,
+    make: 'Group',
+    ungroup: 'Ungroup',
+    leave: 'Leave group',
+    name: 'Group name',
+    nameTaken: 'A group already has that name',
+    member: (name: string, n: number) => `${name} #${n}`,
+  },
 
   rooms: {
     A201: { name: 'Exhibition Hall', cap: '140 people' },
@@ -248,6 +258,10 @@ const en: Messages = {
           ['Drag', 'Move an item'],
           ['Shift/⌘ + click', 'Add to or take out of the selection'],
           ['Shift + drag on empty space', 'Box-select items to move together'],
+          [
+            'Groups',
+            'Make one from a multiple selection; clicking a member picks up the group, a second click just that item',
+          ],
           ['Multi (toolbar)', 'Select several on touch: tap to add, drag on empty space to box'],
           ['Arrows', 'Nudge 0.25 m (Shift 1 m)'],
           ['Q / E', 'Rotate 15° (Shift 45°)'],

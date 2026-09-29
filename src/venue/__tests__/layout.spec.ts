@@ -306,3 +306,28 @@ describe('billing', () => {
     expect([a?.unbilled, b?.unbilled]).toEqual([true, undefined])
   })
 })
+
+describe('groups', () => {
+  it('lists a group on its own, out of its kinds, and counts it in the total', () => {
+    const items = parseLayout([
+      { t: 'table2', x: 0, z: 0, r: 0, group: '  報到區  ' },
+      { t: 'person', x: 0, z: 1, r: 0, group: '報到區' },
+      { t: 'table2', x: 1, z: 0, r: 0, group: '報到區', unbilled: true },
+      { t: 'table2', x: 2, z: 0, r: 0 },
+    ])
+    expect(items[0]?.group).toBe('報到區')
+    const { groups, lines, total } = summarizeCost(items, 0, 1)
+    expect(groups.map((g) => [g.name, g.indices, g.rented, g.billed])).toEqual([
+      ['報到區', [0, 1, 2], 2, 1],
+    ])
+    expect(lines.map((l) => [l.type, l.indices])).toEqual([['table2', [3]]])
+    // one billed table in the group, one out of it
+    expect(total).toBe(groups[0]!.subtotal + lines[0]!.subtotal)
+    expect(groups[0]!.subtotal).toBe(lines[0]!.subtotal)
+  })
+
+  it('drops blank group names', () => {
+    const [a] = parseLayout([{ t: 'table2', x: 0, z: 0, r: 0, group: '   ' }])
+    expect(a).not.toHaveProperty('group')
+  })
+})

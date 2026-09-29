@@ -41,6 +41,8 @@ import { ZONE_COLOR, ZONE_MIN, applyZone, clampZone, onZoneGrid } from './zone'
 export interface SelectionInfo {
   /** How many items are selected; the rest describes the first of them */
   count: number
+  /** The group (群組) every selected item is in, if they share one */
+  group?: string
   type: FurnitureType
   x: number
   z: number
@@ -270,8 +272,11 @@ export class VenueEditor {
     riders?: Rider[]
     /** Dragging a multiple selection: every member (but posters) from where it started */
     group?: GroupMember[]
-    /** 多選 mode: a tap without a drag takes the item out of the selection */
-    tapToggles?: boolean
+    /**
+     * What a tap (no drag) on it does: 'toggle' takes it out of the selection (多選),
+     * 'single' selects just it, 'keep' leaves the selection (it was just picked up as a group)
+     */
+    tap?: 'toggle' | 'single' | 'keep'
   } | null = null
   private resizing: {
     o: THREE.Object3D
@@ -689,6 +694,52 @@ export class VenueEditor {
     this.commit()
   }
 
+  /** The group every selected item is in, if they share one, as `{ group }` */
+  private sharedGroup() {
+    const names = new Set(this.selection.map((o) => o.userData.group as string | undefined))
+    const [g] = names
+    return names.size === 1 && g ? { group: g } : {}
+  }
+
+  /** Put the selected items into a new group (群組), named 群組 1, 群組 2… */
+  makeGroup() {
+    const all = this.selection
+    if (all.length < 2) return
+    const used = new Set(this.placed.children.map((o) => o.userData.group as string | undefined))
+    let n = 1
+    while (used.has(t().grouping.defaultName(n))) n++
+    this.pushUndo()
+    for (const o of all) o.userData.group = t().grouping.defaultName(n)
+    this.updSel()
+    this.commit()
+  }
+
+  /** Take the selected items out of their groups (the whole group, when it is all selected) */
+  ungroup() {
+    const all = this.selection.filter((o) => o.userData.group)
+    if (!all.length) return
+    this.pushUndo()
+    for (const o of all) delete o.userData.group
+    this.updSel()
+    this.commit()
+  }
+
+  /**
+   * Rename the group the selected items share. False (and nothing changes) when the name is
+   * empty or another group already has it.
+   */
+  renameGroup(name: string) {
+    const from = this.sharedGroup().group
+    const to = cleanTag(name)
+    if (!from || !to || to === from) return false
+    if (this.placed.children.some((o) => o.userData.group === to)) return false
+    this.pushUndo()
+    for (const o of this.placed.children) if (o.userData.group === from) o.userData.group = to
+    this.updSel()
+    this.commit()
+    return true
+  }
+
   /** Deselect everything. */
   clearSelection() {
     this.select(null)
@@ -1022,6 +1073,7 @@ export class VenueEditor {
     tagColor,
     info,
     unbilled,
+    group,
     n,
     color,
     sit,
@@ -1039,6 +1091,7 @@ export class VenueEditor {
     if (tagColor) o.userData.tagColor = tagColor
     if (info) o.userData.info = info
     if (unbilled) o.userData.unbilled = true
+    if (group) o.userData.group = group
     if (t === 'person' && (n || color || sit)) applyPeople(o, n, color, sit)
     if (t === 'zone' && w && d) applyZone(o, { w, d, color })
     if (t === 'laptop' && open !== undefined) setLaptopOpen(o, open)
@@ -1069,6 +1122,7 @@ export class VenueEditor {
       ...(ud.tagColor ? { tagColor: ud.tagColor as string } : {}),
       ...(ud.info ? { info: ud.info as string } : {}),
       ...(ud.unbilled ? { unbilled: true } : {}),
+      ...(ud.group ? { group: ud.group as string } : {}),
       ...(ud.n ? { n: ud.n as number } : {}),
       ...(ud.color ? { color: ud.color as string } : {}),
       ...(ud.sit ? { sit: true } : {}),
@@ -1613,8 +1667,18 @@ export class VenueEditor {
     this.updSel()
   }
 
+  /** `o` and, when it is in a group (群組), the rest of its group that is shown, `o` first */
+  private withGroup = (o: THREE.Object3D): THREE.Object3D[] => {
+    const g = o.userData.group as string | undefined
+    if (!g) return [o]
+    return [
+      o,
+      ...this.placed.children.filter((m) => m !== o && m.visible && m.userData.group === g),
+    ]
+  }
+
   /** Start moving the whole selection by dragging one of its items */
-  private startGroupDrag(e: PointerEvent, o: THREE.Object3D, tapToggles: boolean) {
+  private startGroupDrag(e: PointerEvent, o: THREE.Object3D, tap: 'toggle' | 'single' | 'keep') {
     const p = this.floorHit(e) ?? o.position.clone()
     this.drag = {
       o,
@@ -1622,7 +1686,7 @@ export class VenueEditor {
       dz: o.position.z - p.z,
       moved: false,
       group: this.groupMembers(),
-      tapToggles,
+      tap,
     }
     this.controls.enabled = false
     this.canvas.style.cursor = 'grabbing'
@@ -1701,7 +1765,7 @@ export class VenueEditor {
       const y = s.top + ((1 - v.y) / 2) * s.height
       return x >= l && x <= r && y >= t && y <= b
     })
-    if (inside.length) this.setSelection([...this.selection, ...inside])
+    if (inside.length) this.setSelection([...this.selection, ...inside.flatMap(this.withGroup)])
   }
 
   /** The selection's members as they stand now, ready to be moved together */
@@ -1725,6 +1789,7 @@ export class VenueEditor {
     this.updHandles()
     this.cb.onSelect({
       count: this.group.size + 1,
+      ...this.sharedGroup(),
       type: s.userData.type,
       x: s.position.x,
       y: s.position.y,
@@ -1972,7 +2037,7 @@ export class VenueEditor {
           // 多選: dragging a selected item moves them all; a tap takes it out
           e.stopPropagation()
           e.preventDefault()
-          this.startGroupDrag(e, o, true)
+          this.startGroupDrag(e, o, 'toggle')
           return
         }
         if (o && (keyed || this.multi)) {
@@ -2002,9 +2067,15 @@ export class VenueEditor {
         }
         e.stopPropagation()
         e.preventDefault()
+        if (o.userData.group && !this.selection.includes(o)) {
+          // a grouped item picks up its whole group; a second click then selects just it
+          this.setSelection(this.withGroup(o))
+          if (!onWall(o) && !onTable(o)) this.startGroupDrag(e, o, 'keep')
+          return
+        }
         if (this.group.size && this.selection.includes(o) && !onWall(o) && !onTable(o)) {
           // grabbing one of several selected items moves them all
-          this.startGroupDrag(e, o, false)
+          this.startGroupDrag(e, o, 'single')
           return
         }
         this.select(o)
@@ -2138,8 +2209,8 @@ export class VenueEditor {
         if (this.drag.moved) this.commit()
         // a tap in 多選 takes the item out; a plain click (no drag) on one of several selected
         // items selects just that one
-        else if (this.drag.tapToggles) this.toggleSelected(this.drag.o)
-        else if (this.drag.group) this.select(this.drag.o)
+        else if (this.drag.tap === 'toggle') this.toggleSelected(this.drag.o)
+        else if (this.drag.tap === 'single') this.select(this.drag.o)
         this.drag = null
         this.controls.enabled = true
         this.grid.visible = false
@@ -2150,7 +2221,7 @@ export class VenueEditor {
       if (d && e.target === canvas && Math.hypot(e.clientX - d.x, e.clientY - d.y) < 4) {
         const belt = this.editable && this.pickBelt(e)
         if (belt) this.cutBelt(belt)
-        else this.select(this.zoneClick)
+        else this.setSelection(this.zoneClick ? this.withGroup(this.zoneClick) : [])
       }
       this.zoneClick = null
       this.downPt = null

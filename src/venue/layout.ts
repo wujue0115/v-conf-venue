@@ -38,6 +38,8 @@ export interface LayoutItem {
   info?: string
   /** Rented items only: left out of the rental total (absent means it's billed) */
   unbilled?: boolean
+  /** The name of the group (群組) it belongs to; items with the same name are one group */
+  group?: string
   /** People only: how many figures the item shows (1–6; absent means 1) */
   n?: number
   /** People and zones: colour as #rrggbb (absent means the default) */
@@ -62,6 +64,17 @@ export interface CostLine {
   indices: number[]
   /** How many are placed, and how many of those are billed */
   count: number
+  billed: number
+  subtotal: number
+}
+
+/** A group's items, listed together in 目前配置 instead of under their kinds */
+export interface GroupLine {
+  name: string
+  /** Where its items are in the layout, in order */
+  indices: number[]
+  /** How many of its items are rented, and how many of those are billed */
+  rented: number
   billed: number
   subtotal: number
 }
@@ -94,10 +107,31 @@ export const formatNT = (n: number) => 'NT$ ' + n.toLocaleString('en-US')
 
 export const clampSlots = (n: number) => Math.max(1, Math.min(MAX_SLOTS, Math.trunc(n) || 1))
 
-/** Rental cost per kind; items marked `unbilled` are listed but not charged */
+/**
+ * Rental cost per group, then per kind for the items in no group; items marked `unbilled` are
+ * listed but not charged
+ */
 export function summarizeCost(items: readonly LayoutItem[], priceMode: PriceMode, slots: number) {
+  const rent = (k: number) => {
+    const p = priceOf(items[k]!.t)
+    return p && !items[k]!.unbilled ? p[priceMode] * slots : 0
+  }
+  const byGroup = new Map<string, number[]>()
   const byType = new Map<FurnitureType, number[]>()
-  items.forEach((i, k) => byType.set(i.t, [...(byType.get(i.t) ?? []), k]))
+  items.forEach((i, k) => {
+    if (i.group) byGroup.set(i.group, [...(byGroup.get(i.group) ?? []), k])
+    else byType.set(i.t, [...(byType.get(i.t) ?? []), k])
+  })
+  const groups: GroupLine[] = [...byGroup].map(([name, indices]) => {
+    const rented = indices.filter((k) => priceOf(items[k]!.t))
+    return {
+      name,
+      indices,
+      rented: rented.length,
+      billed: rented.filter((k) => !items[k]!.unbilled).length,
+      subtotal: indices.reduce((s, k) => s + rent(k), 0),
+    }
+  })
   const lines: CostLine[] = FURNITURE_TYPES.flatMap((t) => {
     const indices = byType.get(t) ?? []
     const price = priceOf(t)
@@ -113,7 +147,8 @@ export function summarizeCost(items: readonly LayoutItem[], priceMode: PriceMode
       },
     ]
   })
-  return { lines, total: lines.reduce((s, l) => s + l.subtotal, 0) }
+  const sum = (ls: readonly { subtotal: number }[]) => ls.reduce((s, l) => s + l.subtotal, 0)
+  return { groups, lines, total: sum(groups) + sum(lines) }
 }
 
 /** Accepts either a bare item array or an exported `{ items: [...] }` file; drops unknown/invalid entries. */
@@ -136,6 +171,7 @@ export function parseLayout(data: unknown): LayoutItem[] {
     const [dw, dh] = defaultSizeOf(t)
     const tag = cleanTag(i.tag)
     const info = cleanInfo(i.info)
+    const group = cleanTag(i.group)
     const sit = t === 'person' && i.sit === true
     const n = t === 'person' && !sit ? clampPeople(i.n) : 1
     const coloured = t === 'person' || t === 'zone'
@@ -165,6 +201,7 @@ export function parseLayout(data: unknown): LayoutItem[] {
         ...(info ? { info } : {}),
         ...(sit ? { sit } : {}),
         ...(priceOf(t) && i.unbilled === true ? { unbilled: true } : {}),
+        ...(group ? { group } : {}),
         ...(t === 'laptop' && i.open !== undefined ? { open: clampLid(i.open) } : {}),
         ...(t === 'zone' ? { w: clampZone(i.w, 2), d: clampZone(i.d, 2) } : {}),
       },

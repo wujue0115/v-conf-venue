@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, shallowRef, useTemplateRef, watch } from 'vue'
+import { computed, nextTick, shallowRef, useTemplateRef, watch } from 'vue'
 import ColorChips from './ColorChips.vue'
 import TagCombobox from './TagCombobox.vue'
 import TriCheckbox from './TriCheckbox.vue'
@@ -19,7 +19,7 @@ import {
 } from '@/venue/furniture'
 import { LID_MAX } from '@/venue/laptop'
 import { POSTER_PRESETS, readPosterImage, type PosterFit } from '@/venue/poster'
-import { INFO_MAX, formatNT } from '@/venue/layout'
+import { INFO_MAX, TAG_MAX, formatNT } from '@/venue/layout'
 import { nameOf, t, variantLabel, variantName } from '@/i18n'
 import { BELT_MAX } from '@/venue/stanchions'
 import { ZONE_COLOR } from '@/venue/zone'
@@ -62,6 +62,30 @@ watch(
   { immediate: true },
 )
 const saveInfo = () => editor.value?.setInfo(info.value)
+
+// A group's name, renamed when the box is committed; a name another group has is refused
+const groupName = shallowRef('')
+watch(
+  () => sel.value?.group,
+  (g) => (groupName.value = g ?? ''),
+  { immediate: true },
+)
+const gnameInput = useTemplateRef('gname')
+/** Make the group, then put the cursor in its name so it can be named straight away */
+async function makeGroup() {
+  editor.value?.makeGroup()
+  await nextTick()
+  gnameInput.value?.focus()
+  gnameInput.value?.select()
+}
+function renameGroup() {
+  const from = sel.value?.group ?? ''
+  if (groupName.value.trim() === from) return
+  if (!editor.value?.renameGroup(groupName.value)) {
+    if (groupName.value.trim()) store.notify(t().grouping.nameTaken)
+    groupName.value = from
+  }
+}
 
 // Zone size in metres, applied when an input is committed
 const zw = shallowRef(0)
@@ -197,6 +221,24 @@ const generate = () =>
       <button class="btn danger" :title="t().sel.deleteTitle" @click="editor?.remove()">
         {{ t().sel.delete }}
       </button>
+    </div>
+    <div v-if="sel.group" class="rows">
+      <span class="lbl">{{ t().grouping.label }}</span>
+      <div class="ctl">
+        <input
+          ref="gname"
+          v-model="groupName"
+          class="gname"
+          :maxlength="TAG_MAX"
+          :aria-label="t().grouping.name"
+          @change="renameGroup"
+          @keydown.enter="($event.target as HTMLInputElement).blur()"
+        />
+        <button class="btn" @click="editor?.ungroup()">{{ t().grouping.ungroup }}</button>
+      </div>
+    </div>
+    <div v-else class="ctl">
+      <button class="btn" @click="makeGroup">{{ t().grouping.make }}</button>
     </div>
   </div>
 
@@ -416,6 +458,14 @@ const generate = () =>
           @change="saveInfo"
         ></textarea>
       </div>
+
+      <template v-if="sel.group">
+        <span class="lbl">{{ t().grouping.label }}</span>
+        <div class="ctl">
+          <span class="hint">{{ sel.group }}</span>
+          <button class="btn" @click="editor?.ungroup()">{{ t().grouping.leave }}</button>
+        </div>
+      </template>
 
       <template v-if="sel.billed !== undefined">
         <span class="lbl">{{ t().sel.billing }}</span>
@@ -847,6 +897,22 @@ const generate = () =>
   min-height: 30px;
   font-size: 12px;
   cursor: pointer;
+}
+.gname {
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fff;
+  font: inherit;
+  font-size: 12px;
+}
+.gname:focus {
+  outline: 2px solid var(--yel);
+  outline-offset: 0;
+  border-color: transparent;
 }
 .info {
   width: 100%;
