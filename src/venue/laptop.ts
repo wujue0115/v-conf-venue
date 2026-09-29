@@ -208,7 +208,7 @@ function textures() {
 }
 
 const dark = mat('#101114', { roughness: 0.4, name: 'bezel' })
-/** Anodised / bead-blasted aluminium in each colour, and a smoother cut for the trackpad */
+/** Anodised / bead-blasted aluminium in each colour */
 const metals = new Map<string, THREE.Material>()
 function metal(colour: string, roughness: number) {
   const key = `${colour}/${roughness}`
@@ -224,6 +224,46 @@ function metal(colour: string, roughness: number) {
     metals.set(key, m)
   }
   return m
+}
+
+/** A flat rounded rectangle w × d lying face up */
+function roundRect(w: number, d: number, r: number) {
+  const [x, z] = [w / 2, d / 2]
+  const s = new THREE.Shape()
+  s.moveTo(-x + r, -z)
+  s.lineTo(x - r, -z)
+  s.quadraticCurveTo(x, -z, x, -z + r)
+  s.lineTo(x, z - r)
+  s.quadraticCurveTo(x, z, x - r, z)
+  s.lineTo(-x + r, z)
+  s.quadraticCurveTo(-x, z, -x, z - r)
+  s.lineTo(-x, -z + r)
+  s.quadraticCurveTo(-x, -z, -x + r, -z)
+  return new THREE.ShapeGeometry(s, 4).rotateX(-Math.PI / 2)
+}
+
+/**
+ * The trackpad: glass tinted to the body, a shade darker and glossier than the blasted
+ * aluminium so it reads against the deck, set in a thin dark seam
+ */
+const pads = new Map<string, { glass: THREE.Material; seam: THREE.Material }>()
+function padMats(colour: string) {
+  let p = pads.get(colour)
+  if (!p) {
+    const c = new THREE.Color(colour)
+    p = {
+      glass: new THREE.MeshStandardMaterial({
+        color: c.clone().multiplyScalar(0.86),
+        metalness: 0.55,
+        roughness: 0.12,
+        envMap: textures().env,
+        name: 'trackpad',
+      }),
+      seam: mat(c.clone().multiplyScalar(0.45), { roughness: 0.6, name: 'trackpad_seam' }),
+    }
+    pads.set(colour, p)
+  }
+  return p
 }
 
 export function buildLaptop(g: THREE.Group, v?: string) {
@@ -244,11 +284,13 @@ export function buildLaptop(g: THREE.Group, v?: string) {
   )
   keys.position.set(0, base + 0.0004, -m.d / 2 + 0.018 + kd / 2)
   root.add(keys)
-  const pad = new THREE.Mesh(
-    new THREE.PlaneGeometry(m.w * 0.4, m.d * 0.36).rotateX(-Math.PI / 2),
-    metal(colour, 0.2),
-  )
-  pad.position.set(0, base + 0.0003, m.d / 2 - 0.012 - (m.d * 0.36) / 2)
+  const [pw, pd] = [m.w * 0.4, m.d * 0.36]
+  const pm = padMats(colour)
+  const seam = new THREE.Mesh(roundRect(pw + 0.0024, pd + 0.0024, 0.0072), pm.seam)
+  seam.position.set(0, base + 0.0002, m.d / 2 - 0.012 - pd / 2)
+  root.add(seam)
+  const pad = new THREE.Mesh(roundRect(pw, pd, 0.006), pm.glass)
+  pad.position.set(0, base + 0.0004, seam.position.z)
   root.add(pad)
   if (m.grille) {
     // speaker grilles either side of the keys
@@ -290,7 +332,7 @@ export function buildLaptop(g: THREE.Group, v?: string) {
   )
   screen.position.set(0, m.d / 2 + 0.004, 0.0006)
   hinge.add(screen)
-  for (const o of [keys, pad, bezel, screen]) o.receiveShadow = true
+  for (const o of [keys, seam, pad, bezel, screen]) o.receiveShadow = true
   setLaptopOpen(g, LID_OPEN)
   delete g.userData.open
 }
