@@ -130,6 +130,10 @@ const footOf = (o: THREE.Object3D) =>
 const TABLE_MARGIN = 0.1
 /** Space kept between two things on a table */
 const TRAY_GAP = 0.015
+/** Types that are placed turned toward the viewer; everything else starts square to the grid */
+const facesViewer = (t: FurnitureType) => t === 'person' || t === 'laptop'
+/** How close (metres, on the floor plan) a new seat must be to a table's edge to face it */
+const TABLE_REACH = 1
 /** How close (metres, on the floor plan) a person must be dropped to a seat to sit on it */
 const SIT_REACH = 0.35
 
@@ -700,6 +704,8 @@ export class VenueEditor {
       if (this.overCanvas(ev)) {
         if (!pl.obj) {
           pl.obj = buildFurniture(type)
+          // a new person or laptop turns toward the view
+          if (facesViewer(type)) pl.obj.rotation.y = this.facingView()
           this.placed.add(pl.obj)
           this.grid.visible = true
         }
@@ -714,6 +720,8 @@ export class VenueEditor {
           const p = this.floorHit(ev)
           if (p) {
             this.moveTo(pl.obj, p.x, p.z)
+            // a seat dropped beside a table turns to it
+            if (seatOf(pl.obj)) pl.obj.rotation.y = this.facingTable(pl.obj) ?? 0
             this.settle(pl.obj)
             pl.obj.visible = true
           }
@@ -756,7 +764,8 @@ export class VenueEditor {
             return
           }
           this.pushUndo()
-          const o = this.add({ t: type, x: p.x, y: p.y, z: p.z, r: 0 })
+          const r = facesViewer(type) ? this.facingView() : 0
+          const o = this.add({ t: type, x: p.x, y: p.y, z: p.z, r })
           this.select(o)
           this.commit()
           this.cb.onToast(`已將「${FURNITURE[type].name}」放在畫面中央的桌上`)
@@ -778,7 +787,9 @@ export class VenueEditor {
         } else if (clicked) {
           this.pushUndo()
           const t = this.controls.target
-          const o = this.add({ t: type, x: this.sn(t.x), z: this.sn(t.z), r: 0 })
+          const r = facesViewer(type) ? this.facingView() : 0
+          const o = this.add({ t: type, x: this.sn(t.x), z: this.sn(t.z), r })
+          if (o && seatOf(o)) o.rotation.y = this.facingTable(o) ?? r
           if (o) this.settle(o)
           this.select(o)
           this.commit()
@@ -792,6 +803,52 @@ export class VenueEditor {
   }
 
   // ---------------- Internals ----------------
+
+  /**
+   * The right angle (0°, 90°, 180° or 270°) that best points a piece's front (+z) back toward
+   * the viewer, so people and laptops face the camera yet stay square to the grid. Looking
+   * straight down, the front is the bottom of the screen.
+   */
+  private facingView() {
+    const back = this.camera.getWorldDirection(new THREE.Vector3()).negate().setY(0)
+    if (back.lengthSq() < 0.01)
+      back.copy(this.camera.up).applyQuaternion(this.camera.quaternion).negate()
+    const step = Math.PI / 2
+    const r = Math.round(Math.atan2(back.x, back.z) / step) * step
+    return r < 0 ? r + Math.PI * 2 : Math.abs(r)
+  }
+
+  /**
+   * The turn that points seat `o`'s front (+z) at the nearest table within TABLE_REACH of it:
+   * square on to a rectangular top's nearest side, or at a round top's centre. Null when no
+   * table is that close.
+   */
+  private facingTable(o: THREE.Object3D) {
+    const { x, z } = o.position
+    let aim: THREE.Vector3 | null = null
+    let bestD = TABLE_REACH
+    for (const t of this.placed.children) {
+      const top = tableOf(t)
+      if (!top || !t.visible || t === o) continue
+      t.updateMatrixWorld()
+      const l = t.worldToLocal(new THREE.Vector3(x, t.position.y, z))
+      const edge = new THREE.Vector3(
+        THREE.MathUtils.clamp(l.x, -top.w / 2, top.w / 2),
+        l.y,
+        THREE.MathUtils.clamp(l.z, -top.d / 2, top.d / 2),
+      )
+      const d = top.round
+        ? Math.max(0, Math.hypot(l.x, l.z) - top.w / 2)
+        : Math.hypot(l.x - edge.x, l.z - edge.z)
+      if (d >= bestD) continue
+      bestD = d
+      // under a rectangular top (or at a round one) the centre is the only sensible aim
+      aim = t.localToWorld(top.round || d === 0 ? new THREE.Vector3(0, l.y, 0) : edge)
+    }
+    if (!aim) return null
+    const [dx, dz] = [aim.x - x, aim.z - z]
+    return dx * dx + dz * dz < 1e-6 ? null : Math.atan2(dx, dz)
+  }
 
   /** Place an item; with no `y` it is dropped onto the floor below (x, z). */
   private add({ t, x, y, z, r, v, cut, w, h, d, img, lock, tag, n, color, sit, open }: LayoutItem) {

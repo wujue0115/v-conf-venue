@@ -365,15 +365,16 @@ export const SEATED_TAG_Y = 1.2
 
 /**
  * Table tops things can be set on, in the table's own frame: the top's height and its size
- * (w along x, d along z). Round tops are given their bounding square.
+ * (w along x, d along z). Round tops are given their bounding square and marked `round`.
  */
-export const TABLES: Partial<Record<string, { y: number; w: number; d: number }>> = {
-  foldTable: { y: 0.75, w: 0.8, d: 0.8 },
-  table3: { y: 0.71, w: 1.8, d: 0.45 },
-  table2: { y: 0.71, w: 1.2, d: 0.45 },
-  teaWhite: { y: 0.6, w: 0.5, d: 0.5 },
-  teaWood: { y: 0.535, w: 0.5, d: 0.5 },
-}
+export const TABLES: Partial<Record<string, { y: number; w: number; d: number; round?: boolean }>> =
+  {
+    foldTable: { y: 0.75, w: 0.8, d: 0.8 },
+    table3: { y: 0.71, w: 1.8, d: 0.45 },
+    table2: { y: 0.71, w: 1.2, d: 0.45 },
+    teaWhite: { y: 0.6, w: 0.5, d: 0.5, round: true },
+    teaWood: { y: 0.535, w: 0.5, d: 0.5, round: true },
+  }
 
 /**
  * Where someone sits on each kind of seat, in the seat's own frame: the height of the
