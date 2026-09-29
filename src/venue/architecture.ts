@@ -88,11 +88,11 @@ const WALLS: Seg[] = [
   [28.35, 2.4, 34.8, 2.4],
   [34.8, 2.4, 34.8, 9.1],
   [28.35, 6, 34.8, 6],
-  [31.4, 6, 31.4, 9.1],
+  [31.6, 6, 31.6, 9.1],
   [28.35, 9.1, 34.8, 9.1],
   [28.35, 12.2, 34.8, 12.2],
   [34.8, 12.2, 34.8, 15.1],
-  [31.4, 12.2, 31.4, 15.1],
+  [31.97, 12.2, 31.97, 15.1],
   [35.9, 9.1, 35.9, 12.2],
   [35.8, 9.1, 37.4, 9.1],
   [35.8, 12.2, 37.2, 12.2],
@@ -186,6 +186,8 @@ const OPENINGS: (Seg | [...Seg, 'full'])[] = [
 /** Restroom fittings */
 const PORCELAIN = mat('#fbfbf9', { roughness: 0.25, name: 'porcelain' })
 const COUNTER = mat('#d9d4ca', { roughness: 0.5, name: 'counter' })
+/** Lift doors */
+const LIFT_DOOR = mat('#f0ebdf', { roughness: 0.5, name: 'lift_door' })
 /** Turns (about y) that face a fitting's front, built facing +z, east / west / north / south */
 const FACE = { e: Math.PI / 2, w: -Math.PI / 2, n: Math.PI, s: 0 }
 
@@ -517,15 +519,29 @@ export function buildArchitecture(scene: THREE.Scene): Architecture {
       [34.4, 45.3],
     ] as Pt[]
   ).forEach(([x, z]) => mesh(B(0.8, H, 0.8), M.wall, wallsG, x, H / 2, z))
-  // lift cars, two in each lift room
+  // lift cars, two in each lift room where the plan draws them (146 wide, 215 / 220 deep), each
+  // with its doors in the lobby wall: the north room's face south, the south room's north
   ;(
     [
-      [30.6, 7.75],
-      [33.1, 7.75],
-      [30.6, 13.6],
-      [33.1, 13.6],
-    ] as Pt[]
-  ).forEach(([x, z]) => mesh(B(1.45, H, 2.3), M.steel, wallsG, x, H / 2, z))
+      [30.56, 7.65, 2.15, 9.1, 1],
+      [33.03, 7.65, 2.15, 9.1, 1],
+      [30.53, 13.5, 2.2, 12.2, -1],
+      [33.04, 13.5, 2.2, 12.2, -1],
+    ] as [number, number, number, number, 1 | -1][]
+  ).forEach(([x, z, d, wz, face]) => {
+    mesh(B(1.46, 2.5, d), M.steel, wallsG, x, 1.25, z)
+    mesh(
+      B(0.95, DOOR_H, 0.03),
+      LIFT_DOOR,
+      wallsG,
+      x,
+      DOOR_H / 2,
+      wz + face * (WALL_T / 2 + 0.015),
+      {
+        e: EF,
+      },
+    )
+  })
 
   // restrooms: the women's stalls down the west wall and back to back in the middle, the men's
   // two stalls east of the middle wall, urinals facing each other across the men's side, and
@@ -580,7 +596,7 @@ export function buildArchitecture(scene: THREE.Scene): Architecture {
   toilet(33.45, 27.85, FACE.n)
   basins(34.45, 27.7, 35.05, 28.1, [[34.75, 27.9]])
 
-  // stairs
+  // stairs, their outer edges against the stairwells' walls (the walls' inner faces)
   /**
    * A service-core stair between floors (4m), treads running east–west in two rows: the first
    * flight climbs west along the south row (the one the plan's break line crosses) from the floor
@@ -639,18 +655,18 @@ export function buildArchitecture(scene: THREE.Scene): Architecture {
   switchback({
     x0: 30,
     x1: 33,
-    west: 28.5,
-    north: [2.95, 4.29],
-    south: [4.48, 5.85],
+    west: 28.475,
+    north: [2.525, 4.29],
+    south: [4.48, 5.875],
     n: 9,
     spine: [30.2, 33],
   })
   switchback({
     x0: 30.45,
     x1: 32.6,
-    west: 28.5,
-    north: [20.1, 21.5],
-    south: [21.68, 23],
+    west: 28.475,
+    north: [19.725, 21.5],
+    south: [21.68, 23.075],
     n: 8,
     spine: [29.9, 32.6],
   })
