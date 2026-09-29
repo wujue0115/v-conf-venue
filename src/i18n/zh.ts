@@ -111,6 +111,22 @@ const zh = {
     editOnly: '切換到編輯模式才能多選',
   },
 
+  imageExport: {
+    title: '輸出圖片',
+    hint: '以目前的視角方向拍下整棟建築，裁到建築四邊並留白',
+    preview: '圖片預覽',
+    padding: '邊距',
+    download: '下載 PNG',
+  },
+
+  history: {
+    undo: '復原',
+    undoTitle: '復原 (⌘Z)',
+    redo: '重做',
+    redoTitle: '重做 (⇧⌘Z)',
+    editOnly: '切換到編輯模式才能使用',
+  },
+
   modes: {
     label: '模式',
     view: { label: '檢視', title: '只瀏覽場地，不會動到物件' },
@@ -246,9 +262,9 @@ const zh = {
     notes: '資訊顯示',
     allNotes: '全部資訊',
     layout: '配置',
-    undo: '復原',
-    undoTitle: '復原 (⌘Z)',
     export: '匯出',
+    image: '輸出圖片',
+    imageTitle: '以目前的視角方向，把整棟建築輸出成 PNG',
     import: '匯入',
     clear: '清空',
     clearConfirm: '確定要清空所有擺放的物件嗎？（可用復原找回）',
@@ -290,6 +306,7 @@ const zh = {
           ['點心盤、筆記型電腦', '只能放在桌上，桌子移動時會跟著走'],
           ['Esc', '取消選取'],
           ['⌘Z', '復原'],
+          ['⇧⌘Z／⌘Y', '重做'],
         ],
       },
     ] as { title: string; rows: [key: string, what: string][] }[],
@@ -297,6 +314,7 @@ const zh = {
 
   toast: {
     undone: '已復原',
+    redone: '已重做',
     tableFull: (name: string) => `桌面上沒有空位可以再放「${name}」了`,
     arrayed: (n: number, name: string, cols: number, rows: number) =>
       `已產生 ${n} 個「${name}」（向右 ${cols} 個、向後 ${rows} 排）`,

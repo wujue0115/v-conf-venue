@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, shallowRef, useTemplateRef, watch } from 'vue'
+import ExportImageDialog from './ExportImageDialog.vue'
 import VisibilityTree from './VisibilityTree.vue'
 import { LOCALES, LOCALE_NAMES, locale, t } from '@/i18n'
 import { useVenueEditor } from '@/composables/useVenueEditor'
@@ -63,6 +64,13 @@ function download() {
   a.download = `v-conf-taiwan-venue-${stamp()}.json`
   a.click()
   URL.revokeObjectURL(a.href)
+}
+
+/** 輸出圖片 opens its own window (preview, padding, download); the settings close behind it */
+const imageDialog = useTemplateRef('imageDialog')
+function openImageDialog() {
+  open.value = false
+  imageDialog.value?.open()
 }
 
 async function onFile(e: Event) {
@@ -215,13 +223,8 @@ onBeforeUnmount(unlisten)
       <section>
         <h4>{{ t().settings.layout }}</h4>
         <div class="acts">
-          <button
-            class="btn"
-            :title="t().settings.undoTitle"
-            :disabled="!store.editing"
-            @click="editor?.undo()"
-          >
-            {{ t().settings.undo }}
+          <button class="btn" :title="t().settings.imageTitle" @click="openImageDialog">
+            {{ t().settings.image }}
           </button>
           <button class="btn" @click="download">{{ t().settings.export }}</button>
           <button class="btn" :disabled="!store.editing" @click="fileInput?.click()">
@@ -234,6 +237,7 @@ onBeforeUnmount(unlisten)
       </section>
     </div>
     <input ref="file" type="file" accept=".json,application/json" hidden @change="onFile" />
+    <ExportImageDialog ref="imageDialog" :name="() => `v-conf-taiwan-venue-${stamp()}`" />
   </div>
 </template>
 

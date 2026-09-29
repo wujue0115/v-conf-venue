@@ -21,6 +21,10 @@ onMounted(() => {
     onChange: (items) => (store.items = items),
     onSelect: (sel) => (store.selection = sel),
     onToast: store.notify,
+    onHistory: (u, r) => {
+      store.canUndo = u
+      store.canRedo = r
+    },
   })
   store.fixedSeats = ed.fixedSeats
   ed.load(store.initialItems)

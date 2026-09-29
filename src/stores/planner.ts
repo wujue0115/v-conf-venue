@@ -32,6 +32,9 @@ export const usePlannerStore = defineStore('planner', () => {
   const items = shallowRef<LayoutItem[]>(initialItems)
   const selection = shallowRef<SelectionInfo | null>(null)
   const fixedSeats = shallowRef(0)
+  /** Whether the editor has a step to undo / redo (reported by it) */
+  const canUndo = shallowRef(false)
+  const canRedo = shallowRef(false)
 
   const pricing = loadPricing()
   const priceMode = shallowRef<PriceMode>(pricing.priceMode)
@@ -112,6 +115,8 @@ export const usePlannerStore = defineStore('planner', () => {
     items,
     selection,
     fixedSeats,
+    canUndo,
+    canRedo,
     priceMode,
     slots,
     mode,

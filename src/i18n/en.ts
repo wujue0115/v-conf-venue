@@ -106,6 +106,22 @@ const en: Messages = {
     editOnly: 'Switch to Edit mode to select several items',
   },
 
+  imageExport: {
+    title: 'Export image',
+    hint: 'The whole building from the current viewing direction, cropped to its edges with padding round it',
+    preview: 'Image preview',
+    padding: 'Padding',
+    download: 'Download PNG',
+  },
+
+  history: {
+    undo: 'Undo',
+    undoTitle: 'Undo (⌘Z)',
+    redo: 'Redo',
+    redoTitle: 'Redo (⇧⌘Z)',
+    editOnly: 'Switch to Edit mode to use this',
+  },
+
   modes: {
     label: 'Mode',
     view: { label: 'View', title: 'Look around without moving anything' },
@@ -242,9 +258,9 @@ const en: Messages = {
     notes: 'Notes',
     allNotes: 'All notes',
     layout: 'Layout',
-    undo: 'Undo',
-    undoTitle: 'Undo (⌘Z)',
     export: 'Export',
+    image: 'Export image',
+    imageTitle: 'Save the whole building as a PNG, seen from the current direction',
     import: 'Import',
     clear: 'Clear',
     clearConfirm: 'Clear every placed item? (Undo can bring them back)',
@@ -289,6 +305,7 @@ const en: Messages = {
           ['Snack trays, laptops', 'Stand only on tables and move with them'],
           ['Esc', 'Deselect'],
           ['⌘Z', 'Undo'],
+          ['⇧⌘Z / ⌘Y', 'Redo'],
         ],
       },
     ],
@@ -296,6 +313,7 @@ const en: Messages = {
 
   toast: {
     undone: 'Undone',
+    redone: 'Redone',
     tableFull: (name: string) => `No room left on the tables for another “${name}”`,
     arrayed: (n: number, name: string, cols: number, rows: number) =>
       `Made ${n} more “${name}” (${cols} across, ${rows} ${rows === 1 ? 'row' : 'rows'} back)`,

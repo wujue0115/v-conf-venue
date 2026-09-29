@@ -84,6 +84,8 @@ export interface EditorCallbacks {
   onChange: (items: LayoutItem[]) => void
   onSelect: (selection: SelectionInfo | null) => void
   onToast: (message: string) => void
+  /** Fired whenever there comes to be (or stops being) something to undo or redo */
+  onHistory: (canUndo: boolean, canRedo: boolean) => void
 }
 
 export interface LabelAnchor {
@@ -108,6 +110,8 @@ interface Fly {
 }
 
 const UNDO_LIMIT = 60
+/** An exported picture's building, in pixels along its longer side */
+const IMAGE_SIZE = 2400
 const UP = THREE.Object3D.DEFAULT_UP
 /** Height of the belt cassette on the stanchion post */
 const BELT_Y = 0.9
@@ -271,6 +275,10 @@ export class VenueEditor {
   private editable = true
   private snap = true
   private undoStack: string[] = []
+  /** Steps undone, newest last; any new change clears them */
+  private redoStack: string[] = []
+  /** The redo steps a new change just cleared, kept in case that change is dropped (dropUndo) */
+  private redoCleared: string[] = []
   /** A laptop's lid is being dragged open or shut with the slider (its undo step is taken) */
   private lidLive = false
   private drag: {
@@ -427,11 +435,17 @@ export class VenueEditor {
   undo() {
     const s = this.undoStack.pop()
     if (!s) return
-    const items = (JSON.parse(s) as LayoutItem[]).map((i) =>
-      i.img ? { ...i, img: this.imgByKey.get(i.img) } : i,
-    )
-    this.load(items)
+    this.redoStack.push(this.snapshot())
+    this.restore(s)
     this.cb.onToast(t().toast.undone)
+  }
+
+  redo() {
+    const s = this.redoStack.pop()
+    if (!s) return
+    this.undoStack.push(this.snapshot())
+    this.restore(s)
+    this.cb.onToast(t().toast.redone)
   }
 
   /** Switch between edit mode and view-only mode. */
@@ -636,6 +650,97 @@ export class VenueEditor {
     }
   }
 
+  /**
+   * The camera for a picture of the venue from the current viewing direction: it keeps the way
+   * the view faces but stands back until the whole building is in view, and is cropped to the
+   * building's outermost edges on screen, `padding` pixels clear of them on every side. The
+   * building fills `size` pixels along its longer side. Gives the camera and the picture's size.
+   */
+  private imageFrame(padding: number, size: number) {
+    const cam = this.camera.clone()
+    cam.aspect = 1
+    cam.clearViewOffset()
+    // the building's corners: each wall's, floor's, step's and column's box, in the world
+    const pts: THREE.Vector3[] = []
+    for (const g of [this.archi.arch, this.archi.wallsG]) {
+      g.updateMatrixWorld(true)
+      g.traverse((o) => {
+        if (!(o instanceof THREE.Mesh) || !o.visible) return
+        if (!o.geometry.boundingBox) o.geometry.computeBoundingBox()
+        const bb = o.geometry.boundingBox as THREE.Box3
+        for (let i = 0; i < 8; i++)
+          pts.push(
+            new THREE.Vector3(
+              i & 1 ? bb.max.x : bb.min.x,
+              i & 2 ? bb.max.y : bb.min.y,
+              i & 4 ? bb.max.z : bb.min.z,
+            ).applyMatrix4(o.matrixWorld),
+          )
+      })
+    }
+    // stand back along the view until the whole building is in front and within the view
+    const sphere = new THREE.Sphere().setFromPoints(pts)
+    const back = sphere.radius / Math.sin(THREE.MathUtils.degToRad(cam.fov / 2)) + 1
+    const dir = this.camera.getWorldDirection(new THREE.Vector3())
+    cam.position.copy(sphere.center).addScaledVector(dir, -back)
+    cam.near = Math.max(0.1, back - sphere.radius - 1)
+    cam.far = back + sphere.radius + 1
+    cam.updateProjectionMatrix()
+    cam.updateMatrixWorld(true)
+    // where the building reaches on screen, then a view cropped to just that (and the padding)
+    const nd = new THREE.Box2()
+    for (const p of pts) {
+      const q = p.project(cam)
+      nd.expandByPoint(new THREE.Vector2(q.x, q.y))
+    }
+    const k = size / Math.max(nd.max.x - nd.min.x, nd.max.y - nd.min.y) // pixels per NDC unit
+    const pad = Math.max(0, Math.round(padding))
+    const width = Math.round((nd.max.x - nd.min.x) * k) + 2 * pad
+    const height = Math.round((nd.max.y - nd.min.y) * k) + 2 * pad
+    cam.setViewOffset(
+      2 * k,
+      2 * k,
+      (nd.min.x + 1) * k - pad,
+      (1 - nd.max.y) * k - pad,
+      width,
+      height,
+    )
+    return { cam, width, height }
+  }
+
+  /**
+   * A PNG of the venue from the current viewing direction, cropped to the building with
+   * `padding` pixels round it (see imageFrame). Pass a smaller `size` for a preview; its
+   * padding is scaled to match, so it looks like the full picture. Selection outlines, handles
+   * and the grid are left out; tags and labels (HTML over the stage) aren't drawn.
+   */
+  exportImage({ padding = 40, size = IMAGE_SIZE } = {}) {
+    const { cam, width, height } = this.imageFrame((padding * size) / IMAGE_SIZE, size)
+    // render at that size on the stage's own canvas, read it back, and put everything back
+    const { renderer, scene } = this
+    const hide = scene.children.filter(
+      (o) => o.visible && (o instanceof THREE.Box3Helper || o === this.grid || o === this.handles),
+    )
+    hide.forEach((o) => (o.visible = false))
+    const ratio = renderer.getPixelRatio()
+    const was = renderer.getSize(new THREE.Vector2())
+    renderer.setPixelRatio(1)
+    renderer.setSize(width, height, false)
+    renderer.render(scene, cam)
+    const url = renderer.domElement.toDataURL('image/png')
+    renderer.setPixelRatio(ratio)
+    renderer.setSize(was.x, was.y, false)
+    hide.forEach((o) => (o.visible = true))
+    renderer.render(scene, this.camera)
+    return url
+  }
+
+  /** The full picture's size in pixels with this padding (see exportImage) */
+  imageSize(padding: number) {
+    const { width, height } = this.imageFrame(padding, IMAGE_SIZE)
+    return { width, height }
+  }
+
   rotate(deg: number) {
     const s = this.selected
     if (!s) return
@@ -661,7 +766,7 @@ export class VenueEditor {
     if (onTable(s)) {
       const spot = this.freeTraySpot(s)
       if (!spot) {
-        this.undoStack.pop()
+        this.dropUndo()
         this.cb.onToast(t().toast.tableFull(nameOf(type)))
         return
       }
@@ -1767,10 +1872,39 @@ export class VenueEditor {
     this.cb.onToast(t().toast.beltCut)
   }
 
-  private pushUndo() {
+  /** The layout as an undo step (poster images by their short key) */
+  private snapshot() {
     const items = this.serialize().map((i) => (i.img ? { ...i, img: this.imgKey(i.img) } : i))
-    this.undoStack.push(JSON.stringify(items))
+    return JSON.stringify(items)
+  }
+
+  /** Put back the layout from an undo step */
+  private restore(step: string) {
+    const items = (JSON.parse(step) as LayoutItem[]).map((i) =>
+      i.img ? { ...i, img: this.imgByKey.get(i.img) } : i,
+    )
+    this.load(items)
+    this.reportHistory()
+  }
+
+  /** Take an undo step before a change; a new change can't be redone past */
+  private pushUndo() {
+    this.undoStack.push(this.snapshot())
     if (this.undoStack.length > UNDO_LIMIT) this.undoStack.shift()
+    this.redoCleared = this.redoStack
+    this.redoStack = []
+    this.reportHistory()
+  }
+
+  /** The change the last undo step was taken for didn't happen after all: forget that step */
+  private dropUndo() {
+    this.undoStack.pop()
+    this.redoStack = this.redoCleared
+    this.reportHistory()
+  }
+
+  private reportHistory() {
+    this.cb.onHistory(this.undoStack.length > 0, this.redoStack.length > 0)
   }
 
   private select(o: THREE.Object3D | null) {
@@ -2475,7 +2609,13 @@ export class VenueEditor {
     if (!this.editable) return
     if (mod && kk === 'z') {
       e.preventDefault()
-      this.undo()
+      if (e.shiftKey) this.redo()
+      else this.undo()
+      return
+    }
+    if (mod && kk === 'y') {
+      e.preventDefault()
+      this.redo()
       return
     }
     const s = this.selected

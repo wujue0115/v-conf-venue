@@ -65,7 +65,8 @@ function flyTo(view: CameraView, i: number) {
           </svg>
         </button>
       </div>
-      <!-- always shown (greyed in View mode) so the bar doesn't shift when the mode changes -->
+      <!-- 多選, 復原 and 重做: always shown (greyed in View mode) so the bar doesn't shift when
+           the mode changes -->
       <div class="grp">
         <button
           class="btn"
@@ -82,6 +83,36 @@ function flyTo(view: CameraView, i: number) {
             <rect x="2.5" y="2.5" width="19" height="19" rx="3" stroke-dasharray="3 2.4" />
             <rect x="6.5" y="6.5" width="5" height="5" rx="1" />
             <rect x="12.5" y="12.5" width="5" height="5" rx="1" />
+          </svg>
+        </button>
+        <button
+          class="btn"
+          type="button"
+          :aria-label="t().history.undo"
+          :disabled="!store.editing || !store.canUndo"
+          :title="
+            store.editing ? t().history.undoTitle : `${t().history.undo} · ${t().history.editOnly}`
+          "
+          @click="editor?.undo()"
+        >
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M9 14 4 9l5-5" />
+            <path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" />
+          </svg>
+        </button>
+        <button
+          class="btn"
+          type="button"
+          :aria-label="t().history.redo"
+          :disabled="!store.editing || !store.canRedo"
+          :title="
+            store.editing ? t().history.redoTitle : `${t().history.redo} · ${t().history.editOnly}`
+          "
+          @click="editor?.redo()"
+        >
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="m15 14 5-5-5-5" />
+            <path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13" />
           </svg>
         </button>
       </div>
