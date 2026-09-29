@@ -15,7 +15,7 @@ const tiles = FURNITURE_TYPES.map((type) => {
   return { type, name, size, price: price && `$${price[0]} / $${price[1]}` }
 })
 /** 其他物件 by use: people and space, then signage, then what goes on tables */
-const OTHER_ORDER: FurnitureType[] = ['person', 'zone', 'poster', 'rollup', 'snack']
+const OTHER_ORDER: FurnitureType[] = ['person', 'zone', 'poster', 'rollup', 'snack', 'laptop']
 const otherRank = (t: FurnitureType) => {
   const i = OTHER_ORDER.indexOf(t)
   return i < 0 ? OTHER_ORDER.length : i

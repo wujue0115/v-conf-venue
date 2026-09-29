@@ -13,9 +13,9 @@ import {
   onTableOnly,
   priceOf,
   thumbKey,
-  variantLabelOf,
-  variantsOf,
+  variantAxesOf,
 } from '@/venue/furniture'
+import { LID_MAX } from '@/venue/laptop'
 import { POSTER_PRESETS, readPosterImage, type PosterFit } from '@/venue/poster'
 import { formatNT } from '@/venue/layout'
 import { BELT_MAX } from '@/venue/stanchions'
@@ -62,8 +62,21 @@ watch(
   { immediate: true },
 )
 const def = computed(() => (sel.value ? FURNITURE[sel.value.type] : null))
-const variants = computed(() => (sel.value ? variantsOf(sel.value.type) : []))
-const variantLabel = computed(() => (sel.value ? variantLabelOf(sel.value.type) : ''))
+/** Quick picks for a laptop's lid */
+const LID_PRESETS = [
+  { name: '闔上', deg: 0 },
+  { name: '90°', deg: 90 },
+  { name: '110°', deg: 110 },
+  { name: '全開', deg: LID_MAX },
+]
+const axes = computed(() => (sel.value ? variantAxesOf(sel.value.type) : []))
+/** The selected option on each axis */
+const picked = computed(() => sel.value?.variant?.split('-') ?? [])
+function pick(axis: number, id: string) {
+  const parts = [...picked.value]
+  parts[axis] = id
+  editor.value?.setVariant(parts.join('-'))
+}
 const thumb = computed(() =>
   sel.value ? thumbs.value[thumbKey(sel.value.type, sel.value.variant)] : '',
 )
@@ -170,20 +183,46 @@ const generate = () =>
     </div>
 
     <div class="rows">
-      <template v-if="variants.length">
-        <span class="lbl">{{ variantLabel }}</span>
-        <div class="ctl swatches" role="radiogroup" :aria-label="variantLabel">
+      <template v-for="(a, i) in axes" :key="a.label">
+        <span class="lbl">{{ a.label }}</span>
+        <div class="ctl swatches" role="radiogroup" :aria-label="a.label">
           <button
-            v-for="v in variants"
+            v-for="v in a.options"
             :key="v.id"
             class="swatch"
-            :class="{ on: sel.variant === v.id }"
+            :class="{ on: picked[i] === v.id }"
             type="button"
             role="radio"
-            :aria-checked="sel.variant === v.id"
-            @click="editor?.setVariant(v.id)"
+            :aria-checked="picked[i] === v.id"
+            @click="pick(i, v.id)"
           >
-            <span class="dot" :style="{ background: v.swatch }"></span>{{ v.name }}
+            <span v-if="v.swatch" class="dot" :style="{ background: v.swatch }"></span>{{ v.name }}
+          </button>
+        </div>
+      </template>
+
+      <template v-if="sel.laptop">
+        <span class="lbl">開合</span>
+        <div class="ctl lid">
+          <input
+            type="range"
+            min="0"
+            :max="LID_MAX"
+            step="1"
+            :value="sel.laptop.open"
+            aria-label="螢幕開合角度"
+            @input="editor?.setLidAngle(+($event.target as HTMLInputElement).value, true)"
+            @change="editor?.setLidAngle(+($event.target as HTMLInputElement).value)"
+          />
+          <span class="deg">{{ sel.laptop.open }}°</span>
+          <button
+            v-for="p in LID_PRESETS"
+            :key="p.deg"
+            class="btn"
+            :class="{ on: sel.laptop.open === p.deg }"
+            @click="editor?.setLidAngle(p.deg)"
+          >
+            {{ p.name }}
           </button>
         </div>
       </template>
@@ -693,6 +732,23 @@ const generate = () =>
 .swatch:focus-visible {
   outline: 2px solid var(--yel);
   outline-offset: 1px;
+}
+.lid {
+  gap: 6px;
+}
+.lid .btn.on {
+  border-color: var(--ink);
+  box-shadow: inset 0 0 0 1px var(--ink);
+}
+.lid input[type='range'] {
+  flex: 1 1 120px;
+  min-width: 0;
+  accent-color: var(--ink);
+}
+.deg {
+  min-width: 3.5em;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
 }
 .dot {
   width: 18px;

@@ -1,3 +1,4 @@
+import { clampLid } from './laptop'
 import { clampPosterSize, isImageDataUrl } from './poster'
 import { readJSON, writeJSON } from './storage'
 import { clampZone } from './zone'
@@ -41,6 +42,8 @@ export interface LayoutItem {
   sit?: boolean
   /** Zones only: depth in metres along local z (their width is `w`) */
   d?: number
+  /** Laptops only: lid opening in degrees, 0 (shut) to LID_MAX (absent means LID_OPEN) */
+  open?: number
   /** Stanchions only: bearings (radians) of auto-linked belts the user removed at this post */
   cut?: number[]
 }
@@ -132,6 +135,7 @@ export function parseLayout(data: unknown): LayoutItem[] {
         ...(n > 1 ? { n } : {}),
         ...(color ? { color } : {}),
         ...(sit ? { sit } : {}),
+        ...(t === 'laptop' && i.open !== undefined ? { open: clampLid(i.open) } : {}),
         ...(t === 'zone' ? { w: clampZone(i.w, 2), d: clampZone(i.d, 2) } : {}),
       },
     ]

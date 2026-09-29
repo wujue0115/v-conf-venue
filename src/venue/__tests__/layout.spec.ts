@@ -7,6 +7,7 @@ import {
   summarizeCost,
   type LayoutItem,
 } from '../layout'
+import { footprintOf } from '../furniture'
 
 describe('summarizeCost', () => {
   const items: LayoutItem[] = [
@@ -205,5 +206,42 @@ describe('snack trays', () => {
     expect([a?.v, b?.v]).toEqual(['tart', 'puff'])
     expect(a?.y).toBe(0.71)
     expect(summarizeCost([a!, b!], 1, 2).total).toBe(0)
+  })
+})
+
+describe('laptops', () => {
+  it('keep a known size and colour, default the rest, and are not charged', () => {
+    const [a, b, c] = parseLayout([
+      { t: 'laptop', x: 0, y: 0.71, z: 0, r: 0, v: 's16-black' },
+      { t: 'laptop', x: 0, y: 0.71, z: 0, r: 0, v: 's18-starlight' },
+      { t: 'laptop', x: 0, y: 0.71, z: 0, r: 0 },
+    ])
+    expect([a?.v, b?.v, c?.v]).toEqual(['s16-black', 's13-starlight', 's13-silver'])
+    expect(summarizeCost([a!, b!, c!], 1, 2).total).toBe(0)
+  })
+
+  it('keep the lid within its travel, and only on laptops', () => {
+    const [a, b, c, d] = parseLayout([
+      { t: 'laptop', x: 0, z: 0, r: 0, open: 0 },
+      { t: 'laptop', x: 0, z: 0, r: 0, open: 400 },
+      { t: 'laptop', x: 0, z: 0, r: 0, open: 'wide' },
+      { t: 'snack', x: 0, z: 0, r: 0, open: 90 },
+    ])
+    expect([a?.open, b?.open, c?.open, d?.open]).toEqual([0, 135, 110, undefined])
+  })
+
+  it('reach further back the wider the lid opens', () => {
+    const shut = footprintOf('laptop', 's14-silver', 0)
+    const upright = footprintOf('laptop', 's14-silver', 90)
+    const wide = footprintOf('laptop', 's14-silver', 135)
+    expect(shut[1]).toBeCloseTo(upright[1])
+    expect(wide[1]).toBeGreaterThan(upright[1])
+  })
+
+  it('take more of the table the bigger they are', () => {
+    const [l13, w13] = footprintOf('laptop', 's13-silver')
+    const [l16, w16] = footprintOf('laptop', 's16-silver')
+    expect(l16).toBeGreaterThan(l13)
+    expect(w16).toBeGreaterThan(w13)
   })
 })

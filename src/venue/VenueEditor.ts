@@ -14,10 +14,13 @@ import {
   SEATED_TAG_Y,
   SEATS,
   TABLES,
+  footprintOf,
   onTableOnly,
+  type Footprint,
   applyPeople,
   type FurnitureType,
 } from './furniture'
+import { LID_OPEN, clampLid, setLaptopOpen } from './laptop'
 import { clampPeople, cleanTag, isHexColor, type LayoutItem } from './layout'
 import { B, FM, YEL } from './materials'
 import {
@@ -31,7 +34,6 @@ import {
 } from './poster'
 import type { CameraView, Vec3 } from './places'
 import { bearing, linkPosts, withoutCutToward, type Post } from './stanchions'
-import { TRAY_L, TRAY_W } from './snack'
 import { ZONE_COLOR, ZONE_MIN, applyZone, clampZone, onZoneGrid } from './zone'
 
 export interface SelectionInfo {
@@ -57,6 +59,8 @@ export interface SelectionInfo {
   people?: { n: number; color: string; sit: boolean }
   /** 區域 items: width × depth in metres and colour */
   zone?: { w: number; d: number; color: string }
+  /** Laptops: the lid's opening in degrees */
+  laptop?: { open: number }
 }
 
 export interface EditorCallbacks {
@@ -116,9 +120,15 @@ const tagKindOf = (o: THREE.Object3D): TagKind => (isZone(o) ? 'zone' : 'person'
 const seatOf = (o: THREE.Object3D) => SEATS[o.userData.type as string]
 const tableOf = (o: THREE.Object3D) => TABLES[o.userData.type as string]
 const onTable = (o: THREE.Object3D) => onTableOnly(o.userData.type as FurnitureType)
+const footOf = (o: THREE.Object3D) =>
+  footprintOf(
+    o.userData.type as FurnitureType,
+    o.userData.variant as string | undefined,
+    o.userData.open as number | undefined,
+  )
 /** How far a tray's centre must stay inside a table top's edge */
 const TABLE_MARGIN = 0.1
-/** Space kept between two trays */
+/** Space kept between two things on a table */
 const TRAY_GAP = 0.015
 /** How close (metres, on the floor plan) a person must be dropped to a seat to sit on it */
 const SIT_REACH = 0.35
@@ -194,6 +204,8 @@ export class VenueEditor {
   private editable = true
   private snap = true
   private undoStack: string[] = []
+  /** A laptop's lid is being dragged open or shut with the slider (its undo step is taken) */
+  private lidLive = false
   private drag: {
     o: THREE.Object3D
     dx: number
@@ -474,7 +486,7 @@ export class VenueEditor {
       const spot = this.freeTraySpot(s)
       if (!spot) {
         this.undoStack.pop()
-        this.cb.onToast('桌面上沒有空位可以再放點心盤了')
+        this.cb.onToast(`桌面上沒有空位可以再放「${FURNITURE[type].name}」了`)
         return
       }
       o = this.add({ ...item, x: spot.x, y: spot.y, z: spot.z })
@@ -637,6 +649,25 @@ export class VenueEditor {
     this.commit()
   }
 
+  /**
+   * Open the selected laptop's lid to `deg`. While a slider is dragged (`live`) the lid
+   * follows it with one undo step taken at the start; the change is committed when it ends.
+   */
+  setLidAngle(deg: number, live = false) {
+    const s = this.selected
+    if (!s || s.userData.type !== 'laptop') return
+    deg = clampLid(deg)
+    const was = (s.userData.open as number | undefined) ?? LID_OPEN
+    if (!this.lidLive) {
+      if (deg === was && !live) return
+      this.pushUndo()
+    }
+    this.lidLive = live
+    setLaptopOpen(s, deg)
+    this.updSel()
+    if (!live) this.commit()
+  }
+
   /** Re-link every belt removed at the selected stanchion. */
   restoreBelts() {
     const s = this.selected
@@ -763,7 +794,7 @@ export class VenueEditor {
   // ---------------- Internals ----------------
 
   /** Place an item; with no `y` it is dropped onto the floor below (x, z). */
-  private add({ t, x, y, z, r, v, cut, w, h, d, img, lock, tag, n, color, sit }: LayoutItem) {
+  private add({ t, x, y, z, r, v, cut, w, h, d, img, lock, tag, n, color, sit, open }: LayoutItem) {
     if (!isFurnitureType(t)) return null
     const o = buildFurniture(t, v, w && h ? { w, h } : undefined)
     o.position.set(x, y ?? this.floorY(x, z), z)
@@ -775,6 +806,7 @@ export class VenueEditor {
     if (tag) o.userData.tag = tag
     if (t === 'person' && (n || color || sit)) applyPeople(o, n, color, sit)
     if (t === 'zone' && w && d) applyZone(o, { w, d, color })
+    if (t === 'laptop' && open !== undefined) setLaptopOpen(o, open)
     this.placed.add(o)
     return o
   }
@@ -801,6 +833,7 @@ export class VenueEditor {
       ...(ud.n ? { n: ud.n as number } : {}),
       ...(ud.color ? { color: ud.color as string } : {}),
       ...(ud.sit ? { sit: true } : {}),
+      ...(ud.open !== undefined ? { open: ud.open as number } : {}),
       ...(isZone(o) ? { w: ud.w as number, d: ud.d as number } : {}),
       ...(ud.img && hasFace(o) ? { img: ud.img as string } : {}),
       ...(resizable(o)
@@ -910,24 +943,40 @@ export class VenueEditor {
     return null
   }
 
-  /** Whether a tray at (x, z) turned `r` would overlap another tray standing at height y */
-  private trayOverlaps(x: number, z: number, y: number, r: number, self?: THREE.Object3D) {
+  /**
+   * Whether something of footprint `foot` at (x, z) turned `r` would overlap another thing
+   * standing on a table at height y
+   */
+  private trayOverlaps(
+    x: number,
+    z: number,
+    y: number,
+    r: number,
+    foot: Footprint,
+    self?: THREE.Object3D,
+  ) {
     // separating-axis test between two rotated rectangles, with a small gap kept between them
-    const hl = TRAY_L / 2 + TRAY_GAP / 2
-    const hw = TRAY_W / 2 + TRAY_GAP / 2
     const axes = (a: number): [[number, number], [number, number]] => [
       [Math.cos(a), -Math.sin(a)],
       [Math.sin(a), Math.cos(a)],
     ]
-    const reach = (a: number, [ux, uz]: [number, number]) => {
+    const reach = (a: number, [l, w]: Footprint, [ux, uz]: [number, number]) => {
       const [[ax, az], [bx, bz]] = axes(a)
+      const [hl, hw] = [l / 2 + TRAY_GAP / 2, w / 2 + TRAY_GAP / 2]
       return hl * Math.abs(ax * ux + az * uz) + hw * Math.abs(bx * ux + bz * uz)
     }
     return this.placed.children.some((o) => {
       if (o === self || !onTable(o) || Math.abs(o.position.y - y) > 0.02) return false
-      const [dx, dz] = [o.position.x - x, o.position.z - z]
+      // compare the footprints' centres, which may sit off the objects' origins
+      const of = footOf(o)
+      const [ax, az] = [x + (foot[2] ?? 0) * Math.sin(r), z + (foot[2] ?? 0) * Math.cos(r)]
+      const [bx, bz] = [
+        o.position.x + (of[2] ?? 0) * Math.sin(o.rotation.y),
+        o.position.z + (of[2] ?? 0) * Math.cos(o.rotation.y),
+      ]
+      const [dx, dz] = [bx - ax, bz - az]
       return [...axes(r), ...axes(o.rotation.y)].every(
-        (u) => Math.abs(dx * u[0] + dz * u[1]) < reach(r, u) + reach(o.rotation.y, u),
+        (u) => Math.abs(dx * u[0] + dz * u[1]) < reach(r, foot, u) + reach(o.rotation.y, of, u),
       )
     })
   }
@@ -938,12 +987,13 @@ export class VenueEditor {
    */
   private freeTraySpot(s: THREE.Object3D) {
     const r = s.rotation.y
+    const foot = footOf(s)
     const fits = (x: number, z: number) => {
       const y = this.tableTopAt(x, z)
-      return y !== null && !this.trayOverlaps(x, z, y, r) ? new THREE.Vector3(x, y, z) : null
+      return y !== null && !this.trayOverlaps(x, z, y, r, foot) ? new THREE.Vector3(x, y, z) : null
     }
-    const along = TRAY_L + TRAY_GAP
-    const across = TRAY_W + TRAY_GAP
+    const along = foot[0] + TRAY_GAP
+    const across = foot[1] + TRAY_GAP
     for (const [dx, dz] of [
       [along, 0],
       [-along, 0],
@@ -1245,6 +1295,7 @@ export class VenueEditor {
   }
 
   private select(o: THREE.Object3D | null) {
+    this.lidLive = false
     this.selected = o
     this.selHelper.visible = !!o
     if (o) this.updSel()
@@ -1305,6 +1356,9 @@ export class VenueEditor {
               color: (s.userData.color as string | undefined) ?? ZONE_COLOR,
             },
           }
+        : {}),
+      ...(s.userData.type === 'laptop'
+        ? { laptop: { open: (s.userData.open as number | undefined) ?? LID_OPEN } }
         : {}),
     })
   }

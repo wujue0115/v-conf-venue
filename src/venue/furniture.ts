@@ -2,7 +2,8 @@ import * as THREE from 'three'
 import { B, Cy, EF, FM, mat, mesh } from './materials'
 import { personGeometry, seatedGeometry } from './person'
 import { POSTER_H, POSTER_W, buildFace, buildPoster } from './poster'
-import { buildSnack } from './snack'
+import { LAPTOP_AXES, buildLaptop, laptopFootprint } from './laptop'
+import { TRAY_L, TRAY_W, buildSnack } from './snack'
 import { buildZone } from './zone'
 
 /**
@@ -505,6 +506,18 @@ export interface FurnitureVariant {
   swatch: string
 }
 
+/** One kind of choice (size, colour…) in the selection panel; the first option is the default */
+export interface VariantAxis {
+  label: string
+  options: readonly FurnitureVariant[]
+}
+
+/**
+ * Where something stands on a table, in its own frame: length along x, width along z, and
+ * the rectangle's centre along z (absent means the origin)
+ */
+export type Footprint = readonly [l: number, w: number, dz?: number]
+
 export interface FurnitureDef {
   name: string
   size: string
@@ -513,8 +526,16 @@ export interface FurnitureDef {
   variants?: readonly FurnitureVariant[]
   /** What the variants are called in the selection panel (default 顏色) */
   variantLabel?: string
-  /** Can only stand on a table top (see TABLES) */
-  onTable?: boolean
+  /**
+   * Choices along more than one axis, in place of `variants`; a variant id joins one option
+   * id per axis with '-' (e.g. `s14-silver`)
+   */
+  variantAxes?: readonly VariantAxis[]
+  /**
+   * Can only stand on a table top (see TABLES); gives its footprint there for a variant (and a
+   * laptop's lid opening), length along local x by width along z
+   */
+  onTable?: (v?: string, open?: number) => Footprint
   /** Default array spacing [left-right, front-back] in metres */
   arr: [number, number]
   /** Rental price per slot: [自助搬運, 含搬運]; absent for items we bring ourselves */
@@ -693,8 +714,16 @@ export const FURNITURE = {
       { id: 'tart', name: '蛋塔', swatch: '#f6d36c' },
     ],
     variantLabel: '口味',
-    onTable: true,
+    onTable: () => [TRAY_L, TRAY_W],
     arr: [0.47, 0.34],
+  },
+  laptop: {
+    name: '筆記型電腦',
+    size: '13–16 吋',
+    build: buildLaptop,
+    variantAxes: LAPTOP_AXES,
+    onTable: laptopFootprint,
+    arr: [0.4, 0.3],
   },
   zone: {
     name: '區域',
@@ -724,9 +753,10 @@ export const priceOf = (type: FurnitureType) => (FURNITURE[type] as FurnitureDef
 export const isWallItem = (type: FurnitureType) => !!(FURNITURE[type] as FurnitureDef).wall
 /** Can carry an uploaded graphic on its face */
 export const takesImage = (type: FurnitureType) => !!(FURNITURE[type] as FurnitureDef).image
-export const variantLabelOf = (type: FurnitureType) =>
-  (FURNITURE[type] as FurnitureDef).variantLabel ?? '顏色'
 export const onTableOnly = (type: FurnitureType) => !!(FURNITURE[type] as FurnitureDef).onTable
+/** An on-table item's footprint (length along x, width along z), or none */
+export const footprintOf = (type: FurnitureType, v?: string, open?: number): Footprint =>
+  (FURNITURE[type] as FurnitureDef).onTable?.(v, open) ?? [0, 0]
 /** Can carry a name tag */
 export const takesTag = (type: FurnitureType) => !!(FURNITURE[type] as FurnitureDef).tag
 export const isResizable = (type: FurnitureType) => !!(FURNITURE[type] as FurnitureDef).resizable
@@ -734,13 +764,40 @@ export const isResizable = (type: FurnitureType) => !!(FURNITURE[type] as Furnit
 export const defaultSizeOf = (type: FurnitureType): readonly [number, number] =>
   (FURNITURE[type] as FurnitureDef).resizable ?? [1, 1]
 
-export const variantsOf = (type: FurnitureType): readonly FurnitureVariant[] =>
-  (FURNITURE[type] as FurnitureDef).variants ?? []
+/** The choices a type offers in the selection panel, one axis per row */
+export function variantAxesOf(type: FurnitureType): readonly VariantAxis[] {
+  const d = FURNITURE[type] as FurnitureDef
+  if (d.variantAxes) return d.variantAxes
+  return d.variants ? [{ label: d.variantLabel ?? '顏色', options: d.variants }] : []
+}
 
-/** A known variant id for `type`, falling back to its default (undefined when it has none) */
+/** Every variant of a type: each combination of one option per axis */
+export const variantsOf = (type: FurnitureType): readonly FurnitureVariant[] =>
+  variantAxesOf(type).reduce<FurnitureVariant[]>(
+    (acc, a, i) =>
+      i === 0
+        ? [...a.options]
+        : acc.flatMap((v) =>
+            a.options.map((o) => ({
+              id: `${v.id}-${o.id}`,
+              name: `${v.name} ${o.name}`,
+              swatch: o.swatch,
+            })),
+          ),
+    [],
+  )
+
+/**
+ * A known variant id for `type`: each axis keeps a known option or falls back to its default
+ * (undefined when the type has no variants)
+ */
 export function resolveVariant(type: FurnitureType, v?: unknown) {
-  const vs = variantsOf(type)
-  return (vs.find((x) => x.id === v) ?? vs[0])?.id
+  const axes = variantAxesOf(type)
+  if (!axes.length) return undefined
+  const parts = typeof v === 'string' ? v.split('-') : []
+  return axes
+    .map((a, i) => (a.options.find((o) => o.id === parts[i]) ?? a.options[0]!).id)
+    .join('-')
 }
 
 /** Thumbnail key: the type alone, or `type.variant` for non-default colours */
