@@ -22,6 +22,7 @@ import {
   applyPeople,
   type FurnitureType,
 } from './furniture'
+import { drawLabels, type LabelFace, type LabelMark, type TagMark } from './imageLabels'
 import { LID_OPEN, clampLid, setLaptopOpen } from './laptop'
 import { clampPeople, cleanInfo, cleanTag, isHexColor, type LayoutItem } from './layout'
 import { B, FM, YEL } from './materials'
@@ -92,6 +93,8 @@ export interface LabelAnchor {
   el: HTMLElement
   pos: Vec3
   offset: number
+  /** What it says, for drawing it on an exported picture */
+  face: () => LabelFace
 }
 
 export interface ArrayOptions {
@@ -112,6 +115,8 @@ interface Fly {
 const UNDO_LIMIT = 60
 /** An exported picture's building, in pixels along its longer side */
 const IMAGE_SIZE = 2400
+/** A picture this size (see IMAGE_SIZE) draws its tags and labels at the stage's size */
+const LABEL_SIZE = 1000
 const UP = THREE.Object3D.DEFAULT_UP
 /** Height of the belt cassette on the stanchion post */
 const BELT_Y = 0.9
@@ -711,8 +716,9 @@ export class VenueEditor {
   /**
    * A PNG of the venue from the current viewing direction, cropped to the building with
    * `padding` pixels round it (see imageFrame). Pass a smaller `size` for a preview; its
-   * padding is scaled to match, so it looks like the full picture. Selection outlines, handles
-   * and the grid are left out; tags and labels (HTML over the stage) aren't drawn.
+   * padding (and its tags and labels) are scaled to match, so it looks like the full picture.
+   * The room labels and tags showing on the stage are drawn over it (imageLabels.ts);
+   * selection outlines, handles and the grid are left out.
    */
   exportImage({ padding = 40, size = IMAGE_SIZE } = {}) {
     const { cam, width, height } = this.imageFrame((padding * size) / IMAGE_SIZE, size)
@@ -727,12 +733,39 @@ export class VenueEditor {
     renderer.setPixelRatio(1)
     renderer.setSize(width, height, false)
     renderer.render(scene, cam)
-    const url = renderer.domElement.toDataURL('image/png')
+    // copy the picture while the canvas still holds it, then draw the tags and labels over it
+    const out = document.createElement('canvas')
+    out.width = width
+    out.height = height
+    const ctx = out.getContext('2d')!
+    ctx.drawImage(renderer.domElement, 0, 0)
+    drawLabels(ctx, size / LABEL_SIZE, ...this.imageMarks(cam, width, height))
+    const url = out.toDataURL('image/png')
     renderer.setPixelRatio(ratio)
     renderer.setSize(was.x, was.y, false)
     hide.forEach((o) => (o.visible = true))
     renderer.render(scene, this.camera)
     return url
+  }
+
+  /**
+   * The room labels and tags showing on the stage, placed for a picture taken with `cam`
+   * (width × height pixels). Tags shown only as an ⓘ, and open notes, are left out.
+   */
+  private imageMarks(cam: THREE.Camera, width: number, height: number) {
+    const px = (p: THREE.Vector3) => {
+      const v = p.clone().project(cam)
+      return { x: ((v.x + 1) / 2) * width, y: ((1 - v.y) / 2) * height }
+    }
+    const labels: LabelMark[] = this.labelsVisible
+      ? this.labels.map((l) => ({ ...px(l.p), offset: l.offset, face: l.face() }))
+      : []
+    const tags: TagMark[] = []
+    for (const kind of ['zone', 'item'] as const)
+      for (const { p, tag, c } of this.tagRows(kind))
+        if (tag)
+          tags.push({ kind, ...px(p), text: tag, fill: c, ink: isLight(c) ? '#1f2126' : '#fff' })
+    return [labels, tags] as const
   }
 
   /** The full picture's size in pixels with this padding (see exportImage) */
@@ -2766,7 +2799,7 @@ export class VenueEditor {
     if (this.labelsVisible) this.layoutLabels()
     this.layoutTags('item')
     this.layoutTags('zone')
-  }
+  };
 
   /**
    * Keep one tag row per tagged or annotated object of this kind and pin it on screen: people's
@@ -2775,20 +2808,12 @@ export class VenueEditor {
    * item with a note, an ⓘ button to its right that opens the note in a box above. Groups'
    * rows (with the items') sit above the middle of the whole group.
    */
-  private layoutTags(kind: TagKind) {
-    const { layer, els } = this.tags[kind]
-    if (!layer) return
-    const seen = new Set<THREE.Object3D | string>()
-    const row = (key: THREE.Object3D | string) => {
-      seen.add(key)
-      let el = els.get(key)
-      if (!el) {
-        el = this.tagRow(key, kind)
-        layer.append(el)
-        els.set(key, el)
-      }
-      return el
-    }
+  /**
+   * The tag rows of this kind that are showing: each tagged or annotated item's (its tag, unless
+   * that kind's tags are hidden, and its note, unless that kind's notes are), then, for items,
+   * each shown group's. Gives where the row points (in the world), what it says, and its colour.
+   */
+  private *tagRows(kind: TagKind) {
     for (const o of this.placed.children) {
       const tag = o.userData.tag as string | undefined
       const type = o.userData.type as FurnitureType
@@ -2806,8 +2831,8 @@ export class VenueEditor {
             ? SEATED_TAG_Y
             : PERSON_TAG_Y
           : tagBox.setFromObject(o).max.y - o.position.y + TAG_CLEARANCE
-      this.v.set(o.position.x, o.position.y + above, o.position.z)
-      this.placeRow(row(o), kind, showTag ? tag : undefined, info, c, this.infoOpen === o)
+      const p = new THREE.Vector3(o.position.x, o.position.y + above, o.position.z)
+      yield { key: o as THREE.Object3D | string, p, tag: showTag ? tag : undefined, info, c }
     }
     if (kind === 'item')
       for (const [name, members] of this.groupsShown()) {
@@ -2815,12 +2840,28 @@ export class VenueEditor {
         const tag = this.hiddenGroupTags ? undefined : m.tag
         const info = this.hiddenGroupInfo ? undefined : m.info
         if (!tag && !info) continue
-        const key = `group:${name}`
         tagBox.makeEmpty()
         for (const o of members) tagBox.expandByObject(o)
-        tagBox.getCenter(this.v).setY(tagBox.max.y + TAG_CLEARANCE)
-        this.placeRow(row(key), kind, tag, info, m.color, this.infoOpen === key)
+        const p = tagBox.getCenter(new THREE.Vector3()).setY(tagBox.max.y + TAG_CLEARANCE)
+        yield { key: `group:${name}` as THREE.Object3D | string, p, tag, info, c: m.color }
       }
+  }
+
+  private layoutTags(kind: TagKind) {
+    const { layer, els } = this.tags[kind]
+    if (!layer) return
+    const seen = new Set<THREE.Object3D | string>()
+    for (const { key, p, tag, info, c } of this.tagRows(kind)) {
+      seen.add(key)
+      let el = els.get(key)
+      if (!el) {
+        el = this.tagRow(key, kind)
+        layer.append(el)
+        els.set(key, el)
+      }
+      this.v.copy(p)
+      this.placeRow(el, kind, tag, info, c, this.infoOpen === key)
+    }
     for (const [key, el] of els)
       if (!seen.has(key)) {
         el.remove()

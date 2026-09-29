@@ -21,10 +21,33 @@ watch(
     if (!ed) return
     const anchors: LabelAnchor[] = [
       ...ROOMS.flatMap((r, i) =>
-        roomEls[i] ? [{ el: roomEls[i], pos: r.pos, offset: r.offset }] : [],
+        roomEls[i]
+          ? [
+              {
+                el: roomEls[i],
+                pos: r.pos,
+                offset: r.offset,
+                face: () => ({
+                  kind: 'room' as const,
+                  id: r.id,
+                  name: t().rooms[r.id]?.name ?? '',
+                  cap: t().rooms[r.id]?.cap ?? '',
+                }),
+              },
+            ]
+          : [],
       ),
       ...FACILITIES.flatMap((f, i) =>
-        facEls[i] ? [{ el: facEls[i], pos: f.pos, offset: FACILITY_OFFSET }] : [],
+        facEls[i]
+          ? [
+              {
+                el: facEls[i],
+                pos: f.pos,
+                offset: FACILITY_OFFSET,
+                face: () => ({ kind: 'facility' as const, text: t().facilities[f.key] }),
+              },
+            ]
+          : [],
       ),
     ]
     ed.setLabels(anchors)

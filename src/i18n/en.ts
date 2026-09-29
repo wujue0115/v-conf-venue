@@ -108,7 +108,7 @@ const en: Messages = {
 
   imageExport: {
     title: 'Export image',
-    hint: 'The whole building from the current viewing direction, cropped to its edges with padding round it',
+    hint: 'The whole building and the tags showing, from the current viewing direction, cropped to its edges with padding round it',
     preview: 'Image preview',
     padding: 'Padding',
     download: 'Download PNG',

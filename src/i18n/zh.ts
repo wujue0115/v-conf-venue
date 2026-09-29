@@ -113,7 +113,7 @@ const zh = {
 
   imageExport: {
     title: '輸出圖片',
-    hint: '以目前的視角方向拍下整棟建築，裁到建築四邊並留白',
+    hint: '以目前的視角方向拍下整棟建築與目前顯示的標籤，裁到建築四邊並留白',
     preview: '圖片預覽',
     padding: '邊距',
     download: '下載 PNG',
