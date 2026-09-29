@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, shallowRef, useTemplateRef, watch } from 'vue'
+import VisibilityTree from './VisibilityTree.vue'
 import { useVenueEditor } from '@/composables/useVenueEditor'
 import { usePlannerStore } from '@/stores/planner'
 import { exportLayout, parseLayout } from '@/venue/layout'
@@ -142,6 +143,11 @@ onBeforeUnmount(unlisten)
       </section>
 
       <section>
+        <h4>物件顯示</h4>
+        <VisibilityTree />
+      </section>
+
+      <section>
         <h4>配置</h4>
         <div class="acts">
           <button class="btn" title="復原 (⌘Z)" :disabled="!store.editing" @click="editor?.undo()">
@@ -199,6 +205,10 @@ onBeforeUnmount(unlisten)
   right: 0;
   z-index: 10;
   width: min(280px, calc(100vw - 28px));
+  /* the object list can run long: scroll inside the panel rather than off the screen */
+  max-height: calc(100dvh - 90px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 10px 14px 14px;
   background: #fff;
   border: 1px solid var(--line);

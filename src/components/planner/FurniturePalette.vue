@@ -3,35 +3,28 @@ import CollapsibleSection from './CollapsibleSection.vue'
 import { useFurnitureThumbnails } from '@/composables/useFurnitureThumbnails'
 import { useVenueEditor } from '@/composables/useVenueEditor'
 import { usePlannerStore } from '@/stores/planner'
-import { FURNITURE, FURNITURE_TYPES, priceOf, type FurnitureType } from '@/venue/furniture'
+import { FURNITURE, FURNITURE_GROUPS, priceOf, type FurnitureType } from '@/venue/furniture'
 
 const editor = useVenueEditor()
 const store = usePlannerStore()
 const thumbs = useFurnitureThumbnails()
 
-const tiles = FURNITURE_TYPES.map((type) => {
-  const { name, size } = FURNITURE[type]
-  const price = priceOf(type)
-  return { type, name, size, price: price && `$${price[0]} / $${price[1]}` }
-})
-/** 其他物件 by use: people and space, then signage, then what goes on tables */
-const OTHER_ORDER: FurnitureType[] = ['person', 'zone', 'poster', 'rollup', 'snack', 'laptop']
-const otherRank = (t: FurnitureType) => {
-  const i = OTHER_ORDER.indexOf(t)
-  return i < 0 ? OTHER_ORDER.length : i
-}
-
-// Rented from the venue vs. everything else (not charged)
-const sections = [
-  { id: 'venue', title: '場地物件', tiles: tiles.filter((t) => t.price) },
-  {
-    id: 'own',
-    title: '其他物件',
-    tiles: tiles.filter((t) => !t.price).sort((a, b) => otherRank(a.type) - otherRank(b.type)),
-  },
-]
+const sections = FURNITURE_GROUPS.map((g) => ({
+  id: g.id,
+  title: g.title,
+  tiles: g.types.map((type) => {
+    const { name, size } = FURNITURE[type]
+    const price = priceOf(type)
+    return { type, name, size, price: price && `$${price[0]} / $${price[1]}` }
+  }),
+}))
 
 function onPointerDown(e: PointerEvent, type: FurnitureType) {
+  // placing a kind that is hidden (設定 → 物件顯示) shows it again, or it would vanish on drop
+  if (store.editing && store.hiddenTypes.includes(type)) {
+    store.setTypesVisible([type], true)
+    store.notify(`已重新顯示「${FURNITURE[type].name}」`)
+  }
   editor.value?.startPlace(e, type)
 }
 </script>

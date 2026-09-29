@@ -752,6 +752,28 @@ export const isFurnitureType = (t: unknown): t is FurnitureType =>
 
 /** Rental price, or null for items that are not rented from the venue */
 export const priceOf = (type: FurnitureType) => (FURNITURE[type] as FurnitureDef).price ?? null
+
+/** 其他物件 by use: people and space, then signage, then what goes on tables */
+const OTHER_ORDER: FurnitureType[] = ['person', 'zone', 'poster', 'rollup', 'snack', 'laptop']
+const otherRank = (t: FurnitureType) => {
+  const i = OTHER_ORDER.indexOf(t)
+  return i < 0 ? OTHER_ORDER.length : i
+}
+
+/** Rented from the venue (場地物件) vs. everything else (其他物件, not charged) */
+export const FURNITURE_GROUPS: readonly {
+  id: 'venue' | 'own'
+  title: string
+  types: readonly FurnitureType[]
+}[] = [
+  { id: 'venue', title: '場地物件', types: FURNITURE_TYPES.filter((t) => priceOf(t)) },
+  {
+    id: 'own',
+    title: '其他物件',
+    types: FURNITURE_TYPES.filter((t) => !priceOf(t)).sort((a, b) => otherRank(a) - otherRank(b)),
+  },
+]
+
 export const isWallItem = (type: FurnitureType) => !!(FURNITURE[type] as FurnitureDef).wall
 /** Can carry an uploaded graphic on its face */
 export const takesImage = (type: FurnitureType) => !!(FURNITURE[type] as FurnitureDef).image

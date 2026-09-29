@@ -38,6 +38,9 @@ watch([editor, () => store.snap], ([ed, on]) => ed?.setSnap(on), { immediate: tr
 watch([editor, () => store.wallsCut], ([ed, on]) => ed?.setWallsCut(on), { immediate: true })
 watch([editor, () => store.showLabels], ([ed, on]) => ed?.setLabelsVisible(on), { immediate: true })
 watch([editor, () => store.shadows], ([ed, on]) => ed?.setShadows(on), { immediate: true })
+watch([editor, () => store.hiddenTypes], ([ed, types]) => ed?.setHiddenTypes(types), {
+  immediate: true,
+})
 watch([editor, () => store.showPersonTags], ([ed, on]) => ed?.setTagsVisible('person', on), {
   immediate: true,
 })

@@ -1,6 +1,7 @@
 import { computed, shallowRef, watch } from 'vue'
 import { defineStore } from 'pinia'
 import type { SelectionInfo } from '@/venue/VenueEditor'
+import type { FurnitureType } from '@/venue/furniture'
 import {
   clampSlots,
   demoLayout,
@@ -44,6 +45,12 @@ export const usePlannerStore = defineStore('planner', () => {
   const shadows = shallowRef(true)
   const showPersonTags = shallowRef(true)
   const showZoneTags = shallowRef(true)
+  /** Kinds of item hidden from the scene (設定 → 物件顯示); they stay in the layout */
+  const hiddenTypes = shallowRef<readonly FurnitureType[]>([])
+  function setTypesVisible(types: readonly FurnitureType[], on: boolean) {
+    const rest = hiddenTypes.value.filter((t) => !types.includes(t))
+    hiddenTypes.value = on ? rest : [...rest, ...types]
+  }
   const savedSidebar = readJSON(SIDEBAR_KEY)
   // First visit on a phone: start collapsed so the venue is visible
   const sidebarCollapsed = shallowRef(
@@ -90,6 +97,8 @@ export const usePlannerStore = defineStore('planner', () => {
     shadows,
     showPersonTags,
     showZoneTags,
+    hiddenTypes,
+    setTypesVisible,
     sidebarCollapsed,
     toast,
     cost,

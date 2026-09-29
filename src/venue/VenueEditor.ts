@@ -174,6 +174,8 @@ export class VenueEditor {
   private readonly placed = new THREE.Group()
   /** Belts between stanchions, rebuilt from their positions (not part of the layout) */
   private readonly belts = new THREE.Group()
+  /** Kinds of item hidden from view (see setHiddenTypes) */
+  private hidden = new Set<FurnitureType>()
   /** Corner handles for resizing the selected poster */
   private readonly handles = new THREE.Group()
   /** Wall, glass and column meshes posters can hang on */
@@ -445,6 +447,18 @@ export class VenueEditor {
     else delete s.userData.tag
     this.updSel()
     this.commit()
+  }
+
+  /**
+   * Hide every placed item of these kinds (hidden stanchions take their belts with them).
+   * Hidden items stay in the layout but can't be picked, and one that is selected is let go.
+   */
+  setHiddenTypes(types: readonly FurnitureType[]) {
+    this.hidden = new Set(types)
+    for (const o of this.placed.children)
+      if (o !== this.placing?.obj) o.visible = !this.hidden.has(o.userData.type as FurnitureType)
+    this.belts.visible = !this.hidden.has('stanchion')
+    if (this.selected && !this.selected.visible) this.select(null)
   }
 
   setLabelsVisible(on: boolean) {
@@ -864,6 +878,7 @@ export class VenueEditor {
     if (t === 'person' && (n || color || sit)) applyPeople(o, n, color, sit)
     if (t === 'zone' && w && d) applyZone(o, { w, d, color })
     if (t === 'laptop' && open !== undefined) setLaptopOpen(o, open)
+    o.visible = !this.hidden.has(t)
     this.placed.add(o)
     return o
   }
@@ -1328,6 +1343,7 @@ export class VenueEditor {
   }
 
   private pickBelt(e: PointerEvent) {
+    if (!this.belts.visible) return null
     this.setRay(e)
     return this.ray.intersectObjects(this.belts.children, false)[0]?.object ?? null
   }
@@ -1452,11 +1468,13 @@ export class VenueEditor {
 
   private pickObj(e: PointerEvent) {
     this.setRay(e)
-    const h = this.ray.intersectObjects(this.placed.children, true)[0]
-    if (!h) return null
-    let o = h.object
-    while (o.parent && o.parent !== this.placed) o = o.parent
-    return o
+    // the raycaster doesn't skip hidden objects, so pass over hits on hidden items
+    for (const h of this.ray.intersectObjects(this.placed.children, true)) {
+      let o = h.object
+      while (o.parent && o.parent !== this.placed) o = o.parent
+      if (o.visible) return o
+    }
+    return null
   }
 
   private moveTo(o: THREE.Object3D, x: number, z: number) {

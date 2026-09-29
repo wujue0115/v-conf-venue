@@ -41,4 +41,13 @@ describe('planner store', () => {
     setActivePinia(createPinia())
     expect(usePlannerStore().sidebarCollapsed).toBe(true)
   })
+
+  it('hides and shows kinds of item without duplicates', () => {
+    const store = usePlannerStore()
+    store.setTypesVisible(['table2', 'person'], false)
+    store.setTypesVisible(['person', 'laptop'], false)
+    expect([...store.hiddenTypes].sort()).toEqual(['laptop', 'person', 'table2'])
+    store.setTypesVisible(['person'], true)
+    expect([...store.hiddenTypes].sort()).toEqual(['laptop', 'table2'])
+  })
 })
