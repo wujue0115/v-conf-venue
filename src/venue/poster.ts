@@ -75,24 +75,37 @@ function cover(tex: THREE.Texture, imgAspect: number, w: number, h: number) {
   tex.offset.set((1 - tex.repeat.x) / 2, (1 - tex.repeat.y) / 2)
 }
 
-/** Point a poster's face at `img`, cropped to its current size. Each poster owns its material. */
+/**
+ * Point a poster's face at `img`, cropped to its current size. Each poster owns its material.
+ * A face may bring its own look without an image (`userData.blank`, else the poster's plain
+ * paper) and may glow like a screen (`userData.glow`, lifted `userData.layer` steps in depth).
+ */
 function dressFace(face: THREE.Mesh, img: string | undefined, w: number, h: number) {
+  const blank = (face.userData.blank as THREE.MeshStandardMaterial | undefined) ?? blankFace
   const old = face.material as THREE.MeshStandardMaterial
   if (!img) {
-    if (old !== blankFace) disposeFace(old)
-    face.material = blankFace
+    if (old !== blank) disposeFace(old)
+    face.material = blank
     face.userData.img = undefined
     return
   }
   let m = old
-  if (face.userData.img !== img || old === blankFace) {
-    if (old !== blankFace) disposeFace(old)
+  if (face.userData.img !== img || old === blank) {
+    if (old !== blank) disposeFace(old)
     // a clone shares the decoded image but has its own crop (repeat / offset)
-    m = new THREE.MeshStandardMaterial({
-      map: source(img).tex.clone(),
-      roughness: 0.7,
-      ...FACE_OFFSET,
-    })
+    const map = source(img).tex.clone()
+    const n = (face.userData.layer as number | undefined) ?? 1
+    const offset = { polygonOffset: true, polygonOffsetFactor: -n, polygonOffsetUnits: -n }
+    m = face.userData.glow
+      ? new THREE.MeshStandardMaterial({
+          map,
+          emissive: '#ffffff',
+          emissiveMap: map,
+          emissiveIntensity: 0.55,
+          roughness: 0.25,
+          ...offset,
+        })
+      : new THREE.MeshStandardMaterial({ map, roughness: 0.7, ...offset })
     face.material = m
     face.userData.img = img
   }
@@ -173,12 +186,18 @@ export function buildPoster(g: THREE.Group) {
   buildFace(g, POSTER_W, POSTER_H)
 }
 
-/** Put an image on a built face (or clear it), cropped to fill the face's current size. */
+/**
+ * Put an image on a built face (or clear it), cropped to fill the face's current size — the
+ * group's w × h, or the face's own when it has a fixed size (a laptop's screen).
+ */
 export function setFaceImage(g: THREE.Object3D, img?: string) {
   if (img) g.userData.img = img
   else delete g.userData.img
   const face = g.getObjectByName('face') as THREE.Mesh | undefined
-  if (face) dressFace(face, img, g.userData.w as number, g.userData.h as number)
+  if (!face) return
+  const w = (face.userData.w ?? g.userData.w) as number
+  const h = (face.userData.h ?? g.userData.h) as number
+  dressFace(face, img, w, h)
 }
 
 export function applyPoster(

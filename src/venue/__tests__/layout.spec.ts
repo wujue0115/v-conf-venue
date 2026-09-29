@@ -220,6 +220,15 @@ describe('laptops', () => {
     expect(summarizeCost([a!, b!, c!], 1, 2).total).toBe(0)
   })
 
+  it('keep an image on the screen', () => {
+    const img = 'data:image/jpeg;base64,AAAA'
+    const [a, b] = parseLayout([
+      { t: 'laptop', x: 0, z: 0, r: 0, img },
+      { t: 'laptop', x: 0, z: 0, r: 0, img: 'https://example.com/a.png' },
+    ])
+    expect([a?.img, b?.img]).toEqual([img, undefined])
+  })
+
   it('keep the lid within its travel, and only on laptops', () => {
     const [a, b, c, d] = parseLayout([
       { t: 'laptop', x: 0, z: 0, r: 0, open: 0 },

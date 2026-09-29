@@ -724,6 +724,7 @@ export const FURNITURE = {
     build: buildLaptop,
     variantAxes: LAPTOP_AXES,
     onTable: laptopFootprint,
+    image: true,
     arr: [0.4, 0.3],
   },
   zone: {

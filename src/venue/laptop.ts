@@ -354,6 +354,9 @@ export function buildLaptop(g: THREE.Group, v?: string) {
     }),
   )
   screen.position.set(0, m.d / 2 + 0.004, 0.0006)
+  // the screen can show an uploaded image (see setFaceImage), lit and cropped to fill it
+  screen.name = 'face'
+  Object.assign(screen.userData, { w: sw, h: sh, glow: true, layer: 2, blank: screen.material })
   hinge.add(screen)
   for (const o of [keys, seam, pad, bezel, screen]) o.receiveShadow = true
   setLaptopOpen(g, LID_OPEN)
