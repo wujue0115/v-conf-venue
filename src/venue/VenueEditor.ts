@@ -803,11 +803,11 @@ export class VenueEditor {
         this.cb.onToast(t().toast.tableFull(nameOf(type)))
         return
       }
-      o = this.add({ ...item, x: spot.x, y: spot.y, z: spot.z })
+      o = this.add({ ...item, id: undefined, x: spot.x, y: spot.y, z: spot.z })
     } else if (onWall(s)) {
       // next to it along the wall, same height
       const off = new THREE.Vector3((item.w ?? 0) + 0.1, 0, 0).applyAxisAngle(UP, s.rotation.y)
-      o = this.add({ ...item, x: s.position.x + off.x, z: s.position.z + off.z })
+      o = this.add({ ...item, id: undefined, x: s.position.x + off.x, z: s.position.z + off.z })
     } else {
       // a group of people is wider than one: step past its whole width
       const n = (s.userData.n as number | undefined) ?? 1
@@ -820,6 +820,7 @@ export class VenueEditor {
       const off = new THREE.Vector3(step, 0, 0).applyAxisAngle(UP, s.rotation.y)
       o = this.add({
         ...item,
+        id: undefined,
         x: this.sn(s.position.x + off.x),
         y: undefined,
         z: this.sn(s.position.z + off.z),
@@ -1042,7 +1043,14 @@ export class VenueEditor {
         skipped++
         continue
       }
-      const c = this.add({ ...item, x, y, z, group: item.group && renamed.get(item.group) })
+      const c = this.add({
+        ...item,
+        id: undefined,
+        x,
+        y,
+        z,
+        group: item.group && renamed.get(item.group),
+      })
       if (!c) continue
       // a seated copy takes the copied seat under it (or stands up if there is none)
       this.settle(c)
@@ -1075,6 +1083,7 @@ export class VenueEditor {
         const v = new THREE.Vector3(c * dx, 0, -r * dz).applyAxisAngle(UP, s.rotation.y)
         const o = this.add({
           ...this.itemOf(s),
+          id: undefined,
           x: s.position.x + v.x,
           y: undefined,
           z: s.position.z + v.z,
@@ -1370,6 +1379,7 @@ export class VenueEditor {
 
   /** Place an item; with no `y` it is dropped onto the floor below (x, z). */
   private add({
+    id,
     t,
     x,
     y,
@@ -1399,6 +1409,8 @@ export class VenueEditor {
     const o = buildFurniture(t, v, w && h ? { w, h } : undefined)
     o.position.set(x, y ?? this.floorY(x, z), z)
     o.rotation.y = r
+    // copies are passed without one, so they get their own
+    o.userData.id = id ?? crypto.randomUUID()
     if (cut?.length) o.userData.cut = [...cut]
     if (w && h) applyPoster(o, { w, h, img })
     else if (img) setFaceImage(o, img)
@@ -1430,6 +1442,7 @@ export class VenueEditor {
     const ud = o.userData
     const cut = ud.cut as number[] | undefined
     return {
+      id: ud.id as string,
       t: ud.type as FurnitureType,
       x: +o.position.x.toFixed(3),
       y: +o.position.y.toFixed(3),

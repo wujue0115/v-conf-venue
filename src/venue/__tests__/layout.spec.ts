@@ -53,6 +53,31 @@ describe('parseLayout', () => {
   })
 })
 
+describe('parseLayout ids', () => {
+  const A = '0F8E3C1A-2B4D-4E6F-8A9B-1C2D3E4F5A6B'
+  const B = '9e7d0a12-3456-4789-abcd-ef0123456789'
+
+  it('keeps UUIDs lower-cased and drops anything else', () => {
+    const [a, b, c] = parseLayout([
+      { id: A, t: 'sign', x: 0, z: 0, r: 0 },
+      { id: 'chair-1', t: 'sign', x: 1, z: 0, r: 0 },
+      { id: 42, t: 'sign', x: 2, z: 0, r: 0 },
+    ])
+    expect(a!.id).toBe(A.toLowerCase())
+    expect(b).not.toHaveProperty('id')
+    expect(c).not.toHaveProperty('id')
+  })
+
+  it('drops an id seen twice from the later item, whatever its case', () => {
+    const items = parseLayout([
+      { id: A, t: 'sign', x: 0, z: 0, r: 0 },
+      { id: A.toLowerCase(), t: 'sign', x: 1, z: 0, r: 0 },
+      { id: B, t: 'sign', x: 2, z: 0, r: 0 },
+    ])
+    expect(items.map((i) => i.id)).toEqual([A.toLowerCase(), undefined, B])
+  })
+})
+
 describe('helpers', () => {
   it('clamps slots to 1–9', () => {
     expect([clampSlots(0), clampSlots(3.7), clampSlots(42), clampSlots(NaN)]).toEqual([1, 3, 9, 1])

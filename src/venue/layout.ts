@@ -16,6 +16,8 @@ import {
 
 /** One placed object. `y` omitted → dropped onto the floor below (x, z). `r` is rotation around Y in radians. */
 export interface LayoutItem {
+  /** Stable id (a UUID), also the item's row id in a cloud project; the editor gives one to any item without */
+  id?: string
   t: FurnitureType
   x: number
   y?: number
@@ -165,9 +167,15 @@ const LEGACY: Record<string, { t: FurnitureType; v: string }> = {
   shapeG: { t: 'shapeSofa', v: 'green' },
 }
 
+export const isUuid = (s: unknown): s is string =>
+  typeof s === 'string' &&
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s)
+
 export function parseLayout(data: unknown): LayoutItem[] {
   const list = Array.isArray(data) ? data : (data as { items?: unknown } | null)?.items
   if (!Array.isArray(list)) throw new Error('Invalid layout')
+  // an id seen twice (a hand-edited file) is dropped from the later item, which then gets a new one
+  const ids = new Set<string>()
   return list.flatMap((i): LayoutItem[] => {
     const legacy = i && typeof i.t === 'string' ? LEGACY[i.t] : undefined
     const t: unknown = legacy?.t ?? i?.t
@@ -187,8 +195,11 @@ export function parseLayout(data: unknown): LayoutItem[] {
     const coloured = t === 'person' || t === 'zone'
     const color = coloured && isHexColor(i.color) ? i.color.toLowerCase() : ''
     const tagColor = !coloured && tag && isHexColor(i.tagColor) ? i.tagColor.toLowerCase() : ''
+    const id = isUuid(i.id) && !ids.has(i.id.toLowerCase()) ? i.id.toLowerCase() : ''
+    if (id) ids.add(id)
     return [
       {
+        ...(id ? { id } : {}),
         t,
         x: i.x,
         y: Number.isFinite(i.y) ? i.y : undefined,
