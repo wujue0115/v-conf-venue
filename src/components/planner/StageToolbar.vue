@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, shallowRef } from 'vue'
+import MainMenu from './MainMenu.vue'
 import StageSettings from './StageSettings.vue'
 import { useVenueEditor } from '@/composables/useVenueEditor'
 import { usePlannerStore, type PlannerMode } from '@/stores/planner'
@@ -22,18 +23,8 @@ function flyTo(view: CameraView, i: number) {
 
 <template>
   <div class="topbars">
-    <div class="bar views" data-stage-ui>
-      <div class="grp">
-        <button
-          v-for="(v, i) in VIEWS"
-          :key="v.key"
-          class="btn"
-          :class="{ on: activeView === i }"
-          @click="flyTo(v, i)"
-        >
-          {{ t().views[v.key] }}
-        </button>
-      </div>
+    <div class="bar menu" data-stage-ui>
+      <MainMenu />
     </div>
     <div class="bar tools" data-stage-ui>
       <div
@@ -65,8 +56,7 @@ function flyTo(view: CameraView, i: number) {
           </svg>
         </button>
       </div>
-      <!-- 多選, 復原 and 重做: always shown (greyed in View mode) so the bar doesn't shift when
-           the mode changes -->
+      <!-- 多選: always shown (greyed in View mode) so the bar doesn't shift when the mode changes -->
       <div class="grp">
         <button
           class="btn"
@@ -85,38 +75,43 @@ function flyTo(view: CameraView, i: number) {
             <rect x="12.5" y="12.5" width="5" height="5" rx="1" />
           </svg>
         </button>
+      </div>
+    </div>
+    <div class="bar views" data-stage-ui>
+      <div class="grp">
         <button
+          v-for="(v, i) in VIEWS"
+          :key="v.key"
           class="btn"
-          type="button"
-          :aria-label="t().history.undo"
-          :disabled="!store.editing || !store.canUndo"
-          :title="
-            store.editing ? t().history.undoTitle : `${t().history.undo} · ${t().history.editOnly}`
-          "
-          @click="editor?.undo()"
+          :class="{ on: activeView === i }"
+          @click="flyTo(v, i)"
         >
-          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M9 14 4 9l5-5" />
-            <path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" />
-          </svg>
-        </button>
-        <button
-          class="btn"
-          type="button"
-          :aria-label="t().history.redo"
-          :disabled="!store.editing || !store.canRedo"
-          :title="
-            store.editing ? t().history.redoTitle : `${t().history.redo} · ${t().history.editOnly}`
-          "
-          @click="editor?.redo()"
-        >
-          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true">
-            <path d="m15 14 5-5-5-5" />
-            <path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13" />
-          </svg>
+          {{ t().views[v.key] }}
         </button>
       </div>
+    </div>
+    <div class="bar side" data-stage-ui>
       <StageSettings />
+      <div class="grp">
+        <button
+          class="btn lib"
+          :class="{ on: !store.sidebarCollapsed }"
+          type="button"
+          :title="store.sidebarCollapsed ? t().sidebar.open : t().sidebar.close"
+          :aria-expanded="!store.sidebarCollapsed"
+          aria-controls="planner-sidebar"
+          @click="store.sidebarCollapsed = !store.sidebarCollapsed"
+        >
+          <!-- an armchair -->
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M6 11V7a3 3 0 0 1 3-3h6a3 3 0 0 1 3 3v4" />
+            <path
+              d="M4 11a2 2 0 0 1 2 2v2h12v-2a2 2 0 1 1 4 0v4a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2ZM5 19v2M19 19v2"
+            />
+          </svg>
+          <span class="lib-label">{{ t().sidebar.title }}</span>
+        </button>
+      </div>
     </div>
   </div>
 </template>
@@ -125,66 +120,69 @@ function flyTo(view: CameraView, i: number) {
 .topbars {
   position: absolute;
   top: calc(14px + env(safe-area-inset-top, 0px));
-  left: calc(var(--stage-inset, 0px) + 14px);
+  left: 14px;
   right: 14px;
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
+  /*
+   * ☰ at the left, the tools and views in the middle of the screen, the
+   * settings and the furniture panel's button at the right
+   */
+  display: grid;
+  grid-template-columns: 1fr auto auto 1fr;
+  grid-template-areas: 'menu tools views side';
+  align-items: start;
   gap: 6px;
-  flex-wrap: wrap;
   pointer-events: none;
 }
 .bar {
   display: flex;
   gap: 6px;
-  flex-wrap: wrap;
   pointer-events: auto;
 }
+.menu {
+  grid-area: menu;
+  justify-self: start;
+}
 .tools {
-  justify-content: flex-end;
-  margin-left: auto;
+  grid-area: tools;
 }
-
-/*
- * Wide screens: the views sit in the middle of the whole screen (the row starts at the screen's
- * edge, under the sidebar, and lets the pointer through there), the tools at its right
- */
-@media (min-width: 1025px) {
-  .topbars {
-    left: 14px;
-    display: grid;
-    grid-template-columns: 1fr auto 1fr;
-  }
-  .views {
-    grid-column: 2;
-  }
-  .tools {
-    grid-column: 3;
-    justify-self: end;
-  }
+.views {
+  grid-area: views;
 }
-/*
- * Tablets and phones: everything packs to the right, the views just before the tools (or
- * above them, right-aligned too, once the bars wrap onto two rows)
- */
-@media (max-width: 1024px) {
-  .topbars {
-    justify-content: flex-end;
-  }
-  .views {
-    justify-content: flex-end;
-  }
-  .tools {
-    margin-left: 0;
-  }
+.side {
+  grid-area: side;
+  justify-self: end;
 }
-/* Narrower still: always two rows, the views above the tools, both on the right */
+/* Narrow screens: the views get a row of their own, under the rest */
 @media (max-width: 871px) {
+  .topbars {
+    grid-template-columns: auto 1fr auto;
+    grid-template-areas:
+      'menu tools side'
+      'views views views';
+  }
+  .tools,
   .views {
-    flex-basis: 100%;
+    justify-self: center;
+    min-width: 0;
+    max-width: 100%;
+  }
+  /* on the narrowest phones the views scroll sideways rather than overflow */
+  .views .grp {
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+}
+/* Phones: the furniture button is just its icon */
+@media (max-width: 480px) {
+  .lib-label {
+    display: none;
   }
 }
 
+.lib {
+  padding: 0 10px;
+}
 /* Mode switch: one yellow thumb slides between two equal halves */
 .mode {
   position: relative;

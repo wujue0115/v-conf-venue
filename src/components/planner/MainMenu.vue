@@ -10,7 +10,7 @@ import { usePlannerStore } from '@/stores/planner'
 import { exportLayout, parseLayout, readPricing } from '@/venue/layout'
 
 /**
- * ☰: the layout file (open, save, export an image, clear),
+ * ☰ at the top left: the layout file (open, save, export an image, clear),
  * the account and the language. ⚙ keeps what the stage shows.
  */
 

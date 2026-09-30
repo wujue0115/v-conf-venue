@@ -1,15 +1,18 @@
 <script setup lang="ts">
 import FurniturePalette from './FurniturePalette.vue'
 import LayoutSummary from './LayoutSummary.vue'
-import MainMenu from './MainMenu.vue'
 import { t } from '@/i18n'
+import { usePlannerStore } from '@/stores/planner'
+
+/** The furniture to place and what's placed so far, in a panel on the right */
+
+const store = usePlannerStore()
 </script>
 
 <template>
-  <aside class="side">
+  <aside class="side" :aria-label="t().sidebar.title">
     <div class="hd">
       <div class="top">
-        <MainMenu />
         <div class="eyebrow">v-conf-venue for v-conf Taiwan 2026</div>
         <a
           class="gh"
@@ -26,6 +29,23 @@ import { t } from '@/i18n'
             />
           </svg>
         </a>
+        <button
+          class="close"
+          type="button"
+          :title="t().sidebar.close"
+          :aria-label="t().sidebar.close"
+          @click="store.sidebarCollapsed = true"
+        >
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+            <path
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              d="M6 6l12 12M18 6 6 18"
+            />
+          </svg>
+        </button>
       </div>
       <h1>{{ t().heading }}</h1>
     </div>
@@ -39,41 +59,57 @@ import { t } from '@/i18n'
 <style scoped>
 .side {
   background: #fff;
-  border-right: 1px solid var(--line);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.1);
   display: flex;
   flex-direction: column;
   min-height: 0;
+  overflow: hidden;
 }
 .hd {
-  padding: 20px 20px 16px;
+  padding: 14px 14px 12px 16px;
   border-bottom: 1px solid #eee9de;
 }
 .top {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 2px;
 }
-.gh {
+.gh,
+.close {
   display: grid;
   place-items: center;
-  padding: 6px;
-  margin: -6px -6px -6px 0;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
   border-radius: 8px;
-  color: #8a6a1c;
+  background: transparent;
+  cursor: pointer;
   transition:
     color 0.15s,
     background 0.15s;
 }
-.gh:hover {
-  color: #6b5214;
+.gh {
+  color: #8a6a1c;
+}
+.close {
+  color: var(--muted);
+}
+.gh:hover,
+.close:hover {
+  color: var(--ink);
   background: #f4f1ea;
 }
-.gh:focus-visible {
+.gh:focus-visible,
+.close:focus-visible {
   outline: 2px solid var(--yel);
   outline-offset: 1px;
 }
 .eyebrow {
-  /* between ☰ and GitHub, pushing GitHub to the edge */
+  /* pushes GitHub and × to the edge */
   flex: 1;
   min-width: 0;
   font: 500 11px/1.3 var(--mono);
@@ -81,7 +117,7 @@ import { t } from '@/i18n'
   color: #8a6a1c;
 }
 h1 {
-  margin: 8px 0 0;
+  margin: 4px 0 0;
   font-size: 14px;
   line-height: 1.3;
   font-weight: 700;
@@ -94,6 +130,6 @@ h1 {
   /* don't hand leftover scroll to the page when reaching the end */
   overscroll-behavior: contain;
   flex: 1;
-  padding: 16px 16px calc(20px + env(safe-area-inset-bottom, 0px));
+  padding: 14px 14px 18px;
 }
 </style>

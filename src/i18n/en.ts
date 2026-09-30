@@ -4,7 +4,7 @@ const en: Messages = {
   lang: 'en',
   docTitle: 'v-conf Taiwan 2026 · NCCU CPBAE Building A 2F Venue Planner',
   heading: 'NCCU CPBAE · Building A 2F · Venue Planner',
-  sidebar: { expand: 'Expand sidebar', collapse: 'Collapse sidebar' },
+  sidebar: { title: 'Furniture', open: 'Show the furniture', close: 'Hide the furniture' },
   language: 'Language',
 
   menu: {

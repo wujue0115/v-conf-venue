@@ -3,6 +3,7 @@ import { onBeforeUnmount, onMounted, useTemplateRef, watch } from 'vue'
 import TagLayer from './TagLayer.vue'
 import SelectionBar from './SelectionBar.vue'
 import StageHelp from './StageHelp.vue'
+import StageHistory from './StageHistory.vue'
 import StageToast from './StageToast.vue'
 import StageToolbar from './StageToolbar.vue'
 import VenueLabels from './VenueLabels.vue'
@@ -69,6 +70,7 @@ watch(
     <StageToolbar />
     <StageToast />
     <SelectionBar />
+    <StageHistory />
     <StageHelp />
   </main>
 </template>

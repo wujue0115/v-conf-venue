@@ -1,9 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, shallowRef, useTemplateRef, watch } from 'vue'
-import { usePlannerStore } from '@/stores/planner'
 import { t } from '@/i18n'
 
-const store = usePlannerStore()
 const open = shallowRef(false)
 const root = useTemplateRef('root')
 
@@ -28,7 +26,7 @@ onBeforeUnmount(unlisten)
 </script>
 
 <template>
-  <div ref="root" class="help" :class="{ busy: store.selection }" data-stage-ui>
+  <div ref="root" class="help" data-stage-ui>
     <div v-if="open" id="stage-help" class="pop" role="dialog" :aria-label="t().help.title">
       <section v-for="s in t().help.sections" :key="s.title">
         <h4>{{ s.title }}</h4>
@@ -147,14 +145,10 @@ dd {
   color: var(--muted);
 }
 
-/* Phones: the selection sheet spans the full width, so step aside while it is open */
 @media (max-width: 720px) {
   .help {
     right: 10px;
     bottom: calc(10px + env(safe-area-inset-bottom, 0px));
-  }
-  .help.busy {
-    display: none;
   }
 }
 </style>

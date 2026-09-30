@@ -9,7 +9,8 @@ const zh = {
   lang: 'zh-Hant-TW',
   docTitle: 'v-conf Taiwan 2026 · 政大公企 A 棟 2F 場地規劃',
   heading: '政大公企 · A 棟 2F · 場地規劃',
-  sidebar: { expand: '展開側邊欄', collapse: '收合側邊欄' },
+  /** The furniture panel on the right */
+  sidebar: { title: '家具', open: '打開家具面板', close: '收起家具面板' },
   language: '語言',
 
   /** ☰: the layout file, the account and the language */

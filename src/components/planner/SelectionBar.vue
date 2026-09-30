@@ -668,13 +668,14 @@ const generate = () =>
 <style scoped>
 .sel {
   position: absolute;
-  /* centered in the stage, clear of the sidebar on the left and the ? button on the right */
-  left: calc(var(--stage-inset, 0px) + 14px);
-  right: 62px;
+  /* on the left under ☰, with the selected item's properties; clear of undo/redo below it */
+  top: var(--top-clear, 66px);
+  left: 14px;
   width: fit-content;
-  max-width: calc(100% - var(--stage-inset, 0px) - 76px);
-  margin-inline: auto;
-  bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+  max-width: min(380px, calc(100% - 28px));
+  max-height: calc(100% - var(--top-clear, 66px) - 66px - env(safe-area-inset-bottom, 0px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
   background: #fff;
   border: 1px solid var(--line);
   border-radius: 14px;
@@ -1009,14 +1010,17 @@ const generate = () =>
   margin-left: auto;
 }
 
-/* Phones: a full-width sheet pinned above the bottom edge */
+/* Phones */
 @media (max-width: 720px) {
+  /* a full-width sheet above the bottom row (undo/redo, ?) */
   .sel {
+    top: auto;
     left: 10px;
     right: 10px;
-    bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(58px + env(safe-area-inset-bottom, 0px));
     width: auto;
     max-width: none;
+    max-height: calc(100% - var(--top-clear, 106px) - 58px - env(safe-area-inset-bottom, 0px));
     padding: 8px 10px 10px;
   }
   .head {

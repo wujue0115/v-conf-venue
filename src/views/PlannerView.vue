@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
 import PlannerSidebar from '@/components/planner/PlannerSidebar.vue'
-import SidebarToggle from '@/components/planner/SidebarToggle.vue'
 import VenueStage from '@/components/planner/VenueStage.vue'
 import { provideVenueEditor } from '@/composables/useVenueEditor'
 import { usePlannerStore } from '@/stores/planner'
@@ -11,22 +10,27 @@ const { sidebarCollapsed } = storeToRefs(usePlannerStore())
 </script>
 
 <template>
-  <!-- The sidebar floats over a full-size stage, so collapsing it never resizes the scene or moves the stage UI -->
-  <div class="planner" :class="{ collapsed: sidebarCollapsed }">
+  <!--
+    Everything floats over a full-size stage: ☰ and the tools along the top,
+    the selected item's panel on the left, the furniture on the right. Opening
+    or closing a panel never resizes the scene.
+  -->
+  <div class="planner">
     <VenueStage class="planner-stage" />
-    <div class="side-panel" data-stage-ui>
-      <PlannerSidebar id="planner-sidebar" class="side-inner" :inert="sidebarCollapsed" />
-      <SidebarToggle v-model="sidebarCollapsed" class="side-toggle" />
-    </div>
+    <PlannerSidebar
+      id="planner-sidebar"
+      class="library"
+      :class="{ collapsed: sidebarCollapsed }"
+      :inert="sidebarCollapsed"
+      data-stage-ui
+    />
   </div>
 </template>
 
 <style scoped>
 .planner {
-  --side-w: 272px;
-  /* Stage overlays (toolbars, help, selection bar) stay clear of the sidebar — a
-     constant, so toggling the sidebar never moves them */
-  --stage-inset: var(--side-w);
+  /* how far down the panels start, clear of the top bar (one row; two on phones) */
+  --top-clear: calc(66px + env(safe-area-inset-top, 0px));
   position: relative;
   height: 100vh;
   /* dvh = visible area on mobile (100vh includes the space under the browser toolbars) */
@@ -37,35 +41,39 @@ const { sidebarCollapsed } = storeToRefs(usePlannerStore())
   position: absolute;
   inset: 0;
 }
-.side-panel {
+.library {
   position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 0;
+  top: var(--top-clear);
+  right: 14px;
+  /* leaves the ? button below it showing */
+  bottom: calc(66px + env(safe-area-inset-bottom, 0px));
   z-index: 2;
-  width: var(--side-w);
-  transition: transform 0.25s ease;
+  width: 288px;
+  transition:
+    transform 0.25s ease,
+    opacity 0.25s ease;
 }
-.collapsed .side-panel {
-  transform: translateX(-100%);
+.library.collapsed {
+  transform: translateX(calc(100% + 14px));
+  opacity: 0;
 }
-.side-inner {
-  height: 100%;
-}
-.side-toggle {
-  position: absolute;
-  top: 50%;
-  left: 100%;
-  transform: translateY(-50%);
-}
-/* Phones: the sidebar is a drawer over the stage; overlays use the full width */
-@media (max-width: 720px) {
+/* Narrow screens: the top bar takes two rows */
+@media (max-width: 871px) {
   .planner {
-    --stage-inset: 0px;
+    --top-clear: calc(106px + env(safe-area-inset-top, 0px));
+  }
+}
+/* Phones: the furniture panel spans the width */
+@media (max-width: 720px) {
+  .library {
+    left: 10px;
+    right: 10px;
+    bottom: calc(58px + env(safe-area-inset-bottom, 0px));
+    width: auto;
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .side-panel {
+  .library {
     transition: none;
   }
 }
