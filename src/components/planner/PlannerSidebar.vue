@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import FurniturePalette from './FurniturePalette.vue'
 import LayoutSummary from './LayoutSummary.vue'
+import MainMenu from './MainMenu.vue'
 import { t } from '@/i18n'
 </script>
 
@@ -8,6 +9,7 @@ import { t } from '@/i18n'
   <aside class="side">
     <div class="hd">
       <div class="top">
+        <MainMenu />
         <div class="eyebrow">v-conf-venue for v-conf Taiwan 2026</div>
         <a
           class="gh"
@@ -49,8 +51,7 @@ import { t } from '@/i18n'
 .top {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  gap: 10px;
 }
 .gh {
   display: grid;
@@ -72,7 +73,10 @@ import { t } from '@/i18n'
   outline-offset: 1px;
 }
 .eyebrow {
-  font: 500 11px/1 var(--mono);
+  /* between ☰ and GitHub, pushing GitHub to the edge */
+  flex: 1;
+  min-width: 0;
+  font: 500 11px/1.3 var(--mono);
   letter-spacing: 0.08em;
   color: #8a6a1c;
 }

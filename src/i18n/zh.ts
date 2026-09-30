@@ -12,6 +12,32 @@ const zh = {
   sidebar: { expand: '展開側邊欄', collapse: '收合側邊欄' },
   language: '語言',
 
+  /** ☰: the layout file, the account and the language */
+  menu: {
+    title: '選單',
+    open: '開啟檔案',
+    openHint: '匯入 JSON 配置',
+    save: '儲存成檔案',
+    saveHint: '匯出 JSON 配置',
+    image: '輸出圖片',
+    imageHint: '以目前的視角方向，把整棟建築輸出成 PNG',
+    clear: '清空場地',
+    clearConfirm: '確定要清空所有擺放的物件嗎？（可用復原找回）',
+    editOnly: '切換到編輯模式才能使用',
+    imported: '已匯入配置',
+    badFile: '檔案格式錯誤',
+  },
+
+  auth: {
+    signIn: '使用 Google 登入',
+    signingIn: '前往 Google…',
+    account: '帳號',
+    signOut: '登出',
+    signedOut: '已登出',
+    signInFailed: '無法登入，請再試一次',
+    signOutFailed: '無法登出，請再試一次',
+  },
+
   furniture: {
     stoolHigh: '高腳椅',
     studentChair: '學生椅',
@@ -261,15 +287,6 @@ const zh = {
     roomLabels: '教室與設施',
     notes: '資訊顯示',
     allNotes: '全部資訊',
-    layout: '配置',
-    export: '匯出',
-    image: '輸出圖片',
-    imageTitle: '以目前的視角方向，把整棟建築輸出成 PNG',
-    import: '匯入',
-    clear: '清空',
-    clearConfirm: '確定要清空所有擺放的物件嗎？（可用復原找回）',
-    imported: '已匯入配置',
-    badFile: '檔案格式錯誤',
   },
 
   help: {

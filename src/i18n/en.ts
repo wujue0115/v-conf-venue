@@ -7,6 +7,31 @@ const en: Messages = {
   sidebar: { expand: 'Expand sidebar', collapse: 'Collapse sidebar' },
   language: 'Language',
 
+  menu: {
+    title: 'Menu',
+    open: 'Open',
+    openHint: 'Import a JSON layout',
+    save: 'Save to file',
+    saveHint: 'Export the layout as JSON',
+    image: 'Export image',
+    imageHint: 'Save the whole building as a PNG, seen from the current direction',
+    clear: 'Clear the venue',
+    clearConfirm: 'Clear every placed item? (Undo can bring them back)',
+    editOnly: 'Switch to Edit mode to use this',
+    imported: 'Layout imported',
+    badFile: 'This file isn’t a layout',
+  },
+
+  auth: {
+    signIn: 'Sign in with Google',
+    signingIn: 'Going to Google…',
+    account: 'Account',
+    signOut: 'Sign out',
+    signedOut: 'Signed out',
+    signInFailed: 'Couldn’t sign in, please try again',
+    signOutFailed: 'Couldn’t sign out, please try again',
+  },
+
   furniture: {
     stoolHigh: 'High stool',
     studentChair: 'Student chair',
@@ -257,15 +282,6 @@ const en: Messages = {
     roomLabels: 'Rooms and facilities',
     notes: 'Notes',
     allNotes: 'All notes',
-    layout: 'Layout',
-    export: 'Export',
-    image: 'Export image',
-    imageTitle: 'Save the whole building as a PNG, seen from the current direction',
-    import: 'Import',
-    clear: 'Clear',
-    clearConfirm: 'Clear every placed item? (Undo can bring them back)',
-    imported: 'Layout imported',
-    badFile: 'This file isn’t a layout',
   },
 
   help: {
