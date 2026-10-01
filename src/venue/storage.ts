@@ -15,3 +15,10 @@ export function writeJSON(key: string, value: unknown) {
     return false
   }
 }
+export function removeKey(key: string) {
+  try {
+    localStorage.removeItem(key)
+  } catch {
+    // nothing to clean up in a browser without storage
+  }
+}

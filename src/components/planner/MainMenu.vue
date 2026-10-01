@@ -1,17 +1,23 @@
 <script setup lang="ts">
-import { onBeforeUnmount, shallowRef, useTemplateRef, watch } from 'vue'
+import { onBeforeUnmount, onMounted, shallowRef, useTemplateRef, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import ExportImageDialog from './ExportImageDialog.vue'
 import AccountSection from '@/components/auth/AccountSection.vue'
+import NameDialog from '@/components/cloud/NameDialog.vue'
+import { cloudMessage } from '@/cloud/messages'
+import { createProject } from '@/cloud/projects'
 import { LOCALES, LOCALE_NAMES, locale, t } from '@/i18n'
 import { useVenueEditor } from '@/composables/useVenueEditor'
 import { useAuthStore } from '@/stores/auth'
 import { usePalettesStore } from '@/stores/palettes'
 import { usePlannerStore } from '@/stores/planner'
+import { downloadJSON, stamp } from '@/venue/download'
 import { exportLayout, parseLayout, readPricing } from '@/venue/layout'
 
 /**
  * ☰ at the top left: the layout file (open, save, export an image, clear),
- * the account and the language. ⚙ keeps what the stage shows.
+ * the cloud (save to it, My projects), the account and the language. ⚙ keeps what the stage
+ * shows.
  */
 
 const store = usePlannerStore()
@@ -21,15 +27,7 @@ const editor = useVenueEditor()
 const open = shallowRef(false)
 const root = useTemplateRef('root')
 const fileInput = useTemplateRef('file')
-
-/** Local time as YYYYMMDD-HHmmss, so exports sort by when they were made */
-function stamp(d = new Date()) {
-  const p = (n: number) => String(n).padStart(2, '0')
-  return (
-    `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}` +
-    `-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`
-  )
-}
+const router = useRouter()
 
 function openFile() {
   open.value = false
@@ -58,14 +56,71 @@ async function onFile(e: Event) {
 function save() {
   open.value = false
   const pricing = { priceMode: store.priceMode, slots: store.slots }
-  const blob = new Blob([exportLayout(store.items, { pricing, palettes: palettes.palettes })], {
-    type: 'application/json',
+  downloadJSON(
+    `v-conf-taiwan-venue-${stamp()}.json`,
+    exportLayout(store.items, { pricing, palettes: palettes.palettes }),
+  )
+}
+
+/** Set before going to Google from 存到雲端, so it carries on once signed in */
+const AFTER_SIGN_IN = 'v-conf-venue:after-sign-in'
+const saveDialog = useTemplateRef('saveDialog')
+
+/** 存到雲端: the layout in this browser becomes a new cloud project, which then opens */
+async function saveToCloud() {
+  open.value = false
+  if (!auth.user) {
+    try {
+      sessionStorage.setItem(AFTER_SIGN_IN, 'save-to-cloud')
+    } catch {
+      // without storage it just doesn't carry on after signing in
+    }
+    try {
+      await auth.signInWithGoogle()
+    } catch {
+      store.notify(t().auth.signInFailed)
+    }
+    return
+  }
+  const today = new Date().toLocaleDateString(t().lang)
+  saveDialog.value?.open(t().cloud.defaultName(today), async (name) => {
+    try {
+      const id = await createProject(auth.user!.id, name, store.items, {
+        pricing: { priceMode: store.priceMode, slots: store.slots },
+        palettes: palettes.palettes,
+      })
+      store.notify(t().cloud.savedAs(name))
+      void router.push({ name: 'project', params: { projectId: id } })
+    } catch (e) {
+      store.notify(cloudMessage(e))
+      throw e
+    }
   })
-  const a = document.createElement('a')
-  a.href = URL.createObjectURL(blob)
-  a.download = `v-conf-taiwan-venue-${stamp()}.json`
-  a.click()
-  URL.revokeObjectURL(a.href)
+}
+
+// Back from Google after choosing 存到雲端 signed out: ask for the name now (once mounted, so
+// the window is there to open)
+onMounted(() =>
+  watch(
+    () => [auth.ready, auth.user] as const,
+    ([ready, user]) => {
+      if (!ready) return
+      let pending: string | null = null
+      try {
+        pending = sessionStorage.getItem(AFTER_SIGN_IN)
+        if (pending) sessionStorage.removeItem(AFTER_SIGN_IN)
+      } catch {
+        return
+      }
+      if (pending && user && !store.projectId) void saveToCloud()
+    },
+    { immediate: true },
+  ),
+)
+
+function go(to: string) {
+  open.value = false
+  void router.push(to)
 }
 
 /** 輸出圖片 opens its own window (preview, padding, download); the menu closes behind it */
@@ -153,6 +208,47 @@ onBeforeUnmount(unlisten)
         </svg>
         {{ t().menu.save }}
       </button>
+      <template v-if="auth.available">
+        <button
+          v-if="!store.projectId"
+          class="item"
+          type="button"
+          role="menuitem"
+          :title="auth.user ? t().cloud.saveToCloudHint : t().cloud.signInToSave"
+          @click="saveToCloud"
+        >
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M7 18a4.5 4.5 0 0 1-.6-8.96A6 6 0 0 1 18 8.5a4.5 4.5 0 0 1-.5 9.5Z" />
+            <path d="M12 15v-5m-2.5 2.5L12 10l2.5 2.5" />
+          </svg>
+          {{ t().cloud.saveToCloud }}
+        </button>
+        <button
+          v-if="auth.user"
+          class="item"
+          type="button"
+          role="menuitem"
+          @click="go('/projects')"
+        >
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 5h6v6H4zM14 5h6v6h-6zM4 15h6v4H4zM14 15h6v4h-6z" />
+          </svg>
+          {{ t().cloud.myProjects }}
+        </button>
+        <button
+          v-if="store.projectId"
+          class="item"
+          type="button"
+          role="menuitem"
+          :title="t().cloud.localHint"
+          @click="go('/')"
+        >
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 5h16v11H4zM9 20h6M12 16v4" />
+          </svg>
+          {{ t().cloud.local }}
+        </button>
+      </template>
       <button
         class="item"
         type="button"
@@ -221,6 +317,12 @@ onBeforeUnmount(unlisten)
     </div>
 
     <input ref="file" type="file" accept=".json,application/json" hidden @change="onFile" />
+    <NameDialog
+      ref="saveDialog"
+      :title="t().cloud.saveTitle"
+      :hint="t().cloud.saveHint"
+      :confirm="t().cloud.save"
+    />
     <ExportImageDialog ref="imageDialog" :name="() => `v-conf-taiwan-venue-${stamp()}`" />
   </div>
 </template>

@@ -12,6 +12,7 @@ import {
   summarizeCost,
   type LayoutItem,
   type PriceMode,
+  type Pricing,
 } from '@/venue/layout'
 import { readJSON, writeJSON } from '@/venue/storage'
 import { t } from '@/i18n'
@@ -27,18 +28,38 @@ export type PlannerMode = 'view' | 'edit'
  * truth for object transforms and reports snapshots here via `items`.
  */
 export const usePlannerStore = defineStore('planner', () => {
-  /** Layout to seed the editor with on mount */
-  const initialItems = loadSavedLayout() ?? demoLayout()
-  const items = shallowRef<LayoutItem[]>(initialItems)
+  /**
+   * The cloud project being edited, or null for the layout kept in this browser. Only the
+   * browser's own layout is written to its storage; a project saves itself (stores/project.ts).
+   */
+  const projectId = shallowRef<string | null>(null)
+  /** The layout: what the editor starts from when it mounts, then its latest snapshot */
+  const items = shallowRef<LayoutItem[]>([])
   const selection = shallowRef<SelectionInfo | null>(null)
   const fixedSeats = shallowRef(0)
   /** Whether the editor has a step to undo / redo (reported by it) */
   const canUndo = shallowRef(false)
   const canRedo = shallowRef(false)
 
-  const pricing = loadPricing()
-  const priceMode = shallowRef<PriceMode>(pricing.priceMode)
-  const slots = shallowRef(pricing.slots)
+  const priceMode = shallowRef<PriceMode>(0)
+  const slots = shallowRef(1)
+
+  /** Work on the layout kept in this browser (as saved, or the demo the first time) */
+  function openLocal() {
+    projectId.value = null
+    items.value = loadSavedLayout() ?? demoLayout()
+    const pricing = loadPricing()
+    priceMode.value = pricing.priceMode
+    slots.value = pricing.slots
+  }
+  /** Work on a cloud project's layout; the browser's own stays as it is */
+  function openProject(id: string, list: LayoutItem[], pricing: Partial<Pricing> = {}) {
+    projectId.value = id
+    items.value = list
+    priceMode.value = pricing.priceMode ?? 0
+    slots.value = clampSlots(pricing.slots ?? 1)
+  }
+  openLocal()
 
   // First visit opens in view mode so nothing gets moved by accident
   const mode = shallowRef<PlannerMode>(readJSON(MODE_KEY) === 'edit' ? 'edit' : 'view')
@@ -98,11 +119,14 @@ export const usePlannerStore = defineStore('planner', () => {
   // Poster images can push the layout past the browser's storage quota: say so once
   let saveFailed = false
   watch(items, (list) => {
+    if (projectId.value) return
     const ok = saveLayout(list)
     if (!ok && !saveFailed) notify(t().toast.saveFailed)
     saveFailed = !ok
   })
-  watch([priceMode, slots], ([m, s]) => savePricing(m, s))
+  watch([priceMode, slots], ([m, s]) => {
+    if (!projectId.value) savePricing(m, s)
+  })
   watch(sidebarCollapsed, (v) => writeJSON(SIDEBAR_KEY, v))
   watch(mode, (v) => {
     writeJSON(MODE_KEY, v)
@@ -111,7 +135,9 @@ export const usePlannerStore = defineStore('planner', () => {
   })
 
   return {
-    initialItems,
+    projectId,
+    openLocal,
+    openProject,
     items,
     selection,
     fixedSeats,

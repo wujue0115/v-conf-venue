@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, shallowRef } from 'vue'
 import MainMenu from './MainMenu.vue'
+import ProjectBadge from '@/components/cloud/ProjectBadge.vue'
 import StageSettings from './StageSettings.vue'
 import { useVenueEditor } from '@/composables/useVenueEditor'
 import { usePlannerStore, type PlannerMode } from '@/stores/planner'
@@ -25,6 +26,7 @@ function flyTo(view: CameraView, i: number) {
   <div class="topbars">
     <div class="bar menu" data-stage-ui>
       <MainMenu />
+      <ProjectBadge />
     </div>
     <div class="bar tools" data-stage-ui>
       <div
@@ -141,6 +143,9 @@ function flyTo(view: CameraView, i: number) {
 .menu {
   grid-area: menu;
   justify-self: start;
+  /* a long project name gives way rather than push the tools aside */
+  min-width: 0;
+  max-width: 100%;
 }
 .tools {
   grid-area: tools;

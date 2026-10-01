@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, useTemplateRef, watch } from 'vue'
 import TagLayer from './TagLayer.vue'
+import CloudNotice from '@/components/cloud/CloudNotice.vue'
 import SelectionBar from './SelectionBar.vue'
 import StageHelp from './StageHelp.vue'
 import StageHistory from './StageHistory.vue'
@@ -28,7 +29,7 @@ onMounted(() => {
     },
   })
   store.fixedSeats = ed.fixedSeats
-  ed.load(store.initialItems)
+  ed.load(store.items)
   editor.value = ed
 })
 
@@ -69,6 +70,7 @@ watch(
     <TagLayer />
     <StageToolbar />
     <StageToast />
+    <CloudNotice />
     <SelectionBar />
     <StageHistory />
     <StageHelp />
