@@ -71,7 +71,7 @@ const zh = {
     localHint: '只存在這個瀏覽器，沒有上雲端',
     signInTitle: '登入以使用雲端專案',
     signInHint: '用 Google 帳號登入後，就能把場地配置存到雲端，在任何裝置開啟。',
-    back: '回到場地規劃',
+    back: '返回',
     status: {
       saved: '已儲存',
       pending: '尚未儲存',

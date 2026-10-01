@@ -65,7 +65,7 @@ const en: Messages = {
     signInTitle: 'Sign in to use cloud projects',
     signInHint:
       'Sign in with Google to save venue layouts to the cloud and open them on any device.',
-    back: 'Back to the planner',
+    back: 'Back',
     status: {
       saved: 'Saved',
       pending: 'Not saved yet',

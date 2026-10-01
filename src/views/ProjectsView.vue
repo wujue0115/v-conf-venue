@@ -86,6 +86,13 @@ watch(
   },
 )
 
+// back to the page that opened this one (a cloud project, say); straight in from a link, the planner
+function goBack(e: MouseEvent) {
+  if (!window.history.state?.back) return
+  e.preventDefault()
+  router.back()
+}
+
 const openProject = (id: string) => router.push({ name: 'project', params: { projectId: id } })
 
 function newProject() {
@@ -191,7 +198,7 @@ onBeforeUnmount(() => {
 <template>
   <div class="page">
     <header class="bar">
-      <RouterLink to="/" class="back">
+      <RouterLink to="/" class="back" @click="goBack">
         <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6" /></svg>
         {{ t().cloud.back }}
       </RouterLink>
