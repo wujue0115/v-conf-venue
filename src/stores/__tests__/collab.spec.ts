@@ -101,4 +101,66 @@ describe('the project’s channel', () => {
     expect(channel.leave).toHaveBeenCalledTimes(1)
     expect(rt.joinProject).toHaveBeenCalledTimes(2)
   })
+
+  /** Signed in as an editor of p1, with realtime on; the channel it joins */
+  async function joined(user: string | null = 'me') {
+    setActivePinia(createPinia())
+    const channel: ProjectChannel = {
+      track: vi.fn<ProjectChannel['track']>(),
+      move: vi.fn<ProjectChannel['move']>(),
+      cursor: vi.fn<ProjectChannel['cursor']>(),
+      select: vi.fn<ProjectChannel['select']>(),
+      camera: vi.fn<ProjectChannel['camera']>(),
+      leave: vi.fn<ProjectChannel['leave']>(),
+    }
+    rt.joinProject.mockReset().mockReturnValue(channel)
+    useAuthStore().user = user ? ({ id: user } as never) : null
+    useCloudStore().settings = {
+      enabled: true,
+      allowCreate: true,
+      allowUpdate: true,
+      allowRealtime: true,
+    }
+    useProjectStore().meta = {
+      id: 'p1',
+      name: 'Test',
+      updated_at: '2026-10-01T00:00:00Z',
+      role: user ? 'editor' : 'viewer',
+      requested: null,
+      sharing: null,
+    }
+    const collab = useCollabStore()
+    await nextTick()
+    return { collab, channel }
+  }
+  const alice: Peer = {
+    key: 'k1',
+    user: 'alice',
+    name: 'Alice',
+    avatar: '',
+    role: 'viewer',
+    follow: null,
+  }
+
+  it('sends nothing with nobody else there to see it', async () => {
+    const { collab, channel } = await joined()
+    collab.pointer([1, 0, 1])
+    collab.move([{ id: 'A', x: 1, y: 0, z: 1, r: 0 }])
+    expect(channel.cursor).not.toHaveBeenCalled()
+    expect(channel.move).not.toHaveBeenCalled()
+  })
+
+  it('sends the pointer once someone is there, but not when it hardly moved', async () => {
+    const { collab, channel } = await joined()
+    collab.peers = [alice]
+    collab.pointer([1, 0, 1])
+    collab.pointer([1.01, 0, 1])
+    collab.pointer([2, 0, 1])
+    expect(channel.cursor).toHaveBeenCalledTimes(2)
+  })
+
+  it('leaves guests off the channel', async () => {
+    await joined(null)
+    expect(rt.joinProject).not.toHaveBeenCalled()
+  })
 })

@@ -154,8 +154,13 @@ interface Fly {
 }
 
 const UNDO_LIMIT = 60
-/** How often the pointer's place in the venue is reported, at most (ms) */
-const POINTER_EVERY = 50
+/**
+ * How often the pointer's place in the venue is reported, at most (ms). Each report goes to
+ * everyone with the project open, and Supabase's free plan allows 100 messages a second across
+ * the whole app (a broadcast counting once sent and once per receiver): the cursors glide
+ * between reports, so a few a second look smooth enough.
+ */
+const POINTER_EVERY = 200
 /** An exported picture's building, in pixels along its longer side */
 const IMAGE_SIZE = 2400
 /** A picture this size (see IMAGE_SIZE) draws its tags and labels at the stage's size */

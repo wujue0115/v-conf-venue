@@ -23,6 +23,21 @@ const label = computed(() =>
 )
 const initial = (name: string) => [...(name || '?').trim()][0]?.toUpperCase() ?? '?'
 const nameOf = (name: string) => name || t().collab.someone
+/**
+ * Only Google's own profile pictures: a face is whatever its tab says it is, and any other
+ * address would have everyone's browser fetch it (telling that server who's looking)
+ */
+function photo(url: string) {
+  try {
+    const u = new URL(url)
+    return u.protocol === 'https:' &&
+      (u.hostname === 'googleusercontent.com' || u.hostname.endsWith('.googleusercontent.com'))
+      ? url
+      : ''
+  } catch {
+    return ''
+  }
+}
 const toggle = (key: string) => collab.follow(collab.following === key ? null : key)
 const followable = (role: string) => role !== 'viewer'
 function titleOf(p: { key: string; name: string; role: string }) {
@@ -52,7 +67,7 @@ function titleOf(p: { key: string; name: string; role: string }) {
       :disabled="!followable(p.role)"
       @click="toggle(p.key)"
     >
-      <img v-if="p.avatar" :src="p.avatar" alt="" referrerpolicy="no-referrer" />
+      <img v-if="photo(p.avatar)" :src="photo(p.avatar)" alt="" referrerpolicy="no-referrer" />
       <span v-else aria-hidden="true">{{ initial(p.name) }}</span>
     </button>
     <span v-if="more > 0" class="face more" aria-hidden="true">+{{ more }}</span>

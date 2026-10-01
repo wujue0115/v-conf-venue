@@ -25,6 +25,8 @@ export interface EditorLink {
 
 /** How often a drag is sent to the others */
 const MOVE_EVERY = 80
+/** A pointer that moved less than this in the venue (metres) isn't sent again */
+const POINTER_STEP = 0.05
 /** How often this tab's view goes out while someone follows it */
 const CAMERA_EVERY = 250
 /** A burst of selection changes (box-selecting, clicking along) goes out as one */
@@ -79,7 +81,8 @@ export function holders(
  * Working on the open cloud project together: who else has it open, what they have selected
  * (locked here), items they're dragging, where their pointers are, and their saved changes
  * coming in; following someone's view, as in Figma. One channel per project, joined while it's
- * open and app_settings has realtime on.
+ * open by someone signed in and app_settings has realtime on. Nothing is sent with nobody else
+ * there to see it.
  */
 export const useCollabStore = defineStore('collab', () => {
   const project = useProjectStore()
@@ -93,6 +96,8 @@ export const useCollabStore = defineStore('collab', () => {
   /** Everyone else online (other tabs of this person's included) */
   const peers = shallowRef<Peer[]>([])
   const connected = shallowRef(false)
+  /** Anyone else has the project open (signed in: guests don't join the channel) */
+  const others = computed(() => peers.value.length > 0)
   /** People online besides this tab, one per person */
   const people = computed(() => {
     const seen = new Map<string, Peer>()
@@ -162,7 +167,11 @@ export const useCollabStore = defineStore('collab', () => {
     points.value = keep(points.value)
     selections.value = keep(selections.value)
     // someone new: they don't know what this tab has selected yet
-    if (next.some((p) => !before.has(p.key)) && mine.value.size) sendSelectSoon()
+    if (next.some((p) => !before.has(p.key))) {
+      if (mine.value.size) sendSelectSoon()
+      // and where this tab's pointer is, at its next move
+      pointerSent = null
+    }
   }
 
   // ─── Presence: who this is, and whose view they follow (rarely changes) ────
@@ -184,7 +193,8 @@ export const useCollabStore = defineStore('collab', () => {
   function sendSelectSoon() {
     selectTimer ??= setTimeout(() => {
       selectTimer = undefined
-      if (project.canEdit) channel?.select([...mine.value])
+      // nobody else there: a newcomer is told when they come (see onPeers)
+      if (project.canEdit && others.value) channel?.select([...mine.value])
     }, SELECT_DELAY)
   }
 
@@ -271,9 +281,19 @@ export const useCollabStore = defineStore('collab', () => {
     else next.delete(k)
     points.value = next
   }
-  /** This tab's pointer (the editor sends a few a second); only people who can edit share it */
+  /** Where this tab's pointer was last sent, so one that hardly moved isn't sent again */
+  let pointerSent: Vec3 | null = null
+  /**
+   * This tab's pointer (the editor reports a few a second). Only people who can edit share it,
+   * and only with someone else there to see it: every message counts against the cloud's quota.
+   */
   function pointer(p: Vec3 | null) {
-    if (channel && project.canEdit && auth.user) channel.cursor(p)
+    if (!channel || !project.canEdit || !auth.user || !others.value) return
+    const q = pointerSent
+    if (p && q && Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]) < POINTER_STEP) return
+    if (!p && !q) return
+    pointerSent = p
+    channel.cursor(p)
   }
 
   // ─── Drags, sent a few times a second ──────────────────────────────────────
@@ -288,7 +308,7 @@ export const useCollabStore = defineStore('collab', () => {
   }
   /** Items this tab is dragging; the last of a drag goes out within MOVE_EVERY too */
   function move(moves: readonly LiveMove[]) {
-    if (!channel || !project.canEdit) return
+    if (!channel || !project.canEdit || !others.value) return
     for (const m of moves) pendingMoves.set(m.id, m)
     moveTimer ??= setTimeout(sendMoves, MOVE_EVERY)
   }
@@ -378,7 +398,10 @@ export const useCollabStore = defineStore('collab', () => {
     [() => project.meta?.id, () => auth.user?.id, () => project.meta?.role, () => cloud.realtime],
     ([id, user, role, on]) => {
       leave()
-      if (!id || !role || !on) return
+      // guests don't join: a public link could bring more viewers than the free plan's 200
+      // connections, and every message to each of them counts (they catch up when they come
+      // back to the tab instead, see below)
+      if (!id || !role || !on || !user) return
       channel = joinProject(
         id,
         { key, present: !!user },
@@ -404,6 +427,22 @@ export const useCollabStore = defineStore('collab', () => {
     },
     { immediate: true },
   )
+
+  // ─── Guests: no channel, so a look for changes when they come back to the tab ──
+
+  /** Away from the tab at least this long: changes are looked for on coming back */
+  const GUEST_RECHECK_AFTER = 120_000
+  let hiddenAt = 0
+  if (typeof document !== 'undefined')
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') {
+        hiddenAt = Date.now()
+        return
+      }
+      if (!auth.user && project.meta && hiddenAt && Date.now() - hiddenAt >= GUEST_RECHECK_AFTER)
+        void resync()
+      hiddenAt = 0
+    })
 
   return {
     peers,

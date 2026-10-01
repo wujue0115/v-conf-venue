@@ -63,7 +63,7 @@ create table public.app_settings (
 -- change these in the Dashboard (Table Editor → app_settings)
 insert into public.app_settings (key, value) values (
   'cloud',
-  '{"enabled": true, "allowCreate": true, "allowUpdate": true, "allowRealtime": true, "maxProjectsPerUser": 20}'
+  '{"enabled": true, "allowCreate": true, "allowUpdate": true, "allowRealtime": true, "maxProjectsPerUser": 5}'
 );
 
 -- ─── Helpers (security definer: they read past RLS, so policies don't recurse) ─
