@@ -15,6 +15,8 @@ export interface ProjectSettings {
 
 /** The signed-in person's part in a project (or a guest's, through an open share link) */
 export type Role = 'owner' | 'editor' | 'viewer'
+/** What an owner grants someone by email, or someone asks the owner for */
+export type Grant = 'viewer' | 'editor'
 /** Who may view through the share link: anyone, signed-in people, or only people added by name */
 export type ViewAccess = 'anyone' | 'authenticated' | 'allowed'
 /** Who may edit through the share link: signed-in people, or only people added as editors */
@@ -33,6 +35,8 @@ export interface ProjectMeta {
   name: string
   updated_at: string
   role: Role
+  /** What this person has asked the owner for and is waiting on (never for its owner) */
+  requested: Grant | null
   /** For its owner only */
   sharing: Sharing | null
 }
@@ -98,7 +102,7 @@ export class CloudError extends Error {
 export const NAME_MAX = 80
 export const cleanName = (s: string) => s.trim().slice(0, NAME_MAX)
 
-function db() {
+export function db() {
   if (!supabase) throw new CloudError('unavailable')
   return supabase
 }
@@ -119,7 +123,7 @@ function classify(error: NonNullable<ApiError>, status: number): CloudErrorCode 
 }
 
 /** A response's data, or its error thrown as a CloudError */
-function check<T>(r: { data: T; error: ApiError; status: number }): T {
+export function check<T>(r: { data: T; error: ApiError; status: number }): T {
   if (r.error) throw new CloudError(classify(r.error, r.status), r.error)
   return r.data
 }
@@ -246,9 +250,16 @@ export async function loadProject(id: string, userId?: string): Promise<LoadedPr
     await db().from('project_objects').select('id, type, data').eq('project_id', id),
   ) as { id: string; type: string; data: Record<string, unknown> }[]
   let role: Role = 'viewer'
+  let requested: Grant | null = null
   if (userId && project.owner_id === userId) role = 'owner'
-  else if (userId)
+  else if (userId) {
     role = (check(await db().rpc('project_role', { p_project: id })) as Role) ?? 'viewer'
+    // row level security shows someone other than the owner just their own row
+    const mine = check(
+      await db().from('project_access').select('requested_role').eq('project_id', id).maybeSingle(),
+    ) as { requested_role: Grant | null } | null
+    requested = mine?.requested_role ?? null
+  }
   const { share_token, share_enabled, view_access, edit_access } = project
   return {
     meta: {
@@ -256,6 +267,7 @@ export async function loadProject(id: string, userId?: string): Promise<LoadedPr
       name: project.name,
       updated_at: project.updated_at,
       role,
+      requested,
       sharing: role === 'owner' ? { share_token, share_enabled, view_access, edit_access } : null,
     },
     items: itemsOf(rows),
@@ -278,6 +290,7 @@ export async function loadShared(token: string): Promise<SharedResult> {
     | {
         status: 'ok'
         role: Role
+        requested_role: Grant | null
         project: Omit<Sharing, 'share_token'> & {
           id: string
           name: string
@@ -296,6 +309,7 @@ export async function loadShared(token: string): Promise<SharedResult> {
         name,
         updated_at,
         role: r.role,
+        requested: r.requested_role ?? null,
         sharing:
           r.role === 'owner'
             ? { share_token: token, share_enabled, view_access, edit_access }

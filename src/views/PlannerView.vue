@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { computed, watch } from 'vue'
+import { computed, shallowRef, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { onBeforeRouteLeave, onBeforeRouteUpdate, RouterLink, useRouter } from 'vue-router'
 import PlannerSidebar from '@/components/planner/PlannerSidebar.vue'
 import VenueStage from '@/components/planner/VenueStage.vue'
 import { provideVenueEditor } from '@/composables/useVenueEditor'
+import { cloudMessage } from '@/cloud/messages'
+import type { Grant } from '@/cloud/projects'
 import { t } from '@/i18n'
 import { useAuthStore } from '@/stores/auth'
 import { usePlannerStore } from '@/stores/planner'
@@ -59,6 +61,24 @@ const denied = computed(() => {
   return t().share.notFound
 })
 
+/** Signed in through a link that doesn't let them in, and not asked yet: they may ask */
+const canAsk = computed(
+  () => project.shareDenied?.status === 'no_access' && !project.shareDenied.requested,
+)
+const asking = shallowRef(false)
+const askError = shallowRef('')
+async function ask(role: Grant) {
+  asking.value = true
+  askError.value = ''
+  try {
+    await project.requestAccess(role)
+  } catch (e) {
+    askError.value = cloudMessage(e)
+  } finally {
+    asking.value = false
+  }
+}
+
 // Whatever is still waiting is saved before the planner leaves the project
 async function leave() {
   if (cloud.value) await project.close()
@@ -100,6 +120,15 @@ onBeforeRouteUpdate(leave)
       </template>
       <template v-else-if="project.loadError || denied">
         <p>{{ denied || t().cloud.errors[project.loadError!] }}</p>
+        <div v-if="canAsk" class="asks">
+          <button class="primary" type="button" :disabled="asking" @click="ask('editor')">
+            {{ t().share.request.editor }}
+          </button>
+          <button class="secondary" type="button" :disabled="asking" @click="ask('viewer')">
+            {{ t().share.request.viewer }}
+          </button>
+        </div>
+        <p v-if="askError" class="error">{{ askError }}</p>
         <div class="links">
           <RouterLink to="/projects">{{ t().cloud.myProjects }}</RouterLink>
           <RouterLink to="/">{{ t().cloud.local }}</RouterLink>
@@ -203,6 +232,33 @@ onBeforeRouteUpdate(leave)
 .primary:disabled {
   opacity: 0.6;
   cursor: progress;
+}
+.asks {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+.asks .primary {
+  margin-top: 16px;
+}
+.secondary {
+  margin-top: 16px;
+  height: 36px;
+  padding: 0 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  font-size: 13px;
+  cursor: pointer;
+}
+.secondary:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+.card p.error {
+  margin-top: 10px;
+  color: #b3261e;
 }
 .links {
   display: flex;

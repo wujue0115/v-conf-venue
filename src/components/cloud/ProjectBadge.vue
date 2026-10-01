@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, useTemplateRef } from 'vue'
+import { computed, shallowRef, useTemplateRef } from 'vue'
 import NameDialog from './NameDialog.vue'
 import { cloudMessage } from '@/cloud/messages'
 import { t } from '@/i18n'
@@ -10,7 +10,8 @@ import { useProjectStore } from '@/stores/project'
 /**
  * Next to ☰ while a cloud project is open: its name (its owner clicks it to rename) and whether
  * the latest changes are saved, with 重試 when saving failed. Someone only viewing sees 唯讀,
- * and a guest 登入以編輯, since signing in may let them edit.
+ * with 要求編輯 to ask the owner (已要求編輯 once asked); a guest sees 登入以編輯, since signing
+ * in may let them edit.
  */
 
 const project = useProjectStore()
@@ -20,6 +21,23 @@ const canRename = computed(() => project.meta?.role === 'owner')
 const renameDialog = useTemplateRef('renameDialog')
 
 const state = computed(() => (project.canEdit ? project.status : 'readOnly'))
+/** Signed in and only viewing: they may ask the owner to edit */
+const canAsk = computed(
+  () => state.value === 'readOnly' && !!auth.user && project.meta?.role === 'viewer',
+)
+const asking = shallowRef(false)
+
+async function askToEdit() {
+  asking.value = true
+  try {
+    await project.requestAccess('editor')
+    planner.notify(project.canEdit ? t().share.request.already : t().share.request.editSentTitle)
+  } catch (e) {
+    planner.notify(cloudMessage(e))
+  } finally {
+    asking.value = false
+  }
+}
 const label = computed(() => t().cloud.status[state.value])
 
 function rename() {
@@ -65,6 +83,23 @@ function rename() {
       @click="auth.signInWithGoogle()"
     >
       {{ t().share.signInToEdit }}
+    </button>
+    <span
+      v-else-if="canAsk && project.meta.requested === 'editor'"
+      class="asked"
+      :title="t().share.request.editSentTitle"
+    >
+      {{ t().share.request.editSent }}
+    </span>
+    <button
+      v-else-if="canAsk"
+      class="retry"
+      type="button"
+      :title="t().share.request.editTitle"
+      :disabled="asking"
+      @click="askToEdit"
+    >
+      {{ t().share.request.edit }}
     </button>
     <NameDialog ref="renameDialog" :title="t().cloud.renameTitle" :confirm="t().cloud.rename" />
   </div>
@@ -145,6 +180,11 @@ function rename() {
 }
 .readOnly .dot {
   background: var(--faint);
+}
+.asked {
+  font-size: 12px;
+  color: var(--faint);
+  white-space: nowrap;
 }
 .retry {
   height: 26px;

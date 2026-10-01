@@ -34,7 +34,14 @@ const item = (id: string, x: number): LayoutItem => ({ id, t: 'sign', x, z: 0, r
 async function openProject(role: Role = 'owner') {
   useAuthStore().user = { id: OWNER } as never
   api.loadProject.mockResolvedValue({
-    meta: { id: 'p1', name: 'Test', updated_at: '2026-10-01T00:00:00Z', role, sharing: null },
+    meta: {
+      id: 'p1',
+      name: 'Test',
+      updated_at: '2026-10-01T00:00:00Z',
+      role,
+      requested: null,
+      sharing: null,
+    },
     items: [item(A, 1), item(B, 2)],
     settings: { pricing: { priceMode: 1, slots: 2 } },
   })

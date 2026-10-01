@@ -1,5 +1,6 @@
 import { computed, shallowRef, watch } from 'vue'
 import { acceptHMRUpdate, defineStore } from 'pinia'
+import { requestAccess as askOwner } from '@/cloud/access'
 import { clearDraft, loadDraft, saveDraft, type Draft } from '@/cloud/drafts'
 import {
   checkAccess,
@@ -12,6 +13,7 @@ import {
   saveChanges,
   updateSharing,
   type CloudErrorCode,
+  type Grant,
   type LoadedProject,
   type ProjectMeta,
   type ProjectSettings,
@@ -73,6 +75,8 @@ export const useProjectStore = defineStore('project', () => {
   const shareDenied = shallowRef<Exclude<SharedResult, { status: 'ok' }> | null>(null)
   /** The share link it was opened through, if any */
   let token: string | null = null
+  /** The share link last tried, even one that didn't let them in (to ask for access through) */
+  let openedToken: string | null = null
 
   /** Each item as last saved (rowKey), by id; null until the editor reports the opened layout */
   let saved: Map<string, string> | null = null
@@ -124,9 +128,10 @@ export const useProjectStore = defineStore('project', () => {
   }
 
   /** Open a project by its id (My projects) */
-  async function open(id: string) {
-    if (meta.value?.id === id && !token) return
+  async function open(id: string, { again = false } = {}) {
+    if (meta.value?.id === id && !token && !again) return
     await close()
+    openedToken = null
     loading.value = true
     loadError.value = null
     try {
@@ -148,6 +153,7 @@ export const useProjectStore = defineStore('project', () => {
     loading.value = true
     loadError.value = null
     shareDenied.value = null
+    openedToken = shareToken
     try {
       const r = await loadShared(shareToken)
       if (r.status === 'ok') {
@@ -299,6 +305,28 @@ export const useProjectStore = defineStore('project', () => {
     draft.value = null
   }
 
+  /**
+   * Ask the owner for a role: from a share link that didn't let them in, or (viewing) to edit.
+   * When it turns out they have it already, the project opens again to take it up.
+   */
+  async function requestAccess(role: Grant) {
+    const denied = shareDenied.value
+    const where: { token: string } | { projectId: string } | null = openedToken
+      ? { token: openedToken }
+      : meta.value
+        ? { projectId: meta.value.id }
+        : null
+    if (!where) return
+    const r = await askOwner(role, where)
+    if (r === 'already') {
+      if ('token' in where) await openShared(where.token)
+      else await open(where.projectId, { again: true })
+      return
+    }
+    if (denied?.status === 'no_access') shareDenied.value = { ...denied, requested: true }
+    else if (meta.value) meta.value = { ...meta.value, requested: role }
+  }
+
   /** Change the share link's settings (its owner only) */
   async function setSharing(patch: Partial<Sharing>) {
     if (!meta.value || meta.value.role !== 'owner') return
@@ -367,6 +395,7 @@ export const useProjectStore = defineStore('project', () => {
     flush,
     rename,
     setSharing,
+    requestAccess,
     dismissAlert,
     dropDraft,
   }

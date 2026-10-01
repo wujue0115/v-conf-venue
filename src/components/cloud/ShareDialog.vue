@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, shallowRef, useTemplateRef } from 'vue'
+import SharePeople from './SharePeople.vue'
 import { cloudMessage } from '@/cloud/messages'
 import type { EditAccess, Sharing, ViewAccess } from '@/cloud/projects'
 import { t } from '@/i18n'
@@ -7,8 +8,9 @@ import { usePlannerStore } from '@/stores/planner'
 import { useProjectStore } from '@/stores/project'
 
 /**
- * 分享, for the project's owner: the share link (on or off, copy, replace), who may view through
- * it and who may edit. Each change is saved at once. Editing never reaches further than viewing:
+ * 分享, for the project's owner: sharing on or off (off, only the owner can open the project), the
+ * share link (copy, replace), who may view through it and who may edit, and the people added by
+ * email or asking for access (SharePeople). Each change is saved at once. Editing never reaches further than viewing:
  * letting signed-in people edit lets them view too, and keeping viewing to named people keeps
  * editing to them as well.
  */
@@ -16,6 +18,7 @@ import { useProjectStore } from '@/stores/project'
 const project = useProjectStore()
 const planner = usePlannerStore()
 const dialog = useTemplateRef('dialog')
+const people = useTemplateRef('people')
 const busy = shallowRef(false)
 const copied = shallowRef(false)
 
@@ -30,6 +33,7 @@ const EDIT: EditAccess[] = ['authenticated', 'allowed']
 function open() {
   copied.value = false
   dialog.value?.showModal()
+  void people.value?.refresh()
 }
 
 async function change(patch: Partial<Sharing>) {
@@ -135,10 +139,7 @@ defineExpose({ open })
             :checked="sharing.view_access === v"
             @change="setView(v)"
           />
-          <span>
-            <b>{{ t().share.viewOptions[v].label }}</b>
-            <i>{{ t().share.viewOptions[v].hint }}</i>
-          </span>
+          <span>{{ t().share.viewOptions[v] }}</span>
         </label>
       </fieldset>
 
@@ -151,12 +152,11 @@ defineExpose({ open })
             :checked="sharing.edit_access === e"
             @change="setEdit(e)"
           />
-          <span>
-            <b>{{ t().share.editOptions[e].label }}</b>
-            <i>{{ t().share.editOptions[e].hint }}</i>
-          </span>
+          <span>{{ t().share.editOptions[e] }}</span>
         </label>
       </fieldset>
+
+      <SharePeople ref="people" />
 
       <div class="foot">
         <button class="replace" type="button" :disabled="busy" @click="replaceLink">
@@ -175,6 +175,7 @@ defineExpose({ open })
   width: min(460px, calc(100vw - 28px));
   max-width: none;
   max-height: calc(100dvh - 28px);
+  overflow-y: auto;
   padding: 0;
   border: 1px solid var(--line);
   border-radius: 12px;
@@ -230,14 +231,12 @@ h3 {
   gap: 12px;
   margin-top: 12px;
 }
-.txt b,
-.opt b {
+.txt b {
   display: block;
   font-size: 13px;
   font-weight: 600;
 }
-.txt i,
-.opt i {
+.txt i {
   display: block;
   font-style: normal;
   font-size: 12px;
@@ -332,8 +331,9 @@ legend {
 }
 .opt {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 10px;
+  font-size: 13px;
   padding: 7px 8px;
   border-radius: 8px;
   cursor: pointer;
@@ -342,7 +342,7 @@ legend {
   background: #f8f6f0;
 }
 .opt input {
-  margin: 3px 0 0;
+  margin: 0;
   accent-color: #b07d0c;
 }
 .foot {

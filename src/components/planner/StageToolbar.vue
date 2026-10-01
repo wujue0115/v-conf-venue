@@ -7,11 +7,13 @@ import StageSettings from './StageSettings.vue'
 import { useVenueEditor } from '@/composables/useVenueEditor'
 import { usePlannerStore, type PlannerMode } from '@/stores/planner'
 import { useProjectStore } from '@/stores/project'
+import { useAccessStore } from '@/stores/access'
 import { VIEWS, type CameraView } from '@/venue/places'
 import { t } from '@/i18n'
 
 const store = usePlannerStore()
 const project = useProjectStore()
+const access = useAccessStore()
 const shareDialog = useTemplateRef('shareDialog')
 const editor = useVenueEditor()
 const activeView = shallowRef(0)
@@ -103,7 +105,11 @@ function flyTo(view: CameraView, i: number) {
         v-if="project.meta?.role === 'owner'"
         class="share grp"
         type="button"
-        :title="t().share.buttonTitle"
+        :title="
+          access.requestCount
+            ? `${t().share.buttonTitle} · ${t().share.requestCount(access.requestCount)}`
+            : t().share.buttonTitle
+        "
         @click="shareDialog?.open()"
       >
         <svg class="ico" viewBox="0 0 24 24" aria-hidden="true">
@@ -113,6 +119,11 @@ function flyTo(view: CameraView, i: number) {
           <path d="m8.2 10.8 7.6-4.4M8.2 13.2l7.6 4.4" />
         </svg>
         <span class="share-label">{{ t().share.button }}</span>
+        <!-- people waiting on the owner's answer -->
+        <span v-if="access.requestCount" class="count">
+          <span aria-hidden="true">{{ access.requestCount > 9 ? '9+' : access.requestCount }}</span>
+          <span class="sr-only">{{ t().share.requestCount(access.requestCount) }}</span>
+        </span>
       </button>
       <ShareDialog ref="shareDialog" />
       <StageSettings />
@@ -227,6 +238,33 @@ function flyTo(view: CameraView, i: number) {
 }
 .share:hover {
   background: #e0a71f;
+}
+.share {
+  position: relative;
+}
+.count {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border: 2px solid #fff;
+  border-radius: 999px;
+  background: #d93025;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 14px;
+  text-align: center;
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 .share:focus-visible {
   outline: 2px solid var(--ink);

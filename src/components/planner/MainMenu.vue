@@ -189,25 +189,6 @@ onBeforeUnmount(unlisten)
     </button>
 
     <div v-if="open" id="main-menu" class="pop" role="menu" :aria-label="t().menu.title">
-      <button
-        class="item"
-        type="button"
-        role="menuitem"
-        :title="store.editing ? t().menu.openHint : t().menu.editOnly"
-        :disabled="!store.editing"
-        @click="openFile"
-      >
-        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />
-        </svg>
-        {{ t().menu.open }}
-      </button>
-      <button class="item" type="button" role="menuitem" :title="t().menu.saveHint" @click="save">
-        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M12 4v11m-4-4 4 4 4-4M5 19h14" />
-        </svg>
-        {{ t().menu.save }}
-      </button>
       <template v-if="auth.available">
         <button
           v-if="!store.projectId"
@@ -248,7 +229,27 @@ onBeforeUnmount(unlisten)
           </svg>
           {{ t().cloud.local }}
         </button>
+        <hr />
       </template>
+      <button
+        class="item"
+        type="button"
+        role="menuitem"
+        :title="store.editing ? t().menu.openHint : t().menu.editOnly"
+        :disabled="!store.editing"
+        @click="openFile"
+      >
+        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />
+        </svg>
+        {{ t().menu.open }}
+      </button>
+      <button class="item" type="button" role="menuitem" :title="t().menu.saveHint" @click="save">
+        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 4v11m-4-4 4 4 4-4M5 19h14" />
+        </svg>
+        {{ t().menu.save }}
+      </button>
       <button
         class="item"
         type="button"
@@ -263,6 +264,7 @@ onBeforeUnmount(unlisten)
         </svg>
         {{ t().menu.image }}
       </button>
+      <hr />
       <button
         class="item danger"
         type="button"

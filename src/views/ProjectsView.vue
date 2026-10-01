@@ -2,6 +2,7 @@
 import { onBeforeUnmount, shallowRef, useTemplateRef, watch } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import NameDialog from '@/components/cloud/NameDialog.vue'
+import { listSharedWithMe, type SharedSummary } from '@/cloud/access'
 import { cloudMessage, timeAgo } from '@/cloud/messages'
 import {
   createProject,
@@ -17,12 +18,17 @@ import { useAuthStore } from '@/stores/auth'
 import { downloadJSON, stamp } from '@/venue/download'
 import { exportLayout } from '@/venue/layout'
 
-/** My projects: the signed-in person's cloud projects, and the layout kept in this browser */
+/**
+ * My projects: the signed-in person's cloud projects, the layout kept in this browser, and the
+ * projects other people added them to by email (與我共用)
+ */
 
 const auth = useAuthStore()
 const router = useRouter()
 const projects = shallowRef<ProjectSummary[] | null>(null)
 const listError = shallowRef('')
+const shared = shallowRef<SharedSummary[] | null>(null)
+const sharedError = shallowRef('')
 /** The card whose ⋯ menu is open */
 const menuFor = shallowRef<string | null>(null)
 const nameDialog = useTemplateRef('nameDialog')
@@ -46,11 +52,25 @@ async function refresh() {
   }
 }
 
+async function refreshShared() {
+  if (!auth.user) return
+  sharedError.value = ''
+  try {
+    shared.value = await listSharedWithMe(auth.user.id)
+  } catch (e) {
+    sharedError.value = cloudMessage(e)
+  }
+}
+
 watch(
   () => [auth.ready, auth.user?.id] as const,
   ([ready, user]) => {
     projects.value = null
-    if (ready && user) void refresh()
+    shared.value = null
+    if (ready && user) {
+      void refresh()
+      void refreshShared()
+    }
   },
   { immediate: true },
 )
@@ -261,6 +281,30 @@ onBeforeUnmount(() => {
         <p v-if="listError" class="note error">{{ listError }}</p>
         <p v-else-if="!projects" class="note">{{ t().cloud.loading }}</p>
         <p v-else-if="!projects.length" class="note">{{ t().cloud.empty }}</p>
+
+        <h2 class="section">{{ t().cloud.sharedWithMe }}</h2>
+        <div v-if="shared?.length" class="grid">
+          <div v-for="p in shared" :key="p.id" class="card project">
+            <button class="open" type="button" :title="t().cloud.open" @click="openProject(p.id)">
+              <div class="thumb shared" aria-hidden="true">
+                <svg viewBox="0 0 24 24">
+                  <circle cx="9" cy="8" r="3.5" />
+                  <path d="M3 19a6 6 0 0 1 12 0M16 4.5a3.5 3.5 0 0 1 0 7M18 13.5a6 6 0 0 1 3 5.5" />
+                </svg>
+              </div>
+              <div class="info">
+                <b>{{ p.name }}</b>
+                <span
+                  >{{ t().share.people.roles[p.role] }} · {{ t().cloud.count(p.count) }} ·
+                  {{ t().cloud.updated(timeAgo(p.updated_at)) }}</span
+                >
+              </div>
+            </button>
+          </div>
+        </div>
+        <p v-if="sharedError" class="note error">{{ sharedError }}</p>
+        <p v-else-if="!shared" class="note">{{ t().cloud.loading }}</p>
+        <p v-else-if="!shared.length" class="note">{{ t().cloud.sharedEmpty }}</p>
       </template>
     </main>
 
@@ -372,6 +416,14 @@ h1 {
   color: var(--muted);
 }
 
+.section {
+  margin: 32px 0 14px;
+  font-size: 16px;
+}
+.thumb.shared {
+  background: #eef4fb;
+  color: #3a5f8a;
+}
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
