@@ -22,6 +22,7 @@ import {
   type Sharing,
 } from '@/cloud/projects'
 import { useAuthStore } from '@/stores/auth'
+import { useCloudStore } from '@/stores/cloud'
 import { usePalettesStore } from '@/stores/palettes'
 import { usePlannerStore } from '@/stores/planner'
 import type { LayoutItem } from '@/venue/layout'
@@ -55,6 +56,7 @@ export const useProjectStore = defineStore('project', () => {
   const planner = usePlannerStore()
   const palettes = usePalettesStore()
   const auth = useAuthStore()
+  const cloud = useCloudStore()
 
   const meta = shallowRef<ProjectMeta | null>(null)
   const loading = shallowRef(false)
@@ -72,7 +74,11 @@ export const useProjectStore = defineStore('project', () => {
   /** The cloud version changed after the draft's changes began: restoring would overwrite it */
   const draftConflict = computed(() => !!draft.value && draft.value.base !== meta.value?.updated_at)
   /** Its owner, or an editor (by name, or through the share link) */
-  const canEdit = computed(() => meta.value?.role === 'owner' || meta.value?.role === 'editor')
+  const mayEdit = computed(() => meta.value?.role === 'owner' || meta.value?.role === 'editor')
+  /** …and the cloud takes changes now (app_settings) */
+  const canEdit = computed(() => mayEdit.value && cloud.canUpdate)
+  /** This person may edit, but the cloud has changes paused: read-only until it's back */
+  const paused = computed(() => mayEdit.value && !cloud.canUpdate)
   /** Opened through a share link that didn't let them in: why (null when it did, or by id) */
   const shareDenied = shallowRef<Exclude<SharedResult, { status: 'ok' }> | null>(null)
   /** The share link it was opened through, if any */
@@ -128,7 +134,7 @@ export const useProjectStore = defineStore('project', () => {
     savedSettings = JSON.stringify(settings())
     status.value = 'saved'
     resetFailure()
-    draft.value = canEdit.value ? loadDraft(p.meta.id) : null
+    draft.value = mayEdit.value ? loadDraft(p.meta.id) : null
   }
 
   /** Open a project by its id (My projects) */
@@ -177,7 +183,8 @@ export const useProjectStore = defineStore('project', () => {
     if (!meta.value) return
     if (status.value === 'pending' || status.value === 'error') await flush()
     else await saving
-    if (status.value === 'error') keepDraft()
+    // not saved (failed, or the cloud paused): kept in this browser for next time
+    if (status.value !== 'saved') keepDraft()
     clearTimeout(timer)
     meta.value = null
     token = null
@@ -199,6 +206,8 @@ export const useProjectStore = defineStore('project', () => {
   /** Save now; resolves once everything up to now is saved (or the save failed) */
   async function flush() {
     clearTimeout(timer)
+    // the cloud paused changes: what's waiting stays waiting (and kept as a draft), not "saved"
+    if (meta.value && paused.value) return
     if (saving) {
       again = true
       return saving
@@ -259,6 +268,8 @@ export const useProjectStore = defineStore('project', () => {
       return
     }
     if (meta.value?.id !== m.id || found === 'ok' || status.value !== 'error') return
+    // the switches changed: read them, so the planner shows it (and goes on once they're back)
+    if (found === 'paused') void cloud.read()
     failure.value = found
     raiseAlert()
     // trying again on a timer won't help any of these (the notice offers what will)
@@ -295,7 +306,7 @@ export const useProjectStore = defineStore('project', () => {
   /** Keep the unsaved layout in this browser, made on the cloud version last saved or opened */
   function keepDraft() {
     const m = meta.value
-    if (!m || !canEdit.value || planner.projectId !== m.id) return
+    if (!m || !mayEdit.value || planner.projectId !== m.id) return
     kept.value = saveDraft(m.id, {
       base: m.updated_at,
       at: new Date().toISOString(),
@@ -390,22 +401,27 @@ export const useProjectStore = defineStore('project', () => {
   async function refreshMeta() {
     const m = meta.value
     if (!m) return
-    // a guest can't read the project itself: the link shows what it allows now
-    if (!auth.user) return reload()
-    let fresh: Awaited<ReturnType<typeof loadMeta>>
+    let fresh: Omit<LoadedProject, 'items'>
     try {
-      fresh = await loadMeta(m.id, auth.user.id)
+      if (auth.user) fresh = await loadMeta(m.id, auth.user.id)
+      else {
+        // a guest can't read the project itself: the link says what it allows now
+        const r = openedToken ? await loadShared(openedToken) : null
+        if (r?.status !== 'ok') return reload()
+        fresh = r.project
+      }
     } catch (e) {
+      // no longer theirs to open: the page says so (anything else, what's shown stands)
       if (e instanceof CloudError && e.code === 'not_found') return reload()
       logError('reading the project again failed', e)
       return
     }
     if (meta.value?.id !== m.id) return
-    const couldEdit = canEdit.value
+    const couldEdit = mayEdit.value
     meta.value = { ...meta.value, ...fresh.meta, updated_at: meta.value.updated_at }
     planner.readOnly = !canEdit.value
-    if (couldEdit !== canEdit.value)
-      planner.notify(canEdit.value ? t().collab.nowEditor : t().collab.nowViewer)
+    if (couldEdit !== mayEdit.value)
+      planner.notify(mayEdit.value ? t().collab.nowEditor : t().collab.nowViewer)
     if (saved && JSON.stringify(settings()) === savedSettings) {
       palettes.importPalettes(fresh.settings)
       const pricing = fresh.settings.pricing
@@ -448,6 +464,24 @@ export const useProjectStore = defineStore('project', () => {
     if (meta.value && saved && JSON.stringify(settings()) !== savedSettings) schedule()
   })
 
+  // The cloud paused changes, or took them again (app_settings): read-only meanwhile, keeping
+  // what wasn't saved yet in this browser, then saving it once changes are back
+  watch(
+    () => cloud.canUpdate,
+    (on) => {
+      if (!meta.value || !mayEdit.value || planner.projectId !== meta.value.id) return
+      planner.readOnly = !canEdit.value
+      if (!on) {
+        clearTimeout(timer)
+        if (status.value !== 'saved') keepDraft()
+        planner.notify(t().cloud.pausedNow)
+        return
+      }
+      planner.notify(t().cloud.resumed)
+      if (status.value !== 'saved') void flush()
+    },
+  )
+
   if (typeof window !== 'undefined') {
     // Connection or tab back after a failed save: try again at once
     const retryNow = () => {
@@ -478,6 +512,8 @@ export const useProjectStore = defineStore('project', () => {
     draft,
     draftConflict,
     canEdit,
+    mayEdit,
+    paused,
     open,
     openShared,
     close,

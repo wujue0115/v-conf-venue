@@ -105,22 +105,6 @@ export function rateLimited<T>(
   }
 }
 
-/** Whether app_settings has realtime on (off, or no cloud: the planner works without it) */
-export async function realtimeOn() {
-  if (!supabase) return false
-  const { data, error } = await supabase
-    .from('app_settings')
-    .select('value')
-    .eq('key', 'cloud')
-    .maybeSingle()
-  if (error) {
-    console.error('[realtime] reading settings failed', error)
-    return false
-  }
-  const v = (data as { value?: { enabled?: boolean; allowRealtime?: boolean } } | null)?.value
-  return !!v?.enabled && !!v.allowRealtime
-}
-
 /**
  * Join a project's channel as this tab (`key`). `present`: show up in presence (signed-in
  * people); a guest only listens.

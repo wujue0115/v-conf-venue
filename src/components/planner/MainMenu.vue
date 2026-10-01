@@ -9,6 +9,7 @@ import { createProject } from '@/cloud/projects'
 import { LOCALES, LOCALE_NAMES, locale, t } from '@/i18n'
 import { useVenueEditor } from '@/composables/useVenueEditor'
 import { useAuthStore } from '@/stores/auth'
+import { useCloudStore } from '@/stores/cloud'
 import { usePalettesStore } from '@/stores/palettes'
 import { usePlannerStore } from '@/stores/planner'
 import { downloadJSON, stamp } from '@/venue/download'
@@ -23,6 +24,7 @@ import { exportLayout, parseLayout, readPricing } from '@/venue/layout'
 const store = usePlannerStore()
 const palettes = usePalettesStore()
 const auth = useAuthStore()
+const cloud = useCloudStore()
 const editor = useVenueEditor()
 const open = shallowRef(false)
 const root = useTemplateRef('root')
@@ -102,7 +104,7 @@ async function saveToCloud() {
 // the window is there to open)
 onMounted(() =>
   watch(
-    () => [auth.ready, auth.user] as const,
+    [() => auth.ready, () => auth.user?.id],
     ([ready, user]) => {
       if (!ready) return
       let pending: string | null = null
@@ -195,7 +197,14 @@ onBeforeUnmount(unlisten)
           class="item"
           type="button"
           role="menuitem"
-          :title="auth.user ? t().cloud.saveToCloudHint : t().cloud.signInToSave"
+          :title="
+            !cloud.canCreate
+              ? t().cloud.createPaused
+              : auth.user
+                ? t().cloud.saveToCloudHint
+                : t().cloud.signInToSave
+          "
+          :disabled="!cloud.canCreate"
           @click="saveToCloud"
         >
           <svg class="ico" viewBox="0 0 24 24" aria-hidden="true">

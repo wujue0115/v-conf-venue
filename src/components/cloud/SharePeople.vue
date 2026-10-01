@@ -7,6 +7,7 @@ import type { Grant } from '@/cloud/projects'
 import { t } from '@/i18n'
 import { useAccessStore } from '@/stores/access'
 import { useAuthStore } from '@/stores/auth'
+import { useCloudStore } from '@/stores/cloud'
 import { useProjectStore } from '@/stores/project'
 
 /**
@@ -18,11 +19,14 @@ import { useProjectStore } from '@/stores/project'
 const access = useAccessStore()
 const project = useProjectStore()
 const auth = useAuthStore()
+const cloud = useCloudStore()
 
 const email = shallowRef('')
 const role = shallowRef<Grant>('editor')
 /** The row (or 'add') a change is waiting on */
 const busy = shallowRef<string | null>(null)
+/** Waiting on a change, or the cloud has changes paused: nothing more can be changed now */
+const frozen = computed(() => !!busy.value || !cloud.canUpdate)
 /** What the last change came to: done, or why it failed */
 const message = shallowRef<{ text: string; error: boolean } | null>(null)
 
@@ -37,7 +41,8 @@ const linkLetsIn = computed(
 )
 
 async function run(key: string, job: () => Promise<void>, done?: string) {
-  if (busy.value) return
+  // the cloud has changes paused (loading the list still works)
+  if (busy.value || (key !== 'load' && !cloud.canUpdate)) return
   busy.value = key
   message.value = null
   try {
@@ -95,12 +100,16 @@ defineExpose({ refresh })
         autocomplete="off"
         :aria-label="t().share.people.email"
         :placeholder="t().share.people.emailPlaceholder"
-        :disabled="busy === 'add'"
+        :disabled="busy === 'add' || !cloud.canUpdate"
       />
-      <select v-model="role" :aria-label="t().share.people.roleOf(email || '…')">
+      <select
+        v-model="role"
+        :disabled="!cloud.canUpdate"
+        :aria-label="t().share.people.roleOf(email || '…')"
+      >
         <option v-for="g in GRANTS" :key="g" :value="g">{{ t().share.people.roles[g] }}</option>
       </select>
-      <button class="ok" type="submit" :disabled="!email.trim() || busy === 'add'">
+      <button class="ok" type="submit" :disabled="!email.trim() || frozen">
         {{ t().share.people.add }}
       </button>
     </form>
@@ -118,10 +127,10 @@ defineExpose({ refresh })
               <b>{{ a.email }}</b>
               <i>{{ t().share.people.asks[a.requested_role!] }}</i>
             </span>
-            <button class="txt-btn" type="button" :disabled="!!busy" @click="deny(a)">
+            <button class="txt-btn" type="button" :disabled="frozen" @click="deny(a)">
               {{ t().share.people.deny }}
             </button>
-            <button class="txt-btn ok" type="button" :disabled="!!busy" @click="approve(a)">
+            <button class="txt-btn ok" type="button" :disabled="frozen" @click="approve(a)">
               {{ t().share.people.approve }}
             </button>
           </li>
@@ -136,7 +145,7 @@ defineExpose({ refresh })
           <select
             :value="a.role"
             :aria-label="t().share.people.roleOf(a.email)"
-            :disabled="!!busy"
+            :disabled="frozen"
             @change="setRole(a, ($event.target as HTMLSelectElement).value as Grant)"
           >
             <option v-for="g in GRANTS" :key="g" :value="g">
@@ -148,7 +157,7 @@ defineExpose({ refresh })
             type="button"
             :title="t().share.people.removeTitle(a.email)"
             :aria-label="t().share.people.removeTitle(a.email)"
-            :disabled="!!busy"
+            :disabled="frozen"
             @click="remove(a)"
           >
             <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
@@ -189,7 +198,7 @@ defineExpose({ refresh })
               <span class="who"
                 ><b>{{ a.email }}</b></span
               >
-              <button class="txt-btn" type="button" :disabled="!!busy" @click="makeMember(a)">
+              <button class="txt-btn" type="button" :disabled="frozen" @click="makeMember(a)">
                 {{ t().share.people.makeMember }}
               </button>
               <button
@@ -197,7 +206,7 @@ defineExpose({ refresh })
                 type="button"
                 :title="t().share.people.removeTitle(a.email)"
                 :aria-label="t().share.people.removeTitle(a.email)"
-                :disabled="!!busy"
+                :disabled="frozen"
                 @click="remove(a)"
               >
                 <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">

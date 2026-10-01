@@ -4,12 +4,14 @@ import NameDialog from './NameDialog.vue'
 import { cloudMessage } from '@/cloud/messages'
 import { t } from '@/i18n'
 import { useAuthStore } from '@/stores/auth'
+import { useCloudStore } from '@/stores/cloud'
 import { usePlannerStore } from '@/stores/planner'
 import { useProjectStore } from '@/stores/project'
 
 /**
  * Next to ☰ while a cloud project is open: its name (its owner clicks it to rename) and whether
- * the latest changes are saved, with 重試 when saving failed. Someone only viewing sees 唯讀,
+ * the latest changes are saved, with 重試 when saving failed; 離線 with no connection, and
+ * 暫停編輯 while app_settings has the cloud's changes paused. Someone only viewing sees 唯讀,
  * with 要求編輯 to ask the owner (已要求編輯 once asked); a guest sees 登入以編輯, since signing
  * in may let them edit.
  */
@@ -17,10 +19,22 @@ import { useProjectStore } from '@/stores/project'
 const project = useProjectStore()
 const planner = usePlannerStore()
 const auth = useAuthStore()
-const canRename = computed(() => project.meta?.role === 'owner')
+const cloud = useCloudStore()
+const canRename = computed(() => project.meta?.role === 'owner' && project.canEdit)
 const renameDialog = useTemplateRef('renameDialog')
 
-const state = computed(() => (project.canEdit ? project.status : 'readOnly'))
+const state = computed(() => {
+  if (project.paused) return 'paused'
+  if (!project.canEdit) return 'readOnly'
+  // saving waits for the connection (a failure says so itself)
+  if (cloud.offline && project.status !== 'error') return 'offline'
+  return project.status
+})
+const hint = computed(() =>
+  state.value === 'paused' || state.value === 'offline'
+    ? t().cloud.statusHint[state.value]
+    : undefined,
+)
 /** Signed in and only viewing: they may ask the owner to edit */
 const canAsk = computed(
   () => state.value === 'readOnly' && !!auth.user && project.meta?.role === 'viewer',
@@ -68,7 +82,7 @@ function rename() {
       </svg>
       <span class="text">{{ project.meta.name }}</span>
     </button>
-    <span class="status" :class="state" role="status">
+    <span class="status" :class="state" role="status" :title="hint">
       <span class="dot" aria-hidden="true"></span>
       <span class="label">{{ label }}</span>
     </span>
@@ -178,8 +192,13 @@ function rename() {
 .error .dot {
   background: #d93025;
 }
-.readOnly .dot {
+.readOnly .dot,
+.paused .dot {
   background: var(--faint);
+}
+.offline .dot {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--faint);
 }
 .asked {
   font-size: 12px;

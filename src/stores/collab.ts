@@ -1,16 +1,11 @@
 import { computed, shallowRef, watch } from 'vue'
 import { acceptHMRUpdate, defineStore } from 'pinia'
-import { loadItems } from '@/cloud/projects'
-import {
-  joinProject,
-  realtimeOn,
-  type Peer,
-  type ProjectChannel,
-  type Selection,
-} from '@/cloud/realtime'
+import { CloudError, loadItems } from '@/cloud/projects'
+import { joinProject, type Peer, type ProjectChannel, type Selection } from '@/cloud/realtime'
 import { t } from '@/i18n'
 import { useAccessStore } from '@/stores/access'
 import { useAuthStore } from '@/stores/auth'
+import { useCloudStore } from '@/stores/cloud'
 import { usePlannerStore } from '@/stores/planner'
 import { useProjectStore } from '@/stores/project'
 import type { LayoutItem } from '@/venue/layout'
@@ -36,6 +31,10 @@ const CAMERA_EVERY = 250
 const SELECT_DELAY = 100
 /** Changed ids are gathered this long before fetching them, so a burst is one fetch */
 const FETCH_DELAY = 120
+/** Fetching them failed: tried again this much later */
+const FETCH_RETRY = 3000
+/** Joined this long after the project opened (or after realtime was off): catch up on all of it */
+const CATCH_UP_AFTER = 3000
 
 /** One colour per person, the same on every screen */
 const COLORS = [
@@ -87,6 +86,7 @@ export const useCollabStore = defineStore('collab', () => {
   const planner = usePlannerStore()
   const auth = useAuthStore()
   const access = useAccessStore()
+  const cloud = useCloudStore()
 
   /** This tab, among the others in presence */
   const key = crypto.randomUUID()
@@ -326,6 +326,12 @@ export const useCollabStore = defineStore('collab', () => {
       project.takeRemote(rows, gone, (up, del) => editor?.applyRemote(up, del))
     } catch (e) {
       console.error('[realtime] fetching changed items failed', e)
+      if (project.meta?.id !== m.id) return
+      // try again later, with anything that came in meanwhile (the later word on an id winning)
+      for (const id of ids) if (!deleted.has(id)) changed.add(id)
+      for (const id of gone) if (!changed.has(id)) deleted.add(id)
+      clearTimeout(fetchTimer)
+      fetchTimer = setTimeout(() => void fetchChanged(), FETCH_RETRY)
     }
   }
 
@@ -338,28 +344,41 @@ export const useCollabStore = defineStore('collab', () => {
       if (project.meta?.id !== m.id) return
       project.takeRemote(rows, [], (up, del) => editor?.applyRemote(up, del), { full: true })
     } catch (e) {
+      // a guest's link that no longer opens it: the page says so
+      if (e instanceof CloudError && e.code === 'gone') return void project.reload()
       console.error('[realtime] catching up failed', e)
+      return
     }
-    void project.refreshMeta()
+    // a guest's items came through the link, which just showed it still opens
+    if (auth.user) void project.refreshMeta()
   }
 
   function onAccess() {
+    // a guest has no access of their own to change (sharing changing comes as 'project')
+    if (!auth.user) return
     void project.refreshMeta()
     if (project.meta?.role === 'owner') void access.refresh()
   }
 
   // ─── Joining (last: it runs at once, using everything above) ────────────────
 
-  // joined again whenever the project, who's signed in or their role changes (a new role may
-  // send what the old one couldn't)
+  /** When the open project was loaded, to tell whether joining now may have missed changes */
+  let openedAt = 0
   watch(
-    () => [project.meta?.id, auth.user?.id, project.meta?.role] as const,
-    async ([id, user, role]) => {
+    () => project.meta?.id,
+    () => (openedAt = Date.now()),
+    { immediate: true },
+  )
+
+  // joined again whenever the project, who's signed in or their role changes (a new role may
+  // send what the old one couldn't), and left while app_settings has realtime off
+  watch(
+    // each compared on its own: the project's meta is replaced on every save, and a getter
+    // returning a new array would rejoin each time (others seeing this tab leave and come back)
+    [() => project.meta?.id, () => auth.user?.id, () => project.meta?.role, () => cloud.realtime],
+    ([id, user, role, on]) => {
       leave()
-      if (!id || !role) return
-      if (!(await realtimeOn())) return
-      // moved on while asking
-      if (project.meta?.id !== id || auth.user?.id !== user || project.meta?.role !== role) return
+      if (!id || !role || !on) return
       channel = joinProject(
         id,
         { key, present: !!user },
@@ -375,8 +394,9 @@ export const useCollabStore = defineStore('collab', () => {
           deleted: () => void project.reload(),
           joined: (again) => {
             connected.value = true
-            // things may have changed while the connection was down: catch up on all of it
-            if (again) void resync()
+            // things may have changed while the connection was down, or before it was first
+            // made (realtime switched on late): catch up on all of it
+            if (again || Date.now() - openedAt > CATCH_UP_AFTER) void resync()
           },
         },
       )

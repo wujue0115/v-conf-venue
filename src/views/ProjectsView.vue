@@ -15,6 +15,7 @@ import {
 } from '@/cloud/projects'
 import { t } from '@/i18n'
 import { useAuthStore } from '@/stores/auth'
+import { useCloudStore } from '@/stores/cloud'
 import { downloadJSON, stamp } from '@/venue/download'
 import { exportLayout } from '@/venue/layout'
 
@@ -24,6 +25,7 @@ import { exportLayout } from '@/venue/layout'
  */
 
 const auth = useAuthStore()
+const cloud = useCloudStore()
 const router = useRouter()
 const projects = shallowRef<ProjectSummary[] | null>(null)
 const listError = shallowRef('')
@@ -63,7 +65,7 @@ async function refreshShared() {
 }
 
 watch(
-  () => [auth.ready, auth.user?.id] as const,
+  [() => auth.ready, () => auth.user?.id],
   ([ready, user]) => {
     projects.value = null
     shared.value = null
@@ -73,6 +75,15 @@ watch(
     }
   },
   { immediate: true },
+)
+// back online: read the lists again (they may have failed, or be out of date)
+watch(
+  () => cloud.offline,
+  (off) => {
+    if (off || !auth.user) return
+    void refresh()
+    void refreshShared()
+  },
 )
 
 const openProject = (id: string) => router.push({ name: 'project', params: { projectId: id } })
@@ -189,13 +200,27 @@ onBeforeUnmount(() => {
     <main class="main">
       <div class="head">
         <h1>{{ t().cloud.myProjects }}</h1>
-        <button v-if="auth.user" class="primary" type="button" @click="newProject">
+        <button
+          v-if="auth.user"
+          class="primary"
+          type="button"
+          :disabled="!cloud.canCreate"
+          :title="cloud.canCreate ? undefined : t().cloud.createPaused"
+          @click="newProject"
+        >
           <svg class="ico" viewBox="0 0 24 24" aria-hidden="true">
             <path d="M12 5v14M5 12h14" />
           </svg>
           {{ t().cloud.newProject }}
         </button>
       </div>
+
+      <p v-if="auth.available && !cloud.enabled" class="banner" role="status">
+        {{ t().cloud.pausedBanner }}
+      </p>
+      <p v-else-if="auth.available && cloud.offline" class="banner" role="status">
+        {{ t().cloud.offlineBanner }}
+      </p>
 
       <p v-if="!auth.available" class="note">{{ t().cloud.errors.unavailable }}</p>
       <p v-else-if="!auth.ready" class="note">{{ t().cloud.loading }}</p>
@@ -261,29 +286,63 @@ onBeforeUnmount(() => {
                 </svg>
               </button>
               <div v-if="menuFor === p.id" class="pop" role="menu">
-                <button class="item" type="button" role="menuitem" @click="rename(p)">
+                <button
+                  class="item"
+                  type="button"
+                  role="menuitem"
+                  :disabled="!cloud.canUpdate"
+                  :title="cloud.canUpdate ? undefined : t().cloud.updatePaused"
+                  @click="rename(p)"
+                >
                   {{ t().cloud.rename }}
                 </button>
-                <button class="item" type="button" role="menuitem" @click="duplicate(p)">
+                <button
+                  class="item"
+                  type="button"
+                  role="menuitem"
+                  :disabled="!cloud.canCreate"
+                  :title="cloud.canCreate ? undefined : t().cloud.createPaused"
+                  @click="duplicate(p)"
+                >
                   {{ t().cloud.duplicate }}
                 </button>
                 <button class="item" type="button" role="menuitem" @click="exportJson(p)">
                   {{ t().cloud.exportJson }}
                 </button>
-                <button class="item danger" type="button" role="menuitem" @click="remove(p)">
+                <button
+                  class="item danger"
+                  type="button"
+                  role="menuitem"
+                  :disabled="!cloud.canUpdate"
+                  :title="cloud.canUpdate ? undefined : t().cloud.updatePaused"
+                  @click="remove(p)"
+                >
                   {{ t().cloud.delete }}
                 </button>
               </div>
             </div>
           </div>
+          <!-- while the list loads -->
+          <template v-if="!projects && !listError">
+            <div v-for="i in 2" :key="i" class="card project skeleton" aria-hidden="true">
+              <div class="thumb"></div>
+              <div class="info"><b></b><span></span></div>
+            </div>
+          </template>
         </div>
+        <p v-if="!projects && !listError" class="sr-only" role="status">{{ t().cloud.loading }}</p>
 
         <p v-if="listError" class="note error">{{ listError }}</p>
-        <p v-else-if="!projects" class="note">{{ t().cloud.loading }}</p>
-        <p v-else-if="!projects.length" class="note">{{ t().cloud.empty }}</p>
+        <p v-else-if="projects && !projects.length" class="note">{{ t().cloud.empty }}</p>
 
         <h2 class="section">{{ t().cloud.sharedWithMe }}</h2>
-        <div v-if="shared?.length" class="grid">
+        <div v-if="!shared && !sharedError" class="grid" aria-hidden="true">
+          <div class="card project skeleton">
+            <div class="thumb"></div>
+            <div class="info"><b></b><span></span></div>
+          </div>
+        </div>
+        <div v-else-if="shared?.length" class="grid">
           <div v-for="p in shared" :key="p.id" class="card project">
             <button class="open" type="button" :title="t().cloud.open" @click="openProject(p.id)">
               <div class="thumb shared" aria-hidden="true">
@@ -303,8 +362,7 @@ onBeforeUnmount(() => {
           </div>
         </div>
         <p v-if="sharedError" class="note error">{{ sharedError }}</p>
-        <p v-else-if="!shared" class="note">{{ t().cloud.loading }}</p>
-        <p v-else-if="!shared.length" class="note">{{ t().cloud.sharedEmpty }}</p>
+        <p v-else-if="shared && !shared.length" class="note">{{ t().cloud.sharedEmpty }}</p>
       </template>
     </main>
 
@@ -564,10 +622,67 @@ h1 {
   font-size: 13px;
   cursor: pointer;
 }
-.item:hover {
+.item:hover:not(:disabled) {
   background: #f4f1ea;
 }
-.item.danger:hover {
+.item:disabled {
+  color: var(--faint);
+  cursor: default;
+}
+.banner {
+  margin: 0 0 16px;
+  padding: 10px 14px;
+  border: 1px solid #ecd9a6;
+  border-radius: 10px;
+  background: #fdf7e6;
+  font-size: 13px;
+  color: #6b5317;
+}
+/* a card's shape while the list loads, gently pulsing */
+.skeleton {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  pointer-events: none;
+  animation: pulse 1.4s ease-in-out infinite;
+}
+.skeleton .thumb {
+  background: #f1ede4;
+}
+.skeleton b,
+.skeleton span {
+  display: block;
+  height: 10px;
+  border-radius: 5px;
+  background: #f1ede4;
+}
+.skeleton b {
+  width: 140px;
+  margin-bottom: 6px;
+}
+.skeleton span {
+  width: 90px;
+}
+@keyframes pulse {
+  50% {
+    opacity: 0.55;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+  }
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.item.danger:hover:not(:disabled) {
   background: #fbe9e7;
   color: #b3261e;
 }

@@ -4,7 +4,7 @@ import SharePeople from './SharePeople.vue'
 import { cloudMessage } from '@/cloud/messages'
 import type { EditAccess, Sharing, ViewAccess } from '@/cloud/projects'
 import { t } from '@/i18n'
-import { usePlannerStore } from '@/stores/planner'
+import { useCloudStore } from '@/stores/cloud'
 import { useProjectStore } from '@/stores/project'
 
 /**
@@ -16,10 +16,14 @@ import { useProjectStore } from '@/stores/project'
  */
 
 const project = useProjectStore()
-const planner = usePlannerStore()
+const cloud = useCloudStore()
 const dialog = useTemplateRef('dialog')
 const people = useTemplateRef('people')
 const busy = shallowRef(false)
+/** Why the last change failed, shown in the window (a toast would sit behind it) */
+const error = shallowRef('')
+/** The cloud has changes paused: everything here is just shown */
+const locked = computed(() => busy.value || !cloud.canUpdate)
 const copied = shallowRef(false)
 
 const sharing = computed(() => project.meta?.sharing ?? null)
@@ -32,17 +36,19 @@ const EDIT: EditAccess[] = ['authenticated', 'allowed']
 
 function open() {
   copied.value = false
+  error.value = ''
   dialog.value?.showModal()
   void people.value?.refresh()
 }
 
 async function change(patch: Partial<Sharing>) {
-  if (busy.value) return
+  if (locked.value) return
   busy.value = true
+  error.value = ''
   try {
     await project.setSharing(patch)
   } catch (e) {
-    planner.notify(cloudMessage(e))
+    error.value = cloudMessage(e)
   } finally {
     busy.value = false
   }
@@ -66,7 +72,7 @@ async function copy() {
     copied.value = true
     setTimeout(() => (copied.value = false), 2000)
   } catch {
-    planner.notify(t().share.copyFailed)
+    error.value = t().share.copyFailed
   }
 }
 
@@ -100,6 +106,8 @@ defineExpose({ open })
         </button>
       </div>
 
+      <p v-if="!cloud.canUpdate" class="paused" role="status">{{ t().cloud.updatePaused }}</p>
+
       <label class="row switch-row">
         <span class="txt">
           <b>{{ t().share.enabled }}</b>
@@ -111,7 +119,7 @@ defineExpose({ open })
           type="button"
           role="switch"
           :aria-checked="sharing.share_enabled"
-          :disabled="busy"
+          :disabled="locked"
           @click="change({ share_enabled: !sharing.share_enabled })"
         >
           <span class="knob"></span>
@@ -130,7 +138,7 @@ defineExpose({ open })
         </button>
       </div>
 
-      <fieldset :disabled="busy || !sharing.share_enabled">
+      <fieldset :disabled="locked || !sharing.share_enabled">
         <legend>{{ t().share.view }}</legend>
         <label v-for="v in VIEW" :key="v" class="opt">
           <input
@@ -143,7 +151,7 @@ defineExpose({ open })
         </label>
       </fieldset>
 
-      <fieldset :disabled="busy || !sharing.share_enabled">
+      <fieldset :disabled="locked || !sharing.share_enabled">
         <legend>{{ t().share.edit }}</legend>
         <label v-for="e in EDIT" :key="e" class="opt">
           <input
@@ -156,10 +164,12 @@ defineExpose({ open })
         </label>
       </fieldset>
 
+      <p v-if="error" class="error" role="alert">{{ error }}</p>
+
       <SharePeople ref="people" />
 
       <div class="foot">
-        <button class="replace" type="button" :disabled="busy" @click="replaceLink">
+        <button class="replace" type="button" :disabled="locked" @click="replaceLink">
           {{ t().share.replace }}
         </button>
         <button class="txt-btn ok" type="button" @click="dialog?.close()">
@@ -344,6 +354,20 @@ legend {
 .opt input {
   margin: 0;
   accent-color: #b07d0c;
+}
+.error {
+  margin: 12px 0 0;
+  font-size: 12px;
+  color: #b3261e;
+}
+.paused {
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  border: 1px solid #ecd9a6;
+  border-radius: 8px;
+  background: #fdf7e6;
+  font-size: 12px;
+  color: #6b5317;
 }
 .foot {
   display: flex;

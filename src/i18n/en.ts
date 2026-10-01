@@ -73,7 +73,21 @@ const en: Messages = {
       error: "Couldn't save",
       retry: 'Retry',
       readOnly: 'Read-only',
+      paused: 'Editing paused',
+      offline: 'Offline',
     },
+    statusHint: {
+      paused:
+        "The cloud is paused, so nothing can be changed for now; saving carries on once it's back",
+      offline: "No connection; changes save by themselves once it's back",
+    },
+    pausedNow: 'The cloud is paused, so this project is read-only for now',
+    resumed: 'The cloud is back',
+    createPaused: "New cloud projects can't be made right now",
+    updatePaused: 'The cloud is paused, so nothing can be changed for now',
+    pausedBanner:
+      'The cloud is paused for now. You can still open projects to view them, or use your local project.',
+    offlineBanner: "No connection. This refreshes by itself once it's back.",
     errors: {
       unavailable: 'This build has no cloud set up',
       not_found: "This project doesn't exist, or you can't open it",

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
-import type { Role } from '@/cloud/projects'
+import type { Role, SharedResult } from '@/cloud/projects'
 import type { LayoutItem } from '@/venue/layout'
 import { STORAGE_KEY } from '@/venue/layout'
 
@@ -11,6 +11,7 @@ const api = vi.hoisted(() => ({
   saveChanges: vi.fn<Api['saveChanges']>(),
   renameProject: vi.fn<Api['renameProject']>(),
   checkAccess: vi.fn<Api['checkAccess']>(),
+  loadShared: vi.fn<Api['loadShared']>(),
 }))
 vi.mock('@/cloud/projects', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/cloud/projects')>()),
@@ -21,6 +22,7 @@ vi.mock('@/lib/supabase', () => ({ supabase: null }))
 
 import { CloudError } from '@/cloud/projects'
 import { useAuthStore } from '../auth'
+import { useCloudStore } from '../cloud'
 import { usePlannerStore } from '../planner'
 import { useProjectStore } from '../project'
 
@@ -370,6 +372,82 @@ describe('project store', () => {
       const [, changes] = api.saveChanges.mock.calls[0]!
       expect(xs(changes.upserts)).toEqual([[C, 3]])
       expect(changes.deletes).toEqual([])
+    })
+  })
+
+  describe('the cloud pausing changes (app_settings)', () => {
+    const switches = (allowUpdate: boolean) => ({
+      enabled: true,
+      allowCreate: true,
+      allowUpdate,
+      allowRealtime: false,
+    })
+
+    it('turns the project read-only, keeps what wasn’t saved, and saves it once back', async () => {
+      const { project, planner } = await openProject('editor')
+      const cloud = useCloudStore()
+      planner.items = [item(A, 5), item(B, 2)]
+      await nextTick()
+      cloud.settings = switches(false)
+      await nextTick()
+      expect(project.paused).toBe(true)
+      expect(planner.readOnly).toBe(true)
+      expect(localStorage.getItem('v-conf-venue:unsaved:p1')).not.toBeNull()
+      await vi.runAllTimersAsync()
+      // waiting, not "saved"
+      expect(api.saveChanges).not.toHaveBeenCalled()
+      expect(project.status).toBe('pending')
+      await project.flush()
+      expect(project.status).toBe('pending')
+
+      cloud.settings = switches(true)
+      await nextTick()
+      await vi.runAllTimersAsync()
+      expect(planner.readOnly).toBe(false)
+      expect(api.saveChanges).toHaveBeenCalledTimes(1)
+      expect(project.status).toBe('saved')
+      expect(localStorage.getItem('v-conf-venue:unsaved:p1')).toBeNull()
+    })
+  })
+
+  describe('a guest, through a share link', () => {
+    const shared = (name: string): SharedResult => ({
+      status: 'ok',
+      project: {
+        meta: {
+          id: 'p1',
+          name,
+          updated_at: '2026-10-01T00:00:00Z',
+          role: 'viewer',
+          requested: null,
+          sharing: null,
+        },
+        items: [item(A, 1)],
+        settings: {},
+      },
+    })
+
+    it('reads the project again quietly, without loading it all over', async () => {
+      api.loadShared.mockReset().mockResolvedValue(shared('Test'))
+      const project = useProjectStore()
+      await project.openShared('tok')
+      expect(project.meta?.name).toBe('Test')
+      api.loadShared.mockResolvedValue(shared('Renamed'))
+      const loading: boolean[] = []
+      project.$subscribe(() => loading.push(project.loading))
+      await project.refreshMeta()
+      expect(project.meta?.name).toBe('Renamed')
+      expect(loading).not.toContain(true)
+    })
+
+    it('shows the link no longer opening it, once it doesn’t', async () => {
+      api.loadShared.mockReset().mockResolvedValue(shared('Test'))
+      const project = useProjectStore()
+      await project.openShared('tok')
+      api.loadShared.mockResolvedValue({ status: 'not_found' })
+      await project.refreshMeta()
+      expect(project.meta).toBeNull()
+      expect(project.shareDenied?.status).toBe('not_found')
     })
   })
 })

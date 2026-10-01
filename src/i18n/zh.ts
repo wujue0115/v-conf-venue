@@ -79,7 +79,21 @@ const zh = {
       error: '儲存失敗',
       retry: '重試',
       readOnly: '唯讀',
+      paused: '暫停編輯',
+      offline: '離線',
     },
+    /** Hovering the save status */
+    statusHint: {
+      paused: '雲端功能暫停中，暫時無法修改；恢復後會自動繼續儲存',
+      offline: '目前沒有網路連線，改動會在恢復連線後自動儲存',
+    },
+    /** app_settings switched the cloud (or part of it) off */
+    pausedNow: '雲端功能暫停中，專案暫時改為唯讀',
+    resumed: '雲端功能已恢復',
+    createPaused: '目前暫停建立新的雲端專案',
+    updatePaused: '雲端功能暫停中，暫時無法修改',
+    pausedBanner: '雲端功能目前暫停開放，你仍然可以開啟專案檢視，或使用本機專案。',
+    offlineBanner: '目前沒有網路連線，恢復後會自動重新整理。',
     errors: {
       unavailable: '這個版本沒有設定雲端功能',
       not_found: '找不到這個專案，或你沒有開啟的權限',

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, shallowRef, watch } from 'vue'
+import { computed, onBeforeUnmount, shallowRef, watch, watchEffect } from 'vue'
 import { storeToRefs } from 'pinia'
 import { onBeforeRouteLeave, onBeforeRouteUpdate, RouterLink, useRouter } from 'vue-router'
 import PlannerSidebar from '@/components/planner/PlannerSidebar.vue'
@@ -30,7 +30,8 @@ if (!cloud.value) store.openLocal()
 
 // A project opens once the session is known, and again whenever who is signed in changes
 watch(
-  () => [auth.ready, auth.user?.id] as const,
+  // each compared on its own (the user object is replaced whenever the session is refreshed)
+  [() => auth.ready, () => auth.user?.id],
   ([ready, user]) => {
     if (!ready) return
     if (props.shareToken) void project.openShared(props.shareToken)
@@ -78,6 +79,12 @@ async function ask(role: Grant) {
     asking.value = false
   }
 }
+
+// The tab says which cloud project it is
+watchEffect(() => {
+  document.title = project.meta ? `${project.meta.name} · ${t().docTitle}` : t().docTitle
+})
+onBeforeUnmount(() => (document.title = t().docTitle))
 
 // Whatever is still waiting is saved before the planner leaves the project
 async function leave() {
