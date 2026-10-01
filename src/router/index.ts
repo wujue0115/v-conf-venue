@@ -22,6 +22,13 @@ const router = createRouter({
       component: PlannerView,
       props: true,
     },
+    // a project through its share link: opened as the link allows, signed in or not
+    {
+      path: '/share/:shareToken',
+      name: 'share',
+      component: PlannerView,
+      props: true,
+    },
   ],
 })
 

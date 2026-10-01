@@ -10,8 +10,12 @@ import { useAuthStore } from '@/stores/auth'
 import { usePlannerStore } from '@/stores/planner'
 import { useProjectStore } from '@/stores/project'
 
-/** The layout kept in this browser, or (with `projectId`) a cloud project */
-const props = defineProps<{ projectId?: string }>()
+/**
+ * The layout kept in this browser, or a cloud project: by its id (`projectId`, My projects) or
+ * through its share link (`shareToken`)
+ */
+const props = defineProps<{ projectId?: string; shareToken?: string }>()
+const cloud = computed(() => !!(props.projectId || props.shareToken))
 
 provideVenueEditor()
 const store = usePlannerStore()
@@ -20,28 +24,44 @@ const auth = useAuthStore()
 const router = useRouter()
 const { sidebarCollapsed } = storeToRefs(store)
 
-if (!props.projectId) store.openLocal()
+if (!cloud.value) store.openLocal()
 
-// A project opens once the session is known: signed out, it asks to sign in instead
+// A project opens once the session is known, and again whenever who is signed in changes
 watch(
   () => [auth.ready, auth.user?.id] as const,
   ([ready, user]) => {
-    if (!props.projectId || !ready) return
-    if (user) void project.open(props.projectId)
-    // signed out while it was open
-    else if (project.meta) void router.push('/')
+    if (!ready) return
+    if (props.shareToken) void project.openShared(props.shareToken)
+    else if (props.projectId) {
+      if (user) void project.open(props.projectId)
+      // signed out while it was open: it isn't theirs to see any more
+      else if (project.meta) void router.push('/')
+    }
   },
   { immediate: true },
 )
 
 const ready = computed(
-  () => !props.projectId || (project.meta?.id === props.projectId && !project.loading),
+  () =>
+    !cloud.value ||
+    (!!project.meta && !project.loading && !project.loadError && !project.shareDenied),
 )
-const needsSignIn = computed(() => !!props.projectId && auth.ready && !auth.user)
+const needsSignIn = computed(
+  () =>
+    auth.ready &&
+    !auth.user &&
+    (!!props.projectId || project.shareDenied?.status === 'sign_in_required'),
+)
+const denied = computed(() => {
+  const d = project.shareDenied
+  if (!d || d.status === 'sign_in_required') return ''
+  if (d.status === 'no_access') return d.requested ? t().share.requested : t().share.noAccess
+  return t().share.notFound
+})
 
 // Whatever is still waiting is saved before the planner leaves the project
 async function leave() {
-  if (props.projectId) await project.close()
+  if (cloud.value) await project.close()
 }
 onBeforeRouteLeave(leave)
 onBeforeRouteUpdate(leave)
@@ -67,8 +87,8 @@ onBeforeRouteUpdate(leave)
   <div v-else class="notice">
     <div class="card">
       <template v-if="needsSignIn">
-        <h2>{{ t().cloud.signInTitle }}</h2>
-        <p>{{ t().cloud.signInHint }}</p>
+        <h2>{{ shareToken ? t().share.signInTitle : t().cloud.signInTitle }}</h2>
+        <p>{{ shareToken ? t().share.signInHint : t().cloud.signInHint }}</p>
         <button
           class="primary"
           type="button"
@@ -78,8 +98,8 @@ onBeforeRouteUpdate(leave)
           {{ auth.busy ? t().auth.signingIn : t().auth.signIn }}
         </button>
       </template>
-      <template v-else-if="project.loadError">
-        <p>{{ t().cloud.errors[project.loadError] }}</p>
+      <template v-else-if="project.loadError || denied">
+        <p>{{ denied || t().cloud.errors[project.loadError!] }}</p>
         <div class="links">
           <RouterLink to="/projects">{{ t().cloud.myProjects }}</RouterLink>
           <RouterLink to="/">{{ t().cloud.local }}</RouterLink>

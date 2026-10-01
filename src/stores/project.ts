@@ -2,15 +2,21 @@ import { computed, shallowRef, watch } from 'vue'
 import { acceptHMRUpdate, defineStore } from 'pinia'
 import { clearDraft, loadDraft, saveDraft, type Draft } from '@/cloud/drafts'
 import {
+  checkAccess,
   CloudError,
   isTransient,
   loadProject,
+  loadShared,
   renameProject,
   rowKey,
   saveChanges,
+  updateSharing,
   type CloudErrorCode,
+  type LoadedProject,
   type ProjectMeta,
   type ProjectSettings,
+  type SharedResult,
+  type Sharing,
 } from '@/cloud/projects'
 import { useAuthStore } from '@/stores/auth'
 import { usePalettesStore } from '@/stores/palettes'
@@ -61,8 +67,12 @@ export const useProjectStore = defineStore('project', () => {
   const draft = shallowRef<Draft | null>(null)
   /** The cloud version changed after the draft's changes began: restoring would overwrite it */
   const draftConflict = computed(() => !!draft.value && draft.value.base !== meta.value?.updated_at)
-  /** Only its owner edits it for now; sharing (editors) comes later */
-  const canEdit = computed(() => !!meta.value && meta.value.owner_id === auth.user?.id)
+  /** Its owner, or an editor (by name, or through the share link) */
+  const canEdit = computed(() => meta.value?.role === 'owner' || meta.value?.role === 'editor')
+  /** Opened through a share link that didn't let them in: why (null when it did, or by id) */
+  const shareDenied = shallowRef<Exclude<SharedResult, { status: 'ok' }> | null>(null)
+  /** The share link it was opened through, if any */
+  let token: string | null = null
 
   /** Each item as last saved (rowKey), by id; null until the editor reports the opened layout */
   let saved: Map<string, string> | null = null
@@ -99,25 +109,53 @@ export const useProjectStore = defineStore('project', () => {
     alertDismissed = true
   }
 
+  /** Take on a loaded project: into the planner, read-only unless this person may edit */
+  function apply(p: LoadedProject) {
+    meta.value = p.meta
+    // its colour rows join the palettes like an imported file's do
+    palettes.importPalettes(p.settings)
+    opened = p.items
+    saved = null
+    planner.openProject(p.meta.id, p.items, p.settings.pricing, { readOnly: !canEdit.value })
+    savedSettings = JSON.stringify(settings())
+    status.value = 'saved'
+    resetFailure()
+    draft.value = canEdit.value ? loadDraft(p.meta.id) : null
+  }
+
+  /** Open a project by its id (My projects) */
   async function open(id: string) {
-    if (meta.value?.id === id) return
+    if (meta.value?.id === id && !token) return
     await close()
     loading.value = true
     loadError.value = null
     try {
-      const p = await loadProject(id)
-      meta.value = p.meta
-      // its colour rows join the palettes like an imported file's do
-      palettes.importPalettes(p.settings)
-      opened = p.items
-      saved = null
-      planner.openProject(id, p.items, p.settings.pricing)
-      savedSettings = JSON.stringify(settings())
-      status.value = 'saved'
-      resetFailure()
-      draft.value = canEdit.value ? loadDraft(id) : null
+      apply(await loadProject(id, auth.user?.id))
     } catch (e) {
       logError('opening failed', e)
+      loadError.value = e instanceof CloudError ? e.code : 'failed'
+    } finally {
+      loading.value = false
+    }
+  }
+
+  /**
+   * Open a project through its share link, signed in or not. Opened again after signing in
+   * or out, since that can change what the link allows.
+   */
+  async function openShared(shareToken: string) {
+    await close()
+    loading.value = true
+    loadError.value = null
+    shareDenied.value = null
+    try {
+      const r = await loadShared(shareToken)
+      if (r.status === 'ok') {
+        token = shareToken
+        apply(r.project)
+      } else shareDenied.value = r
+    } catch (e) {
+      logError('opening the share link failed', e)
       loadError.value = e instanceof CloudError ? e.code : 'failed'
     } finally {
       loading.value = false
@@ -132,9 +170,11 @@ export const useProjectStore = defineStore('project', () => {
     if (status.value === 'error') keepDraft()
     clearTimeout(timer)
     meta.value = null
+    token = null
     saved = null
     opened = null
     draft.value = null
+    shareDenied.value = null
     resetFailure()
   }
 
@@ -176,6 +216,8 @@ export const useProjectStore = defineStore('project', () => {
   function onFailure(code: CloudErrorCode) {
     failure.value = code
     keepDraft()
+    // anything but a lost connection: look again at what this person may do now, to say why
+    if (code !== 'network' && code !== 'server') void diagnose()
     if (!isTransient(code)) {
       raiseAlert()
       return
@@ -187,6 +229,34 @@ export const useProjectStore = defineStore('project', () => {
     if (globalThis.navigator?.onLine === false) return
     clearTimeout(timer)
     timer = setTimeout(flush, delay ?? RETRY_EVERY)
+  }
+
+  /**
+   * After a failed save, check afresh whether this person may still save to the project, and
+   * when not, say why instead: signed out, the cloud paused, the project gone, the share link
+   * off, or only viewing now (then the planner turns read-only so nothing more is lost).
+   */
+  async function diagnose() {
+    const m = meta.value
+    if (!m) return
+    let found: Awaited<ReturnType<typeof checkAccess>>
+    try {
+      found = await checkAccess(m.id, { signedIn: !!auth.user, shareToken: token })
+    } catch (e) {
+      // checking failed too: the first reason stands
+      logError('checking access failed', e)
+      return
+    }
+    if (meta.value?.id !== m.id || found === 'ok' || status.value !== 'error') return
+    failure.value = found
+    raiseAlert()
+    // trying again on a timer won't help any of these (the notice offers what will)
+    clearTimeout(timer)
+    // these won't sort themselves out: stop editing, so nothing more goes unsaved
+    if (found === 'viewer' || found === 'gone' || found === 'link_off') {
+      if (found === 'viewer') meta.value = { ...m, role: 'viewer' }
+      planner.readOnly = true
+    }
   }
 
   async function saveOnce() {
@@ -227,6 +297,14 @@ export const useProjectStore = defineStore('project', () => {
   function dropDraft() {
     if (meta.value) clearDraft(meta.value.id)
     draft.value = null
+  }
+
+  /** Change the share link's settings (its owner only) */
+  async function setSharing(patch: Partial<Sharing>) {
+    if (!meta.value || meta.value.role !== 'owner') return
+    const id = meta.value.id
+    const sharing = await updateSharing(id, patch)
+    if (meta.value?.id === id) meta.value = { ...meta.value, sharing }
   }
 
   async function rename(name: string) {
@@ -275,6 +353,7 @@ export const useProjectStore = defineStore('project', () => {
     meta,
     loading,
     loadError,
+    shareDenied,
     status,
     failure,
     alert,
@@ -283,9 +362,11 @@ export const useProjectStore = defineStore('project', () => {
     draftConflict,
     canEdit,
     open,
+    openShared,
     close,
     flush,
     rename,
+    setSharing,
     dismissAlert,
     dropDraft,
   }

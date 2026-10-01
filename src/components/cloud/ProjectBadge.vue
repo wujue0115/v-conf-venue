@@ -3,23 +3,27 @@ import { computed, useTemplateRef } from 'vue'
 import NameDialog from './NameDialog.vue'
 import { cloudMessage } from '@/cloud/messages'
 import { t } from '@/i18n'
+import { useAuthStore } from '@/stores/auth'
 import { usePlannerStore } from '@/stores/planner'
 import { useProjectStore } from '@/stores/project'
 
 /**
- * Next to ☰ while a cloud project is open: its name (click to rename) and whether the latest
- * changes are saved, with 重試 when saving failed.
+ * Next to ☰ while a cloud project is open: its name (its owner clicks it to rename) and whether
+ * the latest changes are saved, with 重試 when saving failed. Someone only viewing sees 唯讀,
+ * and a guest 登入以編輯, since signing in may let them edit.
  */
 
 const project = useProjectStore()
 const planner = usePlannerStore()
+const auth = useAuthStore()
+const canRename = computed(() => project.meta?.role === 'owner')
 const renameDialog = useTemplateRef('renameDialog')
 
 const state = computed(() => (project.canEdit ? project.status : 'readOnly'))
 const label = computed(() => t().cloud.status[state.value])
 
 function rename() {
-  if (!project.meta || !project.canEdit) return
+  if (!project.meta || !canRename.value) return
   renameDialog.value?.open(project.meta.name, async (name) => {
     try {
       await project.rename(name)
@@ -37,8 +41,8 @@ function rename() {
     <button
       class="name"
       type="button"
-      :title="project.canEdit ? t().cloud.rename : project.meta.name"
-      :disabled="!project.canEdit"
+      :title="canRename ? t().cloud.rename : project.meta.name"
+      :disabled="!canRename"
       @click="rename"
     >
       <svg class="ico" viewBox="0 0 24 24" aria-hidden="true">
@@ -52,6 +56,15 @@ function rename() {
     </span>
     <button v-if="state === 'error'" class="retry" type="button" @click="project.flush()">
       {{ t().cloud.status.retry }}
+    </button>
+    <button
+      v-else-if="state === 'readOnly' && auth.available && auth.ready && !auth.user"
+      class="retry"
+      type="button"
+      :disabled="auth.busy"
+      @click="auth.signInWithGoogle()"
+    >
+      {{ t().share.signInToEdit }}
     </button>
     <NameDialog ref="renameDialog" :title="t().cloud.renameTitle" :confirm="t().cloud.rename" />
   </div>

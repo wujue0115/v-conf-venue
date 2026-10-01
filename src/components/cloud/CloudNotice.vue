@@ -33,6 +33,23 @@ const failMessage = computed(() =>
   project.failure ? t().cloud.errors[project.failure] : t().cloud.errors.failed,
 )
 const willRetry = computed(() => !!project.failure && isTransient(project.failure))
+/** What happens next, after the reason (nothing to add when the buttons say it) */
+const next = computed(() => {
+  if (willRetry.value) return t().cloud.notice.willRetry
+  if (project.failure === 'paused' || project.failure === 'signed_out') return ''
+  return t().cloud.notice.wontRetry
+})
+/** Worth a 重試 by hand: what retries by itself, and a pause that may since have lifted */
+const canRetry = computed(() => willRetry.value || project.failure === 'paused')
+/** Saving here is over for them (no longer an editor, or the project out of reach): keep the work as their own project */
+const canKeepAsNew = computed(
+  () =>
+    !!auth.user &&
+    (project.failure === 'viewer' ||
+      project.failure === 'gone' ||
+      project.failure === 'link_off' ||
+      project.failure === 'denied'),
+)
 
 function exportFile(items: readonly LayoutItem[], settings: ProjectSettings) {
   const pricing = {
@@ -63,13 +80,22 @@ function restore() {
   planner.notify(t().cloud.notice.restored)
 }
 
+/** A new project of the person's own, from last time's draft or (no draft) the layout as it is now */
 async function saveAsNew() {
   const d = project.draft
-  if (!d || !project.meta || !auth.user) return
+  if (!project.meta || !auth.user) return
   busy.value = true
   try {
     const name = t().cloud.copyName(project.meta.name)
-    const id = await createProject(auth.user.id, name, d.items, d.settings)
+    const id = await createProject(
+      auth.user.id,
+      name,
+      d?.items ?? planner.items,
+      d?.settings ?? {
+        pricing: { priceMode: planner.priceMode, slots: planner.slots },
+        palettes: palettes.palettes,
+      },
+    )
     project.dropDraft()
     planner.notify(t().cloud.duplicated(name))
     void router.push({ name: 'project', params: { projectId: id } })
@@ -85,20 +111,40 @@ async function saveAsNew() {
   <div v-if="project.meta && project.alert" class="notice error" role="alert" data-stage-ui>
     <div class="body">
       <b>{{ t().cloud.notice.failTitle }}</b>
-      <p>
-        {{ failMessage }}{{ t().cloud.notice.sep
-        }}{{ willRetry ? t().cloud.notice.willRetry : t().cloud.notice.wontRetry }}
-      </p>
+      <p>{{ next ? failMessage + t().cloud.notice.sep + next : failMessage }}</p>
       <p v-if="project.kept !== null" class="small">
         {{ project.kept ? t().cloud.notice.kept : t().cloud.notice.notKept }}
       </p>
     </div>
     <div class="acts">
-      <button class="btn primary" type="button" @click="exportCurrent">
+      <button
+        v-if="project.failure === 'signed_out' && auth.available"
+        class="btn primary"
+        type="button"
+        :disabled="auth.busy"
+        @click="auth.signInWithGoogle()"
+      >
+        {{ auth.busy ? t().auth.signingIn : t().auth.signIn }}
+      </button>
+      <button
+        v-if="canKeepAsNew"
+        class="btn primary"
+        type="button"
+        :disabled="busy"
+        @click="saveAsNew"
+      >
+        {{ busy ? t().cloud.working : t().cloud.notice.saveAsNew }}
+      </button>
+      <button
+        class="btn"
+        :class="{ primary: project.failure !== 'signed_out' && !canKeepAsNew }"
+        type="button"
+        @click="exportCurrent"
+      >
         {{ t().cloud.notice.exportJson }}
       </button>
       <button
-        v-if="willRetry"
+        v-if="canRetry"
         class="btn"
         type="button"
         :disabled="project.status === 'saving'"

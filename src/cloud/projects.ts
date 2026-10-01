@@ -13,15 +13,41 @@ export interface ProjectSettings {
   palettes?: Record<string, readonly string[]>
 }
 
+/** The signed-in person's part in a project (or a guest's, through an open share link) */
+export type Role = 'owner' | 'editor' | 'viewer'
+/** Who may view through the share link: anyone, signed-in people, or only people added by name */
+export type ViewAccess = 'anyone' | 'authenticated' | 'allowed'
+/** Who may edit through the share link: signed-in people, or only people added as editors */
+export type EditAccess = 'authenticated' | 'allowed'
+
+/** A project's share link and who it lets in; only its owner sees and changes these */
+export interface Sharing {
+  share_token: string
+  share_enabled: boolean
+  view_access: ViewAccess
+  edit_access: EditAccess
+}
+
 export interface ProjectMeta {
   id: string
   name: string
-  owner_id: string
   updated_at: string
+  role: Role
+  /** For its owner only */
+  sharing: Sharing | null
+}
+
+export interface LoadedProject {
+  meta: ProjectMeta
+  items: LayoutItem[]
+  settings: ProjectSettings
 }
 
 /** A row in My Projects */
-export interface ProjectSummary extends ProjectMeta {
+export interface ProjectSummary {
+  id: string
+  name: string
+  updated_at: string
   /** How many items are placed */
   count: number
 }
@@ -37,8 +63,15 @@ export type CloudErrorCode =
   | 'paused'
   /** row level security refused it: no longer allowed to edit, or the cloud paused */
   | 'denied'
-  /** the project was deleted while open */
+  /** the project was deleted while open, or this person can no longer open it */
   | 'gone'
+  /** found on checking after a failed save: */
+  /** signed out (in this tab or another) */
+  | 'signed_out'
+  /** opened through a share link that's since been turned off or replaced */
+  | 'link_off'
+  /** their editing rights were taken away; they may still view */
+  | 'viewer'
   /** the session ran out and couldn't be renewed */
   | 'auth'
   /** no connection */
@@ -76,9 +109,10 @@ type ApiError = { code?: string; message?: string } | null
 function classify(error: NonNullable<ApiError>, status: number): CloudErrorCode {
   // fetch itself failed (offline, DNS, CORS): supabase-js reports it with no status
   if (!status || /fetch|network|load failed/i.test(error.message ?? '')) return 'network'
+  // permission refused comes back as 401 for guests, so this goes before the 401 check
+  if (error.code === '42501') return 'denied'
   if (status === 401 || error.code === 'PGRST301' || error.code === 'PGRST303') return 'auth'
   if (status >= 500 || status === 408 || status === 429) return 'server'
-  if (error.code === '42501') return 'denied'
   // a row's project no longer exists
   if (error.code === '23503') return 'gone'
   return 'failed'
@@ -135,10 +169,10 @@ export async function listMyProjects(ownerId: string): Promise<ProjectSummary[]>
   const rows = check(
     await db()
       .from('projects')
-      .select('id, name, owner_id, updated_at, project_objects(count)')
+      .select('id, name, updated_at, project_objects(count)')
       .eq('owner_id', ownerId)
       .order('updated_at', { ascending: false }),
-  ) as (ProjectMeta & { project_objects: { count: number }[] })[]
+  ) as (Omit<ProjectSummary, 'count'> & { project_objects: { count: number }[] })[]
   return rows.map(({ project_objects, ...p }) => ({ ...p, count: project_objects[0]?.count ?? 0 }))
 }
 
@@ -183,25 +217,135 @@ export async function createProject(
   return id
 }
 
-/** A project and its items, if the signed-in person may open it */
-export async function loadProject(
-  id: string,
-): Promise<{ meta: ProjectMeta; items: LayoutItem[]; settings: ProjectSettings }> {
+/** Rows of project_objects (or open_shared_project's objects) as layout items */
+function itemsOf(rows: { id: string; type: string; data: Record<string, unknown> }[]) {
+  // through parseLayout like a file, so a bad row is dropped rather than breaking the scene
+  return parseLayout(rows.map((r) => ({ ...r.data, id: r.id, t: r.type })))
+}
+
+/**
+ * A project and its items, if the signed-in person (`userId`) may open it, with their role on
+ * it. Without `userId` the role isn't looked up (it reads as viewer).
+ */
+export async function loadProject(id: string, userId?: string): Promise<LoadedProject> {
   const project = check(
     await db()
       .from('projects')
-      .select('id, name, owner_id, updated_at, settings')
+      .select(
+        'id, name, owner_id, updated_at, settings, share_token, share_enabled, view_access, edit_access',
+      )
       .eq('id', id)
       .maybeSingle(),
-  ) as (ProjectMeta & { settings: ProjectSettings }) | null
+  ) as
+    | (Sharing & { id: string; name: string; owner_id: string; updated_at: string } & {
+        settings: ProjectSettings | null
+      })
+    | null
   if (!project) throw new CloudError('not_found')
   const rows = check(
     await db().from('project_objects').select('id, type, data').eq('project_id', id),
   ) as { id: string; type: string; data: Record<string, unknown> }[]
-  // through parseLayout like a file, so a bad row is dropped rather than breaking the scene
-  const items = parseLayout(rows.map((r) => ({ ...r.data, id: r.id, t: r.type })))
-  const { settings, ...meta } = project
-  return { meta, items, settings: settings ?? {} }
+  let role: Role = 'viewer'
+  if (userId && project.owner_id === userId) role = 'owner'
+  else if (userId)
+    role = (check(await db().rpc('project_role', { p_project: id })) as Role) ?? 'viewer'
+  const { share_token, share_enabled, view_access, edit_access } = project
+  return {
+    meta: {
+      id: project.id,
+      name: project.name,
+      updated_at: project.updated_at,
+      role,
+      sharing: role === 'owner' ? { share_token, share_enabled, view_access, edit_access } : null,
+    },
+    items: itemsOf(rows),
+    settings: project.settings ?? {},
+  }
+}
+
+/** What a share link opens to */
+export type SharedResult =
+  | { status: 'ok'; project: LoadedProject }
+  | { status: 'not_found' | 'sign_in_required' }
+  /** signed in, but the link doesn't let them in; `requested`: they've asked the owner */
+  | { status: 'no_access'; requested: boolean }
+
+/** Open a project through its share link, signed in or not */
+export async function loadShared(token: string): Promise<SharedResult> {
+  const r = check(await db().rpc('open_shared_project', { p_token: token })) as
+    | { status: 'not_found' | 'sign_in_required' }
+    | { status: 'no_access'; requested: boolean }
+    | {
+        status: 'ok'
+        role: Role
+        project: Omit<Sharing, 'share_token'> & {
+          id: string
+          name: string
+          updated_at: string
+          settings: ProjectSettings | null
+        }
+        objects: { id: string; type: string; data: Record<string, unknown> }[]
+      }
+  if (r.status !== 'ok') return r
+  const { id, name, updated_at, settings, share_enabled, view_access, edit_access } = r.project
+  return {
+    status: 'ok',
+    project: {
+      meta: {
+        id,
+        name,
+        updated_at,
+        role: r.role,
+        sharing:
+          r.role === 'owner'
+            ? { share_token: token, share_enabled, view_access, edit_access }
+            : null,
+      },
+      items: itemsOf(r.objects),
+      settings: settings ?? {},
+    },
+  }
+}
+
+/**
+ * Why this person can't save to a project now, checked afresh after a save failed: the cloud
+ * paused, signed out, the project gone (or out of reach), the share link they came through off
+ * or replaced, or only viewing now. 'ok' when they still may edit (so it was something else).
+ */
+export async function checkAccess(
+  projectId: string,
+  { signedIn, shareToken }: { signedIn: boolean; shareToken: string | null },
+): Promise<
+  'ok' | Extract<CloudErrorCode, 'paused' | 'signed_out' | 'gone' | 'link_off' | 'viewer'>
+> {
+  const settings = check(
+    await db().from('app_settings').select('value').eq('key', 'cloud').maybeSingle(),
+  ) as { value: { enabled?: boolean; allowUpdate?: boolean } } | null
+  if (!settings?.value.enabled || !settings.value.allowUpdate) return 'paused'
+  if (!signedIn) return 'signed_out'
+  const role = check(await db().rpc('project_role', { p_project: projectId })) as Role | null
+  if (role === 'owner' || role === 'editor') return 'ok'
+  if (role === 'viewer') return 'viewer'
+  // no role at all: through a link that no longer opens, or the project itself is gone
+  if (shareToken) {
+    const r = check(await db().rpc('open_shared_project', { p_token: shareToken })) as {
+      status: string
+    }
+    if (r.status === 'not_found') return 'link_off'
+  }
+  return 'gone'
+}
+
+/** Change a project's share link settings; a new `share_token` makes the old link stop working */
+export async function updateSharing(id: string, patch: Partial<Sharing>): Promise<Sharing> {
+  return check(
+    await db()
+      .from('projects')
+      .update(patch)
+      .eq('id', id)
+      .select('share_token, share_enabled, view_access, edit_access')
+      .single(),
+  ) as Sharing
 }
 
 /**
@@ -225,8 +369,14 @@ export async function saveChanges(
         .eq('project_id', projectId)
         .in('id', [...changes.deletes]),
     )
+  // through a function, since editors may change these but not the projects row itself
   if (changes.settings)
-    check(await db().from('projects').update({ settings: changes.settings }).eq('id', projectId))
+    check(
+      await db().rpc('set_project_settings', {
+        p_project: projectId,
+        p_settings: changes.settings,
+      }),
+    )
   const row = check(
     await db().from('projects').select('updated_at').eq('id', projectId).maybeSingle(),
   ) as { updated_at: string } | null

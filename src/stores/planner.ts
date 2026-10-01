@@ -33,6 +33,8 @@ export const usePlannerStore = defineStore('planner', () => {
    * browser's own layout is written to its storage; a project saves itself (stores/project.ts).
    */
   const projectId = shallowRef<string | null>(null)
+  /** A shared project this person may only look at: Edit mode is off and can't be chosen */
+  const readOnly = shallowRef(false)
   /** The layout: what the editor starts from when it mounts, then its latest snapshot */
   const items = shallowRef<LayoutItem[]>([])
   const selection = shallowRef<SelectionInfo | null>(null)
@@ -47,14 +49,21 @@ export const usePlannerStore = defineStore('planner', () => {
   /** Work on the layout kept in this browser (as saved, or the demo the first time) */
   function openLocal() {
     projectId.value = null
+    readOnly.value = false
     items.value = loadSavedLayout() ?? demoLayout()
     const pricing = loadPricing()
     priceMode.value = pricing.priceMode
     slots.value = pricing.slots
   }
-  /** Work on a cloud project's layout; the browser's own stays as it is */
-  function openProject(id: string, list: LayoutItem[], pricing: Partial<Pricing> = {}) {
+  /** Work on a cloud project's layout (only looking, `readOnly`); the browser's own stays as it is */
+  function openProject(
+    id: string,
+    list: LayoutItem[],
+    pricing: Partial<Pricing> = {},
+    { readOnly: ro = false } = {},
+  ) {
     projectId.value = id
+    readOnly.value = ro
     items.value = list
     priceMode.value = pricing.priceMode ?? 0
     slots.value = clampSlots(pricing.slots ?? 1)
@@ -63,7 +72,7 @@ export const usePlannerStore = defineStore('planner', () => {
 
   // First visit opens in view mode so nothing gets moved by accident
   const mode = shallowRef<PlannerMode>(readJSON(MODE_KEY) === 'edit' ? 'edit' : 'view')
-  const editing = computed(() => mode.value === 'edit')
+  const editing = computed(() => mode.value === 'edit' && !readOnly.value)
   const snap = shallowRef(true)
   /** 多選: taps add to the selection and drags on empty space box-select (for touch screens) */
   const multiSelect = shallowRef(false)
@@ -136,6 +145,7 @@ export const usePlannerStore = defineStore('planner', () => {
 
   return {
     projectId,
+    readOnly,
     openLocal,
     openProject,
     items,

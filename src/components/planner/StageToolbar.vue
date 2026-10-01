@@ -1,14 +1,18 @@
 <script setup lang="ts">
-import { computed, shallowRef } from 'vue'
+import { computed, shallowRef, useTemplateRef } from 'vue'
 import MainMenu from './MainMenu.vue'
 import ProjectBadge from '@/components/cloud/ProjectBadge.vue'
+import ShareDialog from '@/components/cloud/ShareDialog.vue'
 import StageSettings from './StageSettings.vue'
 import { useVenueEditor } from '@/composables/useVenueEditor'
 import { usePlannerStore, type PlannerMode } from '@/stores/planner'
+import { useProjectStore } from '@/stores/project'
 import { VIEWS, type CameraView } from '@/venue/places'
 import { t } from '@/i18n'
 
 const store = usePlannerStore()
+const project = useProjectStore()
+const shareDialog = useTemplateRef('shareDialog')
 const editor = useVenueEditor()
 const activeView = shallowRef(0)
 
@@ -40,11 +44,12 @@ function flyTo(view: CameraView, i: number) {
           v-for="m in MODES"
           :key="m.mode"
           class="btn"
-          :class="{ cur: store.mode === m.mode }"
+          :class="{ cur: (store.editing ? 'edit' : 'view') === m.mode }"
           role="radio"
-          :aria-checked="store.mode === m.mode"
+          :aria-checked="(store.editing ? 'edit' : 'view') === m.mode"
           :aria-label="m.label"
-          :title="`${m.label} · ${m.title}`"
+          :title="store.readOnly ? t().palette.readOnly : `${m.label} · ${m.title}`"
+          :disabled="store.readOnly"
           @click="store.mode = m.mode"
         >
           <svg class="ico" viewBox="0 0 24 24" aria-hidden="true">
@@ -93,6 +98,23 @@ function flyTo(view: CameraView, i: number) {
       </div>
     </div>
     <div class="bar side" data-stage-ui>
+      <!-- the owner's only -->
+      <button
+        v-if="project.meta?.role === 'owner'"
+        class="share grp"
+        type="button"
+        :title="t().share.buttonTitle"
+        @click="shareDialog?.open()"
+      >
+        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="18" cy="5" r="2.5" />
+          <circle cx="6" cy="12" r="2.5" />
+          <circle cx="18" cy="19" r="2.5" />
+          <path d="m8.2 10.8 7.6-4.4M8.2 13.2l7.6 4.4" />
+        </svg>
+        <span class="share-label">{{ t().share.button }}</span>
+      </button>
+      <ShareDialog ref="shareDialog" />
       <StageSettings />
       <div class="grp">
         <button
@@ -180,13 +202,38 @@ function flyTo(view: CameraView, i: number) {
 }
 /* Phones: the furniture button is just its icon */
 @media (max-width: 480px) {
-  .lib-label {
+  .lib-label,
+  .share-label {
     display: none;
+  }
+  .share {
+    padding: 0 10px;
   }
 }
 
 .lib {
   padding: 0 10px;
+}
+.share {
+  align-items: center;
+  gap: 6px;
+  height: 38px;
+  padding: 0 14px 0 12px;
+  border-color: transparent;
+  background: var(--yel);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.share:hover {
+  background: #e0a71f;
+}
+.share:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+.mode .btn:disabled {
+  cursor: not-allowed;
 }
 /* Mode switch: one yellow thumb slides between two equal halves */
 .mode {

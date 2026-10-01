@@ -1440,6 +1440,9 @@ export class VenueEditor {
 
   private itemOf(o: THREE.Object3D): LayoutItem {
     const ud = o.userData
+    // Objects built straight from the palette (dragged in, or hung on a wall with a click) skip
+    // add(): they get their id the first time they're written out, and keep it from then on
+    ud.id ??= crypto.randomUUID()
     const cut = ud.cut as number[] | undefined
     return {
       id: ud.id as string,

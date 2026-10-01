@@ -84,7 +84,10 @@ const zh = {
       limit: '雲端專案已達數量上限，請先刪除用不到的專案',
       paused: '雲端功能目前暫停開放',
       denied: '沒有權限，或雲端功能目前暫停',
-      gone: '這個專案已經被刪除',
+      gone: '這個專案已被刪除，或你已經沒有存取權限',
+      signed_out: '你已經登出，請重新登入後再儲存',
+      link_off: '分享連結已被關閉或更換，你目前無法存取這個專案',
+      viewer: '你的編輯權限已被移除，現在只能檢視',
       auth: '登入已過期，請重新登入',
       network: '目前沒有網路連線',
       server: '雲端服務暫時有問題',
@@ -110,6 +113,43 @@ const zh = {
       saveAsNew: '另存成新專案',
       restored: '已復原上次的改動',
     },
+  },
+
+  /** 分享: the share link and who it lets in */
+  share: {
+    button: '分享',
+    buttonTitle: '分享這個專案',
+    title: (name: string) => `分享「${name}」`,
+    close: '關閉',
+    enabled: '連結分享',
+    enabledHint: '拿到連結的人，可依下方設定開啟這個專案',
+    disabledHint: '連結目前打不開；你另外加入的人不受影響',
+    link: '分享連結',
+    copy: '複製連結',
+    copied: '已複製',
+    copyFailed: '無法複製，請手動選取連結',
+    view: '誰可以檢視',
+    edit: '誰可以編輯',
+    viewOptions: {
+      anyone: { label: '任何拿到連結的人', hint: '不用登入也能看' },
+      authenticated: { label: '登入的人', hint: '拿到連結並用 Google 登入後才能看' },
+      allowed: { label: '只有你加入的人', hint: '其他人打開連結也看不到' },
+    },
+    editOptions: {
+      authenticated: { label: '登入的人', hint: '拿到連結並登入的人都能編輯' },
+      allowed: { label: '只有你加入的編輯者', hint: '其他人只能檢視' },
+    },
+    replace: '重新產生連結',
+    replaceConfirm: '重新產生後，舊的連結就會失效。確定嗎？',
+    done: '完成',
+    /** Opening a share link that doesn't let them in */
+    notFound: '這個分享連結無效，或擁有者已關閉分享',
+    signInTitle: '登入以查看這個專案',
+    signInHint: '這個專案只開放給登入的人，請用 Google 帳號登入。',
+    noAccess: '你沒有查看這個專案的權限',
+    requested: '已送出存取要求，正在等待擁有者核准',
+    /** For someone viewing a shared project signed out: signing in may let them edit */
+    signInToEdit: '登入以編輯',
   },
 
   auth: {
@@ -244,6 +284,7 @@ const zh = {
   },
 
   palette: {
+    readOnly: '你只能檢視這個專案，無法放置或移動物件。',
     locked: '目前是檢視模式，切換到「編輯」才能擺放物件',
     reshown: (name: string) => `已重新顯示「${name}」`,
   },

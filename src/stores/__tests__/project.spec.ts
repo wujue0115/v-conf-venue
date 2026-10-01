@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
+import type { Role } from '@/cloud/projects'
 import type { LayoutItem } from '@/venue/layout'
 import { STORAGE_KEY } from '@/venue/layout'
 
@@ -9,6 +10,7 @@ const api = vi.hoisted(() => ({
   loadProject: vi.fn<Api['loadProject']>(),
   saveChanges: vi.fn<Api['saveChanges']>(),
   renameProject: vi.fn<Api['renameProject']>(),
+  checkAccess: vi.fn<Api['checkAccess']>(),
 }))
 vi.mock('@/cloud/projects', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/cloud/projects')>()),
@@ -28,11 +30,11 @@ const C = '00000000-0000-4000-8000-00000000000c'
 const OWNER = 'owner-id'
 const item = (id: string, x: number): LayoutItem => ({ id, t: 'sign', x, z: 0, r: 0 })
 
-/** Open a project holding A and B, as its owner, and report it back as the editor does */
-async function openProject() {
+/** Open a project holding A and B (as its owner, unless given another role), and report it back as the editor does */
+async function openProject(role: Role = 'owner') {
   useAuthStore().user = { id: OWNER } as never
   api.loadProject.mockResolvedValue({
-    meta: { id: 'p1', name: 'Test', owner_id: OWNER, updated_at: '2026-10-01T00:00:00Z' },
+    meta: { id: 'p1', name: 'Test', updated_at: '2026-10-01T00:00:00Z', role, sharing: null },
     items: [item(A, 1), item(B, 2)],
     settings: { pricing: { priceMode: 1, slots: 2 } },
   })
@@ -51,6 +53,7 @@ describe('project store', () => {
     setActivePinia(createPinia())
     vi.useFakeTimers()
     api.saveChanges.mockReset().mockResolvedValue('2026-10-01T00:01:00Z')
+    api.checkAccess.mockReset().mockResolvedValue('ok')
   })
   afterEach(() => {
     vi.useRealTimers()
@@ -111,14 +114,25 @@ describe('project store', () => {
     expect(project.status).toBe('saved')
   })
 
-  it('doesn’t save a project someone else owns', async () => {
-    const { project, planner } = await openProject()
-    useAuthStore().user = { id: 'someone-else' } as never
+  it('opens a project read-only for a viewer, and never saves it', async () => {
+    const { project, planner } = await openProject('viewer')
+    expect(planner.readOnly).toBe(true)
+    expect(planner.editing).toBe(false)
     planner.items = [item(A, 5)]
     await nextTick()
     await vi.runAllTimersAsync()
     expect(api.saveChanges).not.toHaveBeenCalled()
     expect(project.canEdit).toBe(false)
+  })
+
+  it('lets an editor save', async () => {
+    const { project, planner } = await openProject('editor')
+    expect(planner.readOnly).toBe(false)
+    planner.items = [item(A, 5), item(B, 2)]
+    await nextTick()
+    await vi.runAllTimersAsync()
+    expect(api.saveChanges).toHaveBeenCalledTimes(1)
+    expect(project.status).toBe('saved')
   })
 
   it('saves what’s waiting before closing, then leaves the planner on nothing of its', async () => {
@@ -220,6 +234,47 @@ describe('project store', () => {
       api.saveChanges.mockResolvedValue('2026-10-01T00:05:00Z')
       await project.flush()
       expect(localStorage.getItem(DRAFT)).toBeNull()
+    })
+  })
+
+  describe('checking access after a failed save', () => {
+    async function failWith(code: 'denied' | 'auth' | 'network') {
+      const opened = await openProject('editor')
+      api.saveChanges.mockRejectedValue(new CloudError(code))
+      opened.planner.items = [item(A, 5), item(B, 2)]
+      await nextTick()
+      await vi.advanceTimersByTimeAsync(800)
+      return opened
+    }
+
+    it('says editing was taken away, and stops editing so nothing more goes unsaved', async () => {
+      api.checkAccess.mockResolvedValue('viewer')
+      const { project, planner } = await failWith('denied')
+      expect(api.checkAccess).toHaveBeenCalledWith('p1', { signedIn: true, shareToken: null })
+      expect(project.failure).toBe('viewer')
+      expect(project.alert).toBe(true)
+      expect(project.meta?.role).toBe('viewer')
+      expect(planner.readOnly).toBe(true)
+      expect(planner.editing).toBe(false)
+    })
+
+    it('keeps the first reason when they may still edit', async () => {
+      const { project, planner } = await failWith('denied')
+      expect(project.failure).toBe('denied')
+      expect(planner.readOnly).toBe(false)
+    })
+
+    it('stops retrying once it finds they were signed out', async () => {
+      api.checkAccess.mockResolvedValue('signed_out')
+      const { project } = await failWith('auth')
+      expect(project.failure).toBe('signed_out')
+      await vi.advanceTimersByTimeAsync(120_000)
+      expect(api.saveChanges).toHaveBeenCalledTimes(1)
+    })
+
+    it('doesn’t check for a lost connection', async () => {
+      await failWith('network')
+      expect(api.checkAccess).not.toHaveBeenCalled()
     })
   })
 

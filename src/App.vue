@@ -6,5 +6,7 @@ const route = useRoute()
 
 <template>
   <!-- A fresh planner (and three.js scene) for each layout opened, not one reused between them -->
-  <RouterView :key="String(route.params.projectId ?? route.name ?? '')" />
+  <RouterView
+    :key="String(route.params.projectId ?? route.params.shareToken ?? route.name ?? '')"
+  />
 </template>

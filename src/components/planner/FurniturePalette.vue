@@ -38,7 +38,9 @@ function onPointerDown(e: PointerEvent, type: FurnitureType) {
 </script>
 
 <template>
-  <p v-if="!store.editing" class="locked">{{ t().palette.locked }}</p>
+  <p v-if="!store.editing" class="locked">
+    {{ store.readOnly ? t().palette.readOnly : t().palette.locked }}
+  </p>
   <CollapsibleSection
     v-for="sec in sections"
     :key="sec.id"
