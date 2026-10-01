@@ -65,6 +65,8 @@ export type CloudErrorCode =
   | 'limit'
   /** app_settings has the cloud (or creating projects) switched off */
   | 'paused'
+  /** allowed_creators has emails, and not this person's */
+  | 'not_allowed'
   /** row level security refused it: no longer allowed to edit, or the cloud paused */
   | 'denied'
   /** the project was deleted while open, or this person can no longer open it */
@@ -187,6 +189,9 @@ async function checkCanCreate(ownerId: string) {
   ) as { value: { enabled?: boolean; allowCreate?: boolean; maxProjectsPerUser?: unknown } } | null
   const v = settings?.value
   if (!v?.enabled || !v.allowCreate) throw new CloudError('paused')
+  const may = await db().rpc('may_create_projects')
+  // an error (a database without the list, say) leaves it to the insert's own check
+  if (!may.error && may.data === false) throw new CloudError('not_allowed')
   if (typeof v.maxProjectsPerUser !== 'number') return
   const r = await db()
     .from('projects')

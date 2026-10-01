@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, shallowRef, useTemplateRef, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, shallowRef, useTemplateRef, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import ExportImageDialog from './ExportImageDialog.vue'
 import AccountSection from '@/components/auth/AccountSection.vue'
@@ -25,6 +25,11 @@ const store = usePlannerStore()
 const palettes = usePalettesStore()
 const auth = useAuthStore()
 const cloud = useCloudStore()
+/** 存到雲端's hint: why it's off, else what it does (signing in first, when signed out) */
+const saveToCloudTitle = computed(() => {
+  if (cloud.createHint) return cloud.createHint
+  return auth.user ? t().cloud.saveToCloudHint : t().cloud.signInToSave
+})
 const editor = useVenueEditor()
 const open = shallowRef(false)
 const root = useTemplateRef('root')
@@ -197,13 +202,7 @@ onBeforeUnmount(unlisten)
           class="item"
           type="button"
           role="menuitem"
-          :title="
-            !cloud.canCreate
-              ? t().cloud.createPaused
-              : auth.user
-                ? t().cloud.saveToCloudHint
-                : t().cloud.signInToSave
-          "
+          :title="saveToCloudTitle"
           :disabled="!cloud.canCreate"
           @click="saveToCloud"
         >

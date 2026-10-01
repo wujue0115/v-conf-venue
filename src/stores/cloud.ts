@@ -1,6 +1,8 @@
-import { computed, shallowRef } from 'vue'
+import { computed, shallowRef, watch } from 'vue'
 import { acceptHMRUpdate, defineStore } from 'pinia'
+import { t } from '@/i18n'
 import { supabase } from '@/lib/supabase'
+import { useAuthStore } from '@/stores/auth'
 
 /** app_settings 'cloud': switches for the cloud as a whole, changed in the Supabase Dashboard */
 export interface CloudSettings {
@@ -17,9 +19,11 @@ const RECHECK_EVERY = 60_000
  * The cloud's switches (app_settings), read once on start and again whenever the tab comes back
  * into view (at most once a minute), or a save comes back paused. The planner shows what they
  * allow up front: off, the browser's own layout still works, and nothing waits on the cloud.
- * The database enforces them whatever this says.
+ * The database enforces them whatever this says. Also whether the person signed in may create
+ * projects at all (public.allowed_creators, which only the database can read).
  */
 export const useCloudStore = defineStore('cloud', () => {
+  const auth = useAuthStore()
   /** null until read (or with no cloud in this build) */
   const settings = shallowRef<CloudSettings | null>(null)
   /** No connection, as far as the browser knows */
@@ -29,7 +33,20 @@ export const useCloudStore = defineStore('cloud', () => {
 
   /** The cloud is on (true until read, so nothing flashes "paused" while it's being read) */
   const enabled = computed(() => settings.value?.enabled ?? true)
-  const canCreate = computed(() => enabled.value && (settings.value?.allowCreate ?? true))
+  /** The person signed in is on allowed_creators (or it's empty); true until asked */
+  const mayCreate = shallowRef(true)
+  /** Why new projects can't be made now: the cloud's switch, or this person isn't on the list */
+  const createBlocked = computed<'paused' | 'not_allowed' | null>(() => {
+    if (!enabled.value || settings.value?.allowCreate === false) return 'paused'
+    return mayCreate.value ? null : 'not_allowed'
+  })
+  const canCreate = computed(() => !createBlocked.value)
+  /** Why creating is off, to show where it is (undefined while it's on) */
+  const createHint = computed(() => {
+    if (createBlocked.value === 'not_allowed') return t().cloud.createNotAllowed
+    if (createBlocked.value === 'paused') return t().cloud.createPaused
+    return undefined
+  })
   const canUpdate = computed(() => enabled.value && (settings.value?.allowUpdate ?? true))
   const realtime = computed(() => !!settings.value && enabled.value && settings.value.allowRealtime)
 
@@ -61,6 +78,30 @@ export const useCloudStore = defineStore('cloud', () => {
     return reading
   }
 
+  /** Ask whether the person signed in may create projects */
+  async function askMayCreate() {
+    const user = auth.user?.id
+    if (!supabase || !user) {
+      mayCreate.value = true
+      return
+    }
+    const { data, error } = await supabase.rpc('may_create_projects')
+    // signed out or in as someone else meanwhile
+    if (auth.user?.id !== user) return
+    if (error) {
+      // can't tell (or the database predates the list): leave it to the database to say
+      console.error('[cloud] asking whether projects may be created failed', error)
+      mayCreate.value = true
+      return
+    }
+    mayCreate.value = data !== false
+  }
+  watch(
+    () => auth.user?.id,
+    () => void askMayCreate(),
+    { immediate: true },
+  )
+
   /** Read again unless it was just read */
   function recheck() {
     if (Date.now() - readAt >= RECHECK_EVERY) void read()
@@ -69,7 +110,11 @@ export const useCloudStore = defineStore('cloud', () => {
   if (typeof window !== 'undefined' && supabase) {
     void read()
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible') recheck()
+      if (document.visibilityState === 'visible') {
+        recheck()
+        // added to the list while away, say
+        void askMayCreate()
+      }
     })
     window.addEventListener('online', () => {
       offline.value = false
@@ -78,7 +123,17 @@ export const useCloudStore = defineStore('cloud', () => {
     window.addEventListener('offline', () => (offline.value = true))
   }
 
-  return { settings, offline, enabled, canCreate, canUpdate, realtime, read }
+  return {
+    settings,
+    offline,
+    enabled,
+    canCreate,
+    createBlocked,
+    createHint,
+    canUpdate,
+    realtime,
+    read,
+  }
 })
 
 if (import.meta.hot) import.meta.hot.accept(acceptHMRUpdate(useCloudStore, import.meta.hot))

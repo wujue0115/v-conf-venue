@@ -325,13 +325,16 @@ export const useProjectStore = defineStore('project', () => {
    * Ask the owner for a role: from a share link that didn't let them in, or (viewing) to edit.
    * When it turns out they have it already, the project opens again to take it up.
    */
+  /** Where an ask goes: through the share link it was opened by, else to the project open */
+  function askWhere(): { token: string } | { projectId: string } | null {
+    if (openedToken) return { token: openedToken }
+    if (meta.value) return { projectId: meta.value.id }
+    return null
+  }
+
   async function requestAccess(role: Grant) {
     const denied = shareDenied.value
-    const where: { token: string } | { projectId: string } | null = openedToken
-      ? { token: openedToken }
-      : meta.value
-        ? { projectId: meta.value.id }
-        : null
+    const where = askWhere()
     if (!where) return
     const r = await askOwner(role, where)
     if (r === 'already') {

@@ -205,7 +205,7 @@ onBeforeUnmount(() => {
           class="primary"
           type="button"
           :disabled="!cloud.canCreate"
-          :title="cloud.canCreate ? undefined : t().cloud.createPaused"
+          :title="cloud.createHint"
           @click="newProject"
         >
           <svg class="ico" viewBox="0 0 24 24" aria-hidden="true">
@@ -220,6 +220,13 @@ onBeforeUnmount(() => {
       </p>
       <p v-else-if="auth.available && cloud.offline" class="banner" role="status">
         {{ t().cloud.offlineBanner }}
+      </p>
+      <p
+        v-else-if="auth.user && cloud.createBlocked === 'not_allowed'"
+        class="banner"
+        role="status"
+      >
+        {{ t().cloud.createNotAllowed }}
       </p>
 
       <p v-if="!auth.available" class="note">{{ t().cloud.errors.unavailable }}</p>
@@ -301,7 +308,7 @@ onBeforeUnmount(() => {
                   type="button"
                   role="menuitem"
                   :disabled="!cloud.canCreate"
-                  :title="cloud.canCreate ? undefined : t().cloud.createPaused"
+                  :title="cloud.createHint"
                   @click="duplicate(p)"
                 >
                   {{ t().cloud.duplicate }}

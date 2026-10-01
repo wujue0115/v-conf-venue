@@ -84,6 +84,8 @@ const en: Messages = {
     pausedNow: 'The cloud is paused, so this project is read-only for now',
     resumed: 'The cloud is back',
     createPaused: "New cloud projects can't be made right now",
+    createNotAllowed:
+      'Only certain accounts can make cloud projects for now; projects shared with you still open',
     updatePaused: 'The cloud is paused, so nothing can be changed for now',
     pausedBanner:
       'The cloud is paused for now. You can still open projects to view them, or use your local project.',
@@ -93,6 +95,7 @@ const en: Messages = {
       not_found: "This project doesn't exist, or you can't open it",
       limit: "You've reached the most cloud projects you can have; delete one you don't need",
       paused: 'Cloud features are paused for now',
+      not_allowed: 'Only certain accounts can make cloud projects for now',
       denied: 'Not allowed, or cloud features are paused',
       gone: 'This project has been deleted, or you no longer have access to it',
       signed_out: "You've been signed out; sign in again to save",
