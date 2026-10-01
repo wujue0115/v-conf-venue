@@ -114,6 +114,8 @@ export const usePlannerStore = defineStore('planner', () => {
   )
 
   const toast = shallowRef<{ id: number; message: string } | null>(null)
+  /** ⚙ 設定 or ? 操作說明 showing (on phones they open from ☰) */
+  const panel = shallowRef<'settings' | 'help' | null>(null)
   let toastId = 0
 
   const cost = computed(() => summarizeCost(items.value, priceMode.value, slots.value))
@@ -171,6 +173,7 @@ export const usePlannerStore = defineStore('planner', () => {
     showGroupTags,
     showGroupInfo,
     sidebarCollapsed,
+    panel,
     toast,
     cost,
     setSlots,

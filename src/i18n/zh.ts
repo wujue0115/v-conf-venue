@@ -300,6 +300,8 @@ const zh = {
     interpreting: '翻譯室',
   },
   views: {
+    /** The phone's view picker */
+    pick: '切換視角',
     overview: '全景',
     top: '俯視',
     a201: 'A201',

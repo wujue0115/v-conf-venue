@@ -10,6 +10,7 @@ import { LOCALES, LOCALE_NAMES, locale, t } from '@/i18n'
 import { useVenueEditor } from '@/composables/useVenueEditor'
 import { useAuthStore } from '@/stores/auth'
 import { useCloudStore } from '@/stores/cloud'
+import { usePhone } from '@/composables/usePhone'
 import { usePalettesStore } from '@/stores/palettes'
 import { usePlannerStore } from '@/stores/planner'
 import { downloadJSON, stamp } from '@/venue/download'
@@ -25,6 +26,12 @@ const store = usePlannerStore()
 const palettes = usePalettesStore()
 const auth = useAuthStore()
 const cloud = useCloudStore()
+const phone = usePhone()
+/** Phones: ⚙ and ? live here rather than on the stage */
+function openPanel(panel: 'settings' | 'help') {
+  open.value = false
+  store.panel = panel
+}
 /** 存到雲端's hint: why it's off, else what it does (signing in first, when signed out) */
 const saveToCloudTitle = computed(() => {
   if (cloud.createHint) return cloud.createHint
@@ -286,6 +293,25 @@ onBeforeUnmount(unlisten)
         </svg>
         {{ t().menu.clear }}
       </button>
+
+      <template v-if="phone">
+        <hr />
+        <button class="item" type="button" role="menuitem" @click="openPanel('settings')">
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 7h10M18 7h2M4 17h4M12 17h8" />
+            <circle cx="16" cy="7" r="2" />
+            <circle cx="10" cy="17" r="2" />
+          </svg>
+          {{ t().settings.title }}
+        </button>
+        <button class="item" type="button" role="menuitem" @click="openPanel('help')">
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="12" cy="12" r="9" />
+            <path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.4M12 17h.01" />
+          </svg>
+          {{ t().help.title }}
+        </button>
+      </template>
 
       <template v-if="auth.available">
         <hr />

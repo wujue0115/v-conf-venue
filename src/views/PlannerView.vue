@@ -182,6 +182,12 @@ onBeforeRouteUpdate(leave)
     --top-clear: calc(106px + env(safe-area-inset-top, 0px));
   }
 }
+/* Phones: one row on top again (the tools moved to the bottom bar, MobileDock) */
+@media (max-width: 560px) {
+  .planner {
+    --top-clear: calc(66px + env(safe-area-inset-top, 0px));
+  }
+}
 /* Phones: the furniture panel spans the width */
 @media (max-width: 720px) {
   .library {

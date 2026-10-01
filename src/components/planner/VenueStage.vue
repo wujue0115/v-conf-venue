@@ -3,12 +3,14 @@ import { onBeforeUnmount, onMounted, useTemplateRef, watch } from 'vue'
 import TagLayer from './TagLayer.vue'
 import CloudNotice from '@/components/cloud/CloudNotice.vue'
 import FollowFrame from '@/components/cloud/FollowFrame.vue'
+import MobileDock from './MobileDock.vue'
 import SelectionBar from './SelectionBar.vue'
 import StageHelp from './StageHelp.vue'
 import StageHistory from './StageHistory.vue'
 import StageToast from './StageToast.vue'
 import StageToolbar from './StageToolbar.vue'
 import VenueLabels from './VenueLabels.vue'
+import { usePhone } from '@/composables/usePhone'
 import { useVenueEditor } from '@/composables/useVenueEditor'
 import { useCollabStore, type EditorLink } from '@/stores/collab'
 import { usePlannerStore } from '@/stores/planner'
@@ -16,6 +18,7 @@ import { VenueEditor } from '@/venue/VenueEditor'
 
 const store = usePlannerStore()
 const collab = useCollabStore()
+const phone = usePhone()
 let link: EditorLink | null = null
 const editor = useVenueEditor()
 const stageEl = useTemplateRef('stage')
@@ -92,7 +95,8 @@ watch(
     <CloudNotice />
     <FollowFrame />
     <SelectionBar />
-    <StageHistory />
+    <StageHistory v-if="!phone" />
+    <MobileDock v-if="phone" />
     <StageHelp />
   </main>
 </template>

@@ -1,11 +1,19 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, shallowRef, useTemplateRef, watch } from 'vue'
+import { computed, onBeforeUnmount, useTemplateRef, watch } from 'vue'
 import VisibilityTree from './VisibilityTree.vue'
 import { t } from '@/i18n'
 import { usePlannerStore } from '@/stores/planner'
 
 const store = usePlannerStore()
-const open = shallowRef(false)
+/** Showing (on phones it's opened from ☰, see MainMenu) */
+const open = computed({
+  get: () => store.panel === 'settings',
+  set(on) {
+    if (on) store.panel = 'settings'
+    // closing it leaves the other panel alone
+    else if (store.panel === 'settings') store.panel = null
+  },
+})
 const root = useTemplateRef('root')
 
 type Toggle = 'wallsCut' | 'shadows' | 'snap'
@@ -277,6 +285,30 @@ h4 {
   outline-offset: 2px;
 }
 
+/*
+ * Phones: its button is in ☰ instead, and the panel rises from just above the bottom bar,
+ * across the screen
+ */
+@media (max-width: 560px) {
+  .gear {
+    display: none;
+  }
+  .pop {
+    position: fixed;
+    top: auto;
+    left: 10px;
+    right: 10px;
+    bottom: calc(58px + env(safe-area-inset-bottom, 0px));
+    width: auto;
+    max-width: none;
+    max-height: calc(100dvh - 140px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  .pop::after {
+    display: none;
+  }
+}
 @media (prefers-reduced-motion: reduce) {
   .knob,
   .gear svg {

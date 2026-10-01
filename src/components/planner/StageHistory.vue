@@ -3,14 +3,18 @@ import { useVenueEditor } from '@/composables/useVenueEditor'
 import { usePlannerStore } from '@/stores/planner'
 import { t } from '@/i18n'
 
-/** 復原 and 重做 at the bottom left; always shown (greyed in View mode) */
+/**
+ * 復原 and 重做 at the bottom left (`docked`: in the phone's bottom bar instead); always shown
+ * (greyed in View mode)
+ */
+defineProps<{ docked?: boolean }>()
 
 const store = usePlannerStore()
 const editor = useVenueEditor()
 </script>
 
 <template>
-  <div class="history grp" data-stage-ui>
+  <div class="history grp" :class="{ docked }" data-stage-ui>
     <button
       class="btn"
       type="button"
@@ -65,8 +69,11 @@ const editor = useVenueEditor()
   stroke-linecap: round;
   stroke-linejoin: round;
 }
+.history.docked {
+  position: static;
+}
 @media (max-width: 720px) {
-  .history {
+  .history:not(.docked) {
     left: 10px;
     bottom: calc(10px + env(safe-area-inset-bottom, 0px));
   }

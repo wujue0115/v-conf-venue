@@ -289,6 +289,7 @@ const en: Messages = {
     interpreting: 'Interpreting booths',
   },
   views: {
+    pick: 'Camera view',
     overview: 'Overview',
     top: 'Top',
     a201: 'A201',

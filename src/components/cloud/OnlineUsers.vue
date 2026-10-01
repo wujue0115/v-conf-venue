@@ -96,6 +96,15 @@ function titleOf(p: { key: string; name: string; role: string }) {
   box-shadow: 0 0 0 2px #fff;
   padding: 0;
 }
+/* Phones: the faces overlap more, leaving the top row room for the project's name */
+@media (max-width: 560px) {
+  .online {
+    padding: 0 6px 0 16px;
+  }
+  .face {
+    margin-left: -12px;
+  }
+}
 button.face {
   cursor: pointer;
   transition:

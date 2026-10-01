@@ -1,99 +1,42 @@
 <script setup lang="ts">
-import { computed, shallowRef, useTemplateRef } from 'vue'
+import { useTemplateRef } from 'vue'
+import LibraryButton from './LibraryButton.vue'
 import MainMenu from './MainMenu.vue'
+import ModeSwitch from './ModeSwitch.vue'
 import OnlineUsers from '@/components/cloud/OnlineUsers.vue'
 import ProjectBadge from '@/components/cloud/ProjectBadge.vue'
 import ShareDialog from '@/components/cloud/ShareDialog.vue'
 import StageSettings from './StageSettings.vue'
-import { useVenueEditor } from '@/composables/useVenueEditor'
-import { usePlannerStore, type PlannerMode } from '@/stores/planner'
+import { useCameraViews } from '@/composables/useCameraViews'
+import { usePhone } from '@/composables/usePhone'
 import { useProjectStore } from '@/stores/project'
 import { useAccessStore } from '@/stores/access'
-import { VIEWS, type CameraView } from '@/venue/places'
 import { t } from '@/i18n'
 
-const store = usePlannerStore()
 const project = useProjectStore()
 const access = useAccessStore()
 const shareDialog = useTemplateRef('shareDialog')
-const editor = useVenueEditor()
-const activeView = shallowRef(0)
-
-const MODES = computed(() =>
-  (['view', 'edit'] as PlannerMode[]).map((mode) => ({ mode, ...t().modes[mode] })),
-)
-
-function flyTo(view: CameraView, i: number) {
-  activeView.value = i
-  editor.value?.flyTo(view)
-}
+const phone = usePhone()
+const { views, active, flyTo } = useCameraViews()
 </script>
 
 <template>
-  <div class="topbars">
+  <div class="topbars" :class="{ cloud: !!project.meta }">
     <div class="bar menu" data-stage-ui>
       <MainMenu />
       <ProjectBadge />
     </div>
-    <div class="bar tools" data-stage-ui>
-      <div
-        class="grp mode"
-        :class="{ edit: store.editing }"
-        role="radiogroup"
-        :aria-label="t().modes.label"
-      >
-        <span class="thumb" aria-hidden="true"></span>
-        <button
-          v-for="m in MODES"
-          :key="m.mode"
-          class="btn"
-          :class="{ cur: (store.editing ? 'edit' : 'view') === m.mode }"
-          role="radio"
-          :aria-checked="(store.editing ? 'edit' : 'view') === m.mode"
-          :aria-label="m.label"
-          :title="store.readOnly ? t().palette.readOnly : `${m.label} · ${m.title}`"
-          :disabled="store.readOnly"
-          @click="store.mode = m.mode"
-        >
-          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true">
-            <template v-if="m.mode === 'view'">
-              <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z" />
-              <circle cx="12" cy="12" r="3" />
-            </template>
-            <template v-else>
-              <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
-            </template>
-          </svg>
-        </button>
-      </div>
-      <!-- 多選: always shown (greyed in View mode) so the bar doesn't shift when the mode changes -->
-      <div class="grp">
-        <button
-          class="btn"
-          :class="{ on: store.multiSelect && store.editing }"
-          type="button"
-          :aria-pressed="store.multiSelect && store.editing"
-          :aria-label="t().multi.label"
-          :disabled="!store.editing"
-          :title="`${t().multi.label} · ${store.editing ? t().multi.title : t().multi.editOnly}`"
-          @click="store.multiSelect = !store.multiSelect"
-        >
-          <!-- a dashed selection box around two items -->
-          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true">
-            <rect x="2.5" y="2.5" width="19" height="19" rx="3" stroke-dasharray="3 2.4" />
-            <rect x="6.5" y="6.5" width="5" height="5" rx="1" />
-            <rect x="12.5" y="12.5" width="5" height="5" rx="1" />
-          </svg>
-        </button>
-      </div>
+    <!-- phones have these in the bottom bar (MobileDock) -->
+    <div v-if="!phone" class="bar tools" data-stage-ui>
+      <ModeSwitch />
     </div>
-    <div class="bar views" data-stage-ui>
+    <div v-if="!phone" class="bar views" data-stage-ui>
       <div class="grp">
         <button
-          v-for="(v, i) in VIEWS"
+          v-for="(v, i) in views"
           :key="v.key"
           class="btn"
-          :class="{ on: activeView === i }"
+          :class="{ on: active === i }"
           @click="flyTo(v, i)"
         >
           {{ t().views[v.key] }}
@@ -128,27 +71,9 @@ function flyTo(view: CameraView, i: number) {
         </span>
       </button>
       <ShareDialog ref="shareDialog" />
+      <!-- on phones its button is in ☰, but its panel still opens from here -->
       <StageSettings />
-      <div class="grp">
-        <button
-          class="btn lib"
-          :class="{ on: !store.sidebarCollapsed }"
-          type="button"
-          :title="store.sidebarCollapsed ? t().sidebar.open : t().sidebar.close"
-          :aria-expanded="!store.sidebarCollapsed"
-          aria-controls="planner-sidebar"
-          @click="store.sidebarCollapsed = !store.sidebarCollapsed"
-        >
-          <!-- an armchair -->
-          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M6 11V7a3 3 0 0 1 3-3h6a3 3 0 0 1 3 3v4" />
-            <path
-              d="M4 11a2 2 0 0 1 2 2v2h12v-2a2 2 0 1 1 4 0v4a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2ZM5 19v2M19 19v2"
-            />
-          </svg>
-          <span class="lib-label">{{ t().sidebar.title }}</span>
-        </button>
-      </div>
+      <LibraryButton v-if="!phone" />
     </div>
   </div>
 </template>
@@ -213,9 +138,45 @@ function flyTo(view: CameraView, i: number) {
     scrollbar-width: none;
   }
 }
-/* Phones: the furniture button is just its icon */
+/*
+ * Narrow screens with a cloud project open: its name, the faces and 分享 don't fit beside the
+ * tools, so the top row is ☰ and the name (giving way first) with the side buttons, and the
+ * tools start the row of views below (the views scrolling sideways when they run out of room)
+ */
+@media (max-width: 871px) {
+  .topbars.cloud {
+    display: flex;
+    flex-wrap: wrap;
+    row-gap: 0;
+  }
+  .cloud .menu {
+    order: 1;
+    flex: 1 1 0;
+  }
+  .cloud .side {
+    order: 2;
+    flex: none;
+  }
+  /* the break between the two rows */
+  .topbars.cloud::after {
+    content: '';
+    order: 3;
+    flex-basis: 100%;
+    height: 0;
+  }
+  .cloud .tools {
+    order: 4;
+    flex: none;
+    margin-top: 6px;
+  }
+  .cloud .views {
+    order: 5;
+    flex: 1 1 0;
+    margin-top: 6px;
+  }
+}
+/* Phones: 分享 is just its icon */
 @media (max-width: 480px) {
-  .lib-label,
   .share-label {
     display: none;
   }
@@ -224,9 +185,6 @@ function flyTo(view: CameraView, i: number) {
   }
 }
 
-.lib {
-  padding: 0 10px;
-}
 .share {
   align-items: center;
   gap: 6px;
@@ -272,47 +230,6 @@ function flyTo(view: CameraView, i: number) {
   outline: 2px solid var(--ink);
   outline-offset: 2px;
 }
-.mode .btn:disabled {
-  cursor: not-allowed;
-}
-/* Mode switch: one yellow thumb slides between two equal halves */
-.mode {
-  position: relative;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-}
-.thumb {
-  position: absolute;
-  top: 3px;
-  bottom: 3px;
-  left: 3px;
-  /* one column: (inner width − the 2px gap) / 2 */
-  width: calc((100% - 8px) / 2);
-  border-radius: 7px;
-  background: var(--yel);
-  transition: transform 0.25s cubic-bezier(0.3, 0.7, 0.4, 1);
-}
-.mode.edit .thumb {
-  transform: translateX(calc(100% + 2px));
-}
-.mode .btn {
-  position: relative;
-  background: transparent;
-  transition: color 0.2s;
-}
-.mode .btn:not(.cur) {
-  color: var(--muted);
-}
-.mode .btn:not(.cur):hover {
-  color: var(--ink);
-}
-/* icon-only buttons: square, their name in the tooltip and aria-label */
-.tools .btn {
-  width: 34px;
-  padding: 0;
-  display: grid;
-  place-items: center;
-}
 .ico {
   width: 18px;
   height: 18px;
@@ -321,10 +238,5 @@ function flyTo(view: CameraView, i: number) {
   stroke-width: 1.8;
   stroke-linecap: round;
   stroke-linejoin: round;
-}
-@media (prefers-reduced-motion: reduce) {
-  .thumb {
-    transition: none;
-  }
 }
 </style>
