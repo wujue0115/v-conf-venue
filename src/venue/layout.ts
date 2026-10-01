@@ -168,8 +168,7 @@ const LEGACY: Record<string, { t: FurnitureType; v: string }> = {
 }
 
 export const isUuid = (s: unknown): s is string =>
-  typeof s === 'string' &&
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s)
+  typeof s === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s)
 
 export function parseLayout(data: unknown): LayoutItem[] {
   const list = Array.isArray(data) ? data : (data as { items?: unknown } | null)?.items
