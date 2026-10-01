@@ -6,6 +6,7 @@ import {
   checkAccess,
   CloudError,
   isTransient,
+  loadMeta,
   loadProject,
   loadShared,
   renameProject,
@@ -24,6 +25,7 @@ import { useAuthStore } from '@/stores/auth'
 import { usePalettesStore } from '@/stores/palettes'
 import { usePlannerStore } from '@/stores/planner'
 import type { LayoutItem } from '@/venue/layout'
+import { t } from '@/i18n'
 
 /** Saved: nothing waiting. Pending: a change waits for the next save. */
 export type SaveStatus = 'saved' | 'pending' | 'saving' | 'error'
@@ -82,6 +84,8 @@ export const useProjectStore = defineStore('project', () => {
   let saved: Map<string, string> | null = null
   /** The layout as loaded, before the editor has reported it back */
   let opened: LayoutItem[] | null = null
+  /** The layout right after taking in other people's changes: nothing of this person's to save */
+  let remote: LayoutItem[] | null = null
   let savedSettings = ''
   let timer: ReturnType<typeof setTimeout> | undefined
   let saving: Promise<void> | null = null
@@ -179,6 +183,7 @@ export const useProjectStore = defineStore('project', () => {
     token = null
     saved = null
     opened = null
+    remote = null
     draft.value = null
     shareDenied.value = null
     resetFailure()
@@ -327,6 +332,89 @@ export const useProjectStore = defineStore('project', () => {
     else if (meta.value) meta.value = { ...meta.value, requested: role }
   }
 
+  /** The share link it was opened through, if any (a guest reads changed items through it) */
+  const via = () => openedToken
+
+  /**
+   * Take in other people's saved changes: `rows` as they're saved now, `deleted` ids gone (with
+   * `full`, `rows` is every item, and any other saved item counts as gone). Items with changes
+   * of this person's still to save are left as they are: theirs is saved over it. `apply` puts
+   * the rest into the editor, which reports the layout back at once.
+   */
+  function takeRemote(
+    rows: readonly LayoutItem[],
+    deleted: readonly string[],
+    apply: (upserts: LayoutItem[], deletes: string[]) => void,
+    { full = false } = {},
+  ) {
+    const id = meta.value?.id
+    if (!id || !saved || planner.projectId !== id) return
+    const was = saved
+    const now = new Map(planner.items.map((i) => [i.id!, rowKey(i)]))
+    // changed here and not saved yet (added, changed or removed)
+    const mine = (k: string) => now.get(k) !== was.get(k)
+    const upserts = rows.filter((r) => !mine(r.id!) && now.get(r.id!) !== rowKey(r))
+    const gone = new Set(deleted)
+    if (full) {
+      const there = new Set(rows.map((r) => r.id!))
+      for (const k of was.keys()) if (!there.has(k)) gone.add(k)
+    }
+    // removed on both sides: nothing left to save
+    for (const k of gone) if (!now.has(k)) was.delete(k)
+    const deletes = [...gone].filter((k) => now.has(k) && !mine(k))
+    if (!upserts.length && !deletes.length) return
+    apply(upserts, deletes)
+    remote = planner.items
+    const after = new Map(planner.items.map((i) => [i.id!, rowKey(i)]))
+    // what the editor took in is saved already (an item it was busy dragging, it kept)
+    for (const r of upserts) {
+      const k = after.get(r.id!)
+      if (k !== undefined && k !== now.get(r.id!)) was.set(r.id!, k)
+    }
+    for (const k of deletes) if (!after.has(k)) was.delete(k)
+  }
+
+  /** Open it again from scratch (it was deleted, or this person's access to it ended) */
+  async function reload() {
+    const m = meta.value
+    if (!m) return
+    if (openedToken) await openShared(openedToken)
+    else await open(m.id, { again: true })
+  }
+
+  /**
+   * Read the project again after word that its name, settings, sharing or someone's access
+   * changed: this person's role (Edit turns on or off to match), the name, and the settings
+   * unless they have changes of their own to them still to save.
+   */
+  async function refreshMeta() {
+    const m = meta.value
+    if (!m) return
+    // a guest can't read the project itself: the link shows what it allows now
+    if (!auth.user) return reload()
+    let fresh: Awaited<ReturnType<typeof loadMeta>>
+    try {
+      fresh = await loadMeta(m.id, auth.user.id)
+    } catch (e) {
+      if (e instanceof CloudError && e.code === 'not_found') return reload()
+      logError('reading the project again failed', e)
+      return
+    }
+    if (meta.value?.id !== m.id) return
+    const couldEdit = canEdit.value
+    meta.value = { ...meta.value, ...fresh.meta, updated_at: meta.value.updated_at }
+    planner.readOnly = !canEdit.value
+    if (couldEdit !== canEdit.value)
+      planner.notify(canEdit.value ? t().collab.nowEditor : t().collab.nowViewer)
+    if (saved && JSON.stringify(settings()) === savedSettings) {
+      palettes.importPalettes(fresh.settings)
+      const pricing = fresh.settings.pricing
+      if (pricing?.priceMode !== undefined) planner.priceMode = pricing.priceMode
+      if (pricing?.slots !== undefined) planner.setSlots(pricing.slots)
+      savedSettings = JSON.stringify(settings())
+    }
+  }
+
   /** Change the share link's settings (its owner only) */
   async function setSharing(patch: Partial<Sharing>) {
     if (!meta.value || meta.value.role !== 'owner') return
@@ -352,6 +440,7 @@ export const useProjectStore = defineStore('project', () => {
         saved = new Map(list.map((i) => [i.id!, rowKey(i)]))
         return
       }
+      if (list === remote) return
       schedule()
     },
   )
@@ -396,6 +485,10 @@ export const useProjectStore = defineStore('project', () => {
     rename,
     setSharing,
     requestAccess,
+    via,
+    takeRemote,
+    reload,
+    refreshMeta,
     dismissAlert,
     dropDraft,
   }

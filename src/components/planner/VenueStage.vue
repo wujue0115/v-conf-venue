@@ -2,6 +2,7 @@
 import { onBeforeUnmount, onMounted, useTemplateRef, watch } from 'vue'
 import TagLayer from './TagLayer.vue'
 import CloudNotice from '@/components/cloud/CloudNotice.vue'
+import FollowFrame from '@/components/cloud/FollowFrame.vue'
 import SelectionBar from './SelectionBar.vue'
 import StageHelp from './StageHelp.vue'
 import StageHistory from './StageHistory.vue'
@@ -9,10 +10,13 @@ import StageToast from './StageToast.vue'
 import StageToolbar from './StageToolbar.vue'
 import VenueLabels from './VenueLabels.vue'
 import { useVenueEditor } from '@/composables/useVenueEditor'
+import { useCollabStore, type EditorLink } from '@/stores/collab'
 import { usePlannerStore } from '@/stores/planner'
 import { VenueEditor } from '@/venue/VenueEditor'
 
 const store = usePlannerStore()
+const collab = useCollabStore()
+let link: EditorLink | null = null
 const editor = useVenueEditor()
 const stageEl = useTemplateRef('stage')
 const canvasEl = useTemplateRef('canvas')
@@ -27,13 +31,28 @@ onMounted(() => {
       store.canUndo = u
       store.canRedo = r
     },
+    onLive: (moves) => collab.move(moves),
+    onCamera: () => collab.camera(),
+    onFollowEnd: () => collab.followEnded(),
+    onPointer: (p) => collab.pointer(p),
   })
   store.fixedSeats = ed.fixedSeats
   ed.load(store.items)
   editor.value = ed
+  // other people's changes, drags and selections in a shared cloud project
+  link = {
+    applyRemote: (up, del) => ed.applyRemote(up, del),
+    applyLive: (m) => ed.applyLive(m),
+    setLocks: (l) => ed.setLocks(l),
+    setCursors: (c) => ed.setCursors(c),
+    follow: (cam) => ed.follow(cam),
+    cameraState: () => ed.cameraState(),
+  }
+  collab.attach(link)
 })
 
 onBeforeUnmount(() => {
+  if (link) collab.detach(link)
   editor.value?.dispose()
   editor.value = null
 })
@@ -71,6 +90,7 @@ watch(
     <StageToolbar />
     <StageToast />
     <CloudNotice />
+    <FollowFrame />
     <SelectionBar />
     <StageHistory />
     <StageHelp />

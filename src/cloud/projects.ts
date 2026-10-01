@@ -221,17 +221,19 @@ export async function createProject(
   return id
 }
 
+type ObjectRow = { id: string; type: string; data: Record<string, unknown> }
+
 /** Rows of project_objects (or open_shared_project's objects) as layout items */
-function itemsOf(rows: { id: string; type: string; data: Record<string, unknown> }[]) {
+export function itemsOf(rows: ObjectRow[]) {
   // through parseLayout like a file, so a bad row is dropped rather than breaking the scene
   return parseLayout(rows.map((r) => ({ ...r.data, id: r.id, t: r.type })))
 }
 
 /**
- * A project and its items, if the signed-in person (`userId`) may open it, with their role on
- * it. Without `userId` the role isn't looked up (it reads as viewer).
+ * A project without its items, if the signed-in person (`userId`) may open it, with their role
+ * on it. Without `userId` the role isn't looked up (it reads as viewer).
  */
-export async function loadProject(id: string, userId?: string): Promise<LoadedProject> {
+export async function loadMeta(id: string, userId?: string): Promise<Omit<LoadedProject, 'items'>> {
   const project = check(
     await db()
       .from('projects')
@@ -246,9 +248,6 @@ export async function loadProject(id: string, userId?: string): Promise<LoadedPr
       })
     | null
   if (!project) throw new CloudError('not_found')
-  const rows = check(
-    await db().from('project_objects').select('id, type, data').eq('project_id', id),
-  ) as { id: string; type: string; data: Record<string, unknown> }[]
   let role: Role = 'viewer'
   let requested: Grant | null = null
   if (userId && project.owner_id === userId) role = 'owner'
@@ -270,9 +269,57 @@ export async function loadProject(id: string, userId?: string): Promise<LoadedPr
       requested,
       sharing: role === 'owner' ? { share_token, share_enabled, view_access, edit_access } : null,
     },
-    items: itemsOf(rows),
     settings: project.settings ?? {},
   }
+}
+
+/** A project and its items (see loadMeta) */
+export async function loadProject(id: string, userId?: string): Promise<LoadedProject> {
+  const [meta, rows] = await Promise.all([
+    loadMeta(id, userId),
+    db().from('project_objects').select('id, type, data').eq('project_id', id),
+  ])
+  return { ...meta, items: itemsOf(check(rows) as ObjectRow[]) }
+}
+
+/**
+ * Some of a project's items as they're saved now: through the share link (`token`) for a guest,
+ * who can't read project_objects themselves. All of them with no `ids`.
+ */
+export async function loadItems(
+  projectId: string,
+  ids: readonly string[] | null,
+  token?: string | null,
+): Promise<LayoutItem[]> {
+  if (!ids) {
+    if (token) {
+      const r = await loadShared(token)
+      if (r.status !== 'ok') throw new CloudError('gone')
+      return r.project.items
+    }
+    return itemsOf(
+      check(
+        await db().from('project_objects').select('id, type, data').eq('project_id', projectId),
+      ) as ObjectRow[],
+    )
+  }
+  const rows: ObjectRow[] = []
+  // a batch at a time, so the request's address stays short
+  for (let i = 0; i < ids.length; i += 100) {
+    const batch = ids.slice(i, i + 100)
+    rows.push(
+      ...((token
+        ? check(await db().rpc('shared_objects', { p_token: token, p_ids: batch }))
+        : check(
+            await db()
+              .from('project_objects')
+              .select('id, type, data')
+              .eq('project_id', projectId)
+              .in('id', batch),
+          )) as ObjectRow[]),
+    )
+  }
+  return itemsOf(rows)
 }
 
 /** What a share link opens to */

@@ -22,6 +22,7 @@ import {
   applyPeople,
   type FurnitureType,
 } from './furniture'
+import { rebaseStep } from './history'
 import { drawLabels, type LabelFace, type LabelMark, type TagMark } from './imageLabels'
 import { LID_OPEN, clampLid, setLaptopOpen } from './laptop'
 import { clampPeople, cleanInfo, cleanTag, isHexColor, type LayoutItem } from './layout'
@@ -42,6 +43,8 @@ import { ZONE_COLOR, ZONE_MIN, applyZone, clampZone, onZoneGrid } from './zone'
 export interface SelectionInfo {
   /** How many items are selected; the rest describes the first of them */
   count: number
+  /** Every selected item's id, the one described first */
+  ids: string[]
   /** The group (群組) every selected item is in, if they share one */
   group?: string
   /** That group's tag ('' when none), tag colour and note ('' when none) */
@@ -87,6 +90,44 @@ export interface EditorCallbacks {
   onToast: (message: string) => void
   /** Fired whenever there comes to be (or stops being) something to undo or redo */
   onHistory: (canUndo: boolean, canRedo: boolean) => void
+  /** Items moving under the pointer, as they go (before the change is committed) */
+  onLive?: (moves: LiveMove[]) => void
+  /** The camera moved (by the person, a fly to a view, or following someone) */
+  onCamera?: (cam: CameraState) => void
+  /** Following someone's view stopped because the person moved the camera themselves */
+  onFollowEnd?: () => void
+  /** Where in the venue the pointer is, a few times a second; null once it leaves the stage */
+  onPointer?: (point: Vec3 | null) => void
+}
+
+/** Someone else's pointer, somewhere in the venue */
+export interface RemoteCursor {
+  key: string
+  name: string
+  color: string
+  point: Vec3
+}
+
+/** Where the camera is and what it looks at */
+export interface CameraState {
+  p: Vec3
+  t: Vec3
+}
+
+/** Where an item is while it's being dragged */
+export interface LiveMove {
+  id: string
+  x: number
+  y: number
+  z: number
+  r: number
+}
+
+/** Someone else has these items selected: they can't be picked here */
+export interface Lock {
+  name: string
+  /** Their colour, for the outline */
+  color: string
 }
 
 export interface LabelAnchor {
@@ -113,6 +154,8 @@ interface Fly {
 }
 
 const UNDO_LIMIT = 60
+/** How often the pointer's place in the venue is reported, at most (ms) */
+const POINTER_EVERY = 50
 /** An exported picture's building, in pixels along its longer side */
 const IMAGE_SIZE = 2400
 /** A picture this size (see IMAGE_SIZE) draws its tags and labels at the stage's size */
@@ -313,6 +356,26 @@ export class VenueEditor {
   private placing: { type: FurnitureType; obj: THREE.Group | null; sx: number; sy: number } | null =
     null
   private fly: Fly | null = null
+  /** Other people's pointers, drawn over the stage (see setCursors) */
+  private readonly cursors = new Map<
+    string,
+    { el: HTMLElement; label: HTMLElement; at: THREE.Vector3; to: THREE.Vector3 }
+  >()
+  private cursorLayer: HTMLDivElement | null = null
+  /** When the pointer's place in the venue was last reported */
+  private pointerAt = 0
+  /** A pointer move held back by the throttle, reported when its turn comes (so the last one isn't lost) */
+  private pointerLater: ReturnType<typeof setTimeout> | undefined
+  private pointerLast: PointerEvent | null = null
+  /** Someone's view the camera is following (see follow) */
+  private following: { p: THREE.Vector3; t: THREE.Vector3 } | null = null
+  /** Items other people have selected, by id (see setLocks) */
+  private locks = new Map<string, Lock>()
+  /** An outline in its holder's colour round each locked item */
+  private readonly lockBoxes = new Map<
+    string,
+    { o: THREE.Object3D; color: string; box: THREE.Box3; helper: THREE.Box3Helper }
+  >()
   private firstFit = true
   private lastT = 0
 
@@ -397,6 +460,10 @@ export class VenueEditor {
     selHelper.visible = false
     scene.add(selHelper)
 
+    // the person taking the camera (drag, pinch, wheel) stops following anyone
+    controls.addEventListener('start', () => this.stopFollowing())
+    controls.addEventListener('change', () => this.cb.onCamera?.(this.cameraState()))
+
     this.bindEvents()
     this.resizeObserver = new ResizeObserver(this.fit)
     this.resizeObserver.observe(stageEl)
@@ -405,6 +472,7 @@ export class VenueEditor {
   }
 
   dispose() {
+    this.cursorLayer?.remove()
     this.renderer.setAnimationLoop(null)
     this.resizeObserver.disconnect()
     this.cleanups.forEach((f) => f())
@@ -435,6 +503,80 @@ export class VenueEditor {
 
   get count() {
     return this.placed.children.length
+  }
+
+  /**
+   * Take in other people's saved changes: these items as they now are, these ids removed. Not
+   * an undo step of its own; instead every undo step takes them on (see history.ts), so undo
+   * only ever puts back this person's own changes. Items being dragged or resized here are
+   * left alone: this person's change wins once it's saved.
+   */
+  applyRemote(upserts: readonly LayoutItem[], deletes: readonly string[]) {
+    if (!upserts.length && !deletes.length) return
+    const byId = this.byId()
+    const busy = new Set<THREE.Object3D>()
+    if (this.drag) {
+      busy.add(this.drag.o)
+      for (const m of this.drag.group ?? []) busy.add(m.o)
+    }
+    if (this.resizing) busy.add(this.resizing.o)
+    const sel = this.selection
+    const next = [...sel]
+    const taken: LayoutItem[] = []
+    const gone = new Set<string>()
+    for (const id of deletes) {
+      const o = byId.get(id)
+      if (o && busy.has(o)) continue
+      gone.add(id)
+      if (!o) continue
+      this.placed.remove(o)
+      const i = next.indexOf(o)
+      if (i >= 0) next.splice(i, 1)
+    }
+    for (const item of upserts) {
+      const old = byId.get(item.id!)
+      if (old && busy.has(old)) continue
+      if (old) this.placed.remove(old)
+      const o = this.add(item)
+      if (!o) continue
+      taken.push(item)
+      const i = old ? next.indexOf(old) : -1
+      if (i >= 0) next[i] = o
+    }
+    this.rebaseHistory(taken, gone)
+    if (next.length !== sel.length || next.some((o, i) => o !== sel[i])) this.setSelection(next)
+    else if (this.selected) this.updSel()
+    this.commit()
+  }
+
+  /** Move items to where someone else is dragging them (their save follows when they let go) */
+  applyLive(moves: readonly LiveMove[]) {
+    const byId = this.byId()
+    let posts = false
+    for (const m of moves) {
+      const o = byId.get(m.id)
+      if (!o || o === this.drag?.o || o === this.resizing?.o) continue
+      o.position.set(m.x, m.y, m.z)
+      o.rotation.y = m.r
+      if (isPost(o)) posts = true
+    }
+    if (posts) this.updateBelts()
+  }
+
+  /**
+   * Items other people have selected, by id, with who: they're outlined in that person's colour
+   * and can't be picked here. Any of them selected here already is let go.
+   */
+  setLocks(locks: ReadonlyMap<string, Lock>) {
+    this.locks = new Map(locks)
+    const sel = this.selection
+    const lost = sel.find((o) => this.lockOf(o))
+    if (lost) {
+      if (this.drag && sel.includes(this.drag.o)) this.endDrag()
+      this.setSelection(sel.filter((o) => !this.lockOf(o)))
+      this.cb.onToast(t().collab.taken(this.lockOf(lost)!.name))
+    }
+    this.syncLockBoxes()
   }
 
   undo() {
@@ -642,7 +784,76 @@ export class VenueEditor {
     this.labels = anchors.map((a) => ({ ...a, p: new THREE.Vector3(...a.pos) }))
   }
 
+  /**
+   * Show other people's pointers where they are in the venue, each an arrow in their colour with
+   * their name; they glide there rather than jump.
+   */
+  setCursors(list: readonly RemoteCursor[]) {
+    const keep = new Set(list.map((c) => c.key))
+    for (const [k, c] of this.cursors)
+      if (!keep.has(k)) {
+        c.el.remove()
+        this.cursors.delete(k)
+      }
+    if (list.length && !this.cursorLayer) {
+      const layer = (this.cursorLayer = document.createElement('div'))
+      Object.assign(layer.style, {
+        position: 'absolute',
+        inset: '0',
+        pointerEvents: 'none',
+        overflow: 'hidden',
+        zIndex: '1',
+      })
+      this.stageEl.append(layer)
+    }
+    for (const c of list) {
+      let e = this.cursors.get(c.key)
+      if (!e) {
+        const el = document.createElement('div')
+        Object.assign(el.style, {
+          position: 'absolute',
+          left: '0',
+          top: '0',
+          willChange: 'transform',
+        })
+        el.innerHTML =
+          '<svg width="18" height="18" viewBox="0 0 18 18" style="display:block;filter:drop-shadow(0 1px 1px rgba(0,0,0,.3))"><path d="M2 1.5 15.5 8 9 9.6 6.6 16Z" stroke="#fff" stroke-width="1.4" stroke-linejoin="round"/></svg><span style="position:absolute;left:14px;top:14px;padding:2px 7px;border-radius:9px;color:#fff;font:600 11px/1.4 system-ui,sans-serif;white-space:nowrap"></span>'
+        const label = el.querySelector('span')!
+        this.cursorLayer!.append(el)
+        const p = new THREE.Vector3(...c.point)
+        e = { el, label, at: p.clone(), to: p }
+        this.cursors.set(c.key, e)
+      }
+      e.to.set(...c.point)
+      e.el.querySelector('path')!.setAttribute('fill', c.color)
+      e.label.style.background = c.color
+      e.label.textContent = c.name
+    }
+  }
+
+  /** Where the camera is and what it looks at, to the centimetre */
+  cameraState(): CameraState {
+    const r = (v: THREE.Vector3): Vec3 => [+v.x.toFixed(2), +v.y.toFixed(2), +v.z.toFixed(2)]
+    return { p: r(this.camera.position), t: r(this.controls.target) }
+  }
+
+  /**
+   * Keep the camera gliding after someone else's view (null: stop). Moving the camera here
+   * stops it, and onFollowEnd says so.
+   */
+  follow(cam: CameraState | null) {
+    this.following = cam ? { p: new THREE.Vector3(...cam.p), t: new THREE.Vector3(...cam.t) } : null
+    if (cam) this.fly = null
+  }
+
+  private stopFollowing() {
+    if (!this.following) return
+    this.following = null
+    this.cb.onFollowEnd?.()
+  }
+
   flyTo(view: CameraView) {
+    this.stopFollowing()
     const to = view.position
       ? { position: new THREE.Vector3(...view.position), target: new THREE.Vector3(...view.target) }
       : this.overview()
@@ -1881,6 +2092,7 @@ export class VenueEditor {
 
   private commit() {
     this.updateBelts()
+    if (this.locks.size) this.syncLockBoxes()
     this.cb.onChange(this.serialize())
   }
 
@@ -1919,6 +2131,94 @@ export class VenueEditor {
     this.commit()
     this.updSel()
     this.cb.onToast(t().toast.beltCut)
+  }
+
+  /** Pin other people's pointers on screen, gliding towards where they last were */
+  private layoutCursors(dt: number) {
+    if (!this.cursors.size) return
+    const k = 1 - Math.exp(-dt * 14)
+    const r = this.canvas.getBoundingClientRect()
+    for (const c of this.cursors.values()) {
+      c.at.lerp(c.to, k)
+      const v = this.v.copy(c.at).project(this.camera)
+      const shown = v.z < 1 && Math.abs(v.x) <= 1.05 && Math.abs(v.y) <= 1.05
+      c.el.style.display = shown ? '' : 'none'
+      if (shown)
+        c.el.style.transform = `translate(${((v.x + 1) / 2) * r.width}px,${((1 - v.y) / 2) * r.height}px)`
+    }
+  }
+
+  /** Every placed item by its id */
+  private byId() {
+    const m = new Map<string, THREE.Object3D>()
+    for (const o of this.placed.children) if (o.userData.id) m.set(o.userData.id as string, o)
+    return m
+  }
+
+  private lockOf(o: THREE.Object3D) {
+    const id = o.userData.id as string | undefined
+    return id ? this.locks.get(id) : undefined
+  }
+
+  /** One outline per locked item that's placed, in its holder's colour */
+  private syncLockBoxes() {
+    const byId = this.byId()
+    for (const [id, b] of this.lockBoxes) {
+      const o = byId.get(id)
+      const lock = this.locks.get(id)
+      if (o && lock?.color === b.color) {
+        b.o = o
+        continue
+      }
+      this.scene.remove(b.helper)
+      b.helper.dispose()
+      this.lockBoxes.delete(id)
+    }
+    for (const [id, lock] of this.locks) {
+      const o = byId.get(id)
+      if (!o || this.lockBoxes.has(id)) continue
+      const box = new THREE.Box3().setFromObject(o)
+      const helper = new THREE.Box3Helper(box, new THREE.Color(lock.color))
+      ;(helper.material as THREE.Material).depthTest = false
+      helper.renderOrder = 998
+      this.scene.add(helper)
+      this.lockBoxes.set(id, { o, color: lock.color, box, helper })
+    }
+  }
+
+  /** Every undo and redo step takes on other people's changes, so undo leaves them standing */
+  private rebaseHistory(upserts: readonly LayoutItem[], gone: ReadonlySet<string>) {
+    if (!upserts.length && !gone.size) return
+    const keyed = new Map(
+      upserts.map((i) => [i.id!, i.img ? { ...i, img: this.imgKey(i.img) } : i] as const),
+    )
+    const fix = (step: string) => rebaseStep(step, keyed, gone)
+    this.undoStack = this.undoStack.map(fix)
+    this.redoStack = this.redoStack.map(fix)
+    this.redoCleared = this.redoCleared.map(fix)
+  }
+
+  /** Tell whoever's watching where these items are now, mid-drag */
+  private live(objs: readonly THREE.Object3D[]) {
+    if (!this.cb.onLive || !objs.length) return
+    this.cb.onLive(
+      objs.map((o) => ({
+        id: (o.userData.id ??= crypto.randomUUID()) as string,
+        x: +o.position.x.toFixed(3),
+        y: +o.position.y.toFixed(3),
+        z: +o.position.z.toFixed(3),
+        r: +o.rotation.y.toFixed(4),
+      })),
+    )
+  }
+
+  /** Let go of what's being dragged, committing it if it moved */
+  private endDrag() {
+    if (this.drag?.moved) this.commit()
+    this.drag = null
+    this.controls.enabled = true
+    this.grid.visible = false
+    this.canvas.style.cursor = ''
   }
 
   /** The layout as an undo step (poster images by their short key) */
@@ -1976,7 +2276,8 @@ export class VenueEditor {
 
   /** Select these items together; the first one is the one the panel describes */
   private setSelection(list: readonly THREE.Object3D[]) {
-    const [first, ...rest] = [...new Set(list)]
+    // someone else's selection can't join this one
+    const [first, ...rest] = [...new Set(list)].filter((o) => !this.lockOf(o))
     this.select(first ?? null)
     for (const o of rest) this.group.add(o)
     this.syncGroupBoxes()
@@ -2191,6 +2492,7 @@ export class VenueEditor {
     this.updHandles()
     this.cb.onSelect({
       count: this.group.size + 1,
+      ids: this.selection.map((o) => (o.userData.id ??= crypto.randomUUID()) as string),
       ...this.sharedGroup(),
       type: s.userData.type,
       x: s.position.x,
@@ -2257,6 +2559,18 @@ export class VenueEditor {
     this.ray.set(new THREE.Vector3(x, 40, z), new THREE.Vector3(0, -1, 0))
     const h = this.ray.intersectObjects(this.archi.walk, false)[0]
     return h ? h.point.y : 0
+  }
+
+  /** What the pointer is over in the venue: an item's surface, else the floor */
+  private pointerPoint(e: PointerEvent): Vec3 | null {
+    this.setRay(e)
+    const hit =
+      this.ray.intersectObjects(this.placed.children, true).find((h) => {
+        let o = h.object
+        while (o.parent && o.parent !== this.placed) o = o.parent
+        return o.visible
+      })?.point ?? this.floorHit(e)
+    return hit ? [+hit.x.toFixed(2), +hit.y.toFixed(2), +hit.z.toFixed(2)] : null
   }
 
   private floorHit(e: PointerEvent) {
@@ -2391,6 +2705,31 @@ export class VenueEditor {
   private bindEvents() {
     const { canvas } = this
     this.listen(canvas, 'contextmenu', (e) => e.preventDefault())
+    // where in the venue the pointer is, for other people's screens
+    // (at most every POINTER_EVERY ms, the latest always going out last)
+    const report = () => {
+      this.pointerLater = undefined
+      const e = this.pointerLast
+      this.pointerLast = null
+      if (!e) return
+      this.pointerAt = performance.now()
+      this.cb.onPointer?.(this.pointerPoint(e))
+    }
+    this.listen(canvas, 'pointermove', (e) => {
+      if (!this.cb.onPointer || e.pointerType === 'touch') return
+      this.pointerLast = e
+      if (this.pointerLater) return
+      const wait = POINTER_EVERY - (performance.now() - this.pointerAt)
+      if (wait <= 0) report()
+      else this.pointerLater = setTimeout(report, wait)
+    })
+    this.listen(canvas, 'pointerleave', () => {
+      clearTimeout(this.pointerLater)
+      this.pointerLater = undefined
+      this.pointerLast = null
+      this.cb.onPointer?.(null)
+    })
+    this.cleanups.push(() => clearTimeout(this.pointerLater))
     this.listen(window, 'keyup', (e) => this.held.delete(e.key.toLowerCase()))
     this.listen(window, 'blur', () => this.held.clear())
     this.listen(window, 'keydown', this.onKeyDown)
@@ -2434,6 +2773,14 @@ export class VenueEditor {
           return
         }
         const o = this.pickObj(e)
+        const lock = o && this.lockOf(o)
+        if (lock) {
+          // someone else has it selected
+          e.stopPropagation()
+          e.preventDefault()
+          this.cb.onToast(t().collab.locked(lock.name))
+          return
+        }
         const keyed = e.shiftKey || e.metaKey || e.ctrlKey
         if (o && this.multi && !keyed && this.selection.includes(o) && !onWall(o) && !onTable(o)) {
           // 多選: dragging a selected item moves them all; a tap takes it out
@@ -2532,6 +2879,7 @@ export class VenueEditor {
         // the grabbed item snaps to the grid; the rest keep their places around it
         const lead = d.group.find((m) => m.o === d.o)!.start
         this.offsetGroup(d.group, this.sn(p.x + d.dx) - lead.x, this.sn(p.z + d.dz) - lead.z)
+        this.live(d.group.flatMap((m) => [m.o, ...m.riders.map((r) => r.o)]))
         return
       }
       if (d && onWall(d.o)) {
@@ -2547,6 +2895,7 @@ export class VenueEditor {
         d.o.position.addScaledVector(right, -d.dx).setY(d.o.position.y - d.dz)
         this.keepAboveFloor(d.o)
         this.updSel()
+        this.live([d.o])
         return
       }
       if (d && onTable(d.o)) {
@@ -2557,6 +2906,7 @@ export class VenueEditor {
         }
         this.putOnTable(d.o, e)
         this.updSel()
+        this.live([d.o])
         return
       }
       if (d) {
@@ -2572,6 +2922,7 @@ export class VenueEditor {
         this.settle(d.o)
         if (isPost(d.o)) this.updateBelts()
         this.updSel()
+        this.live([d.o, ...(d.riders ?? []).map((r) => r.o)])
         return
       }
       if (this.placing || !this.editable) return
@@ -2622,7 +2973,10 @@ export class VenueEditor {
       const d = this.downPt
       if (d && e.target === canvas && Math.hypot(e.clientX - d.x, e.clientY - d.y) < 4) {
         const belt = this.editable && this.pickBelt(e)
-        if (belt) this.cutBelt(belt)
+        const beltLock =
+          belt && (belt.userData.ends as THREE.Object3D[]).map((o) => this.lockOf(o)).find(Boolean)
+        if (beltLock) this.cb.onToast(t().collab.locked(beltLock.name))
+        else if (belt) this.cutBelt(belt)
         else this.setSelection(this.zoneClick ? this.withGroup(this.zoneClick) : [])
       }
       this.zoneClick = null
@@ -2788,6 +3142,7 @@ export class VenueEditor {
     camera.position.add(m)
     controls.target.add(m)
     this.fly = null
+    this.stopFollowing()
   }
 
   private readonly v = new THREE.Vector3()
@@ -2804,14 +3159,26 @@ export class VenueEditor {
       controls.target.lerpVectors(fly.g0, fly.g1, k)
       if (k >= 1) this.fly = null
     }
+    const f = this.following
+    if (f) {
+      // ease towards their view, frame-rate independent
+      const k = 1 - Math.exp(-dt * 8)
+      camera.position.lerp(f.p, k)
+      controls.target.lerp(f.t, k)
+    }
     controls.update()
     if (this.selected) {
       this.selBox.setFromObject(this.selected)
       if (this.handles.visible) this.updHandles()
     }
     for (const [o, { box }] of this.groupBoxes) box.setFromObject(o)
+    for (const { o, box, helper } of this.lockBoxes.values()) {
+      box.setFromObject(o)
+      helper.visible = o.visible
+    }
     this.updGroupFrames()
     this.renderer.render(this.scene, camera)
+    this.layoutCursors(dt)
     if (this.labelsVisible) this.layoutLabels()
     this.layoutTags('item')
     this.layoutTags('zone')

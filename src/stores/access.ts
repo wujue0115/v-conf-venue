@@ -77,6 +77,21 @@ export const useAccessStore = defineStore('access', () => {
     }
   }
 
+  /** Someone's access changed (word from the channel): the count again, and the list if it's open */
+  async function refresh() {
+    const id = projectId.value
+    if (!id) return
+    try {
+      if (entries.value) await load()
+      else {
+        const n = await countRequests(id)
+        if (projectId.value === id) requestCount.value = n
+      }
+    } catch (e) {
+      console.error('[cloud] refreshing access failed', e instanceof CloudError ? e.detail : e)
+    }
+  }
+
   /** Make a change, then read the list back as the database has it */
   async function change(job: (projectId: string) => Promise<unknown>) {
     const id = projectId.value
@@ -96,6 +111,7 @@ export const useAccessStore = defineStore('access', () => {
     linkVisitors,
     find,
     load,
+    refresh,
     add: (email: string, role: Grant) => change((id) => addPerson(id, email, role, find(email))),
     setRole: (e: AccessEntry, role: Grant) => change(() => setRole(e, role)),
     approve: (e: AccessEntry) => change(() => approve(e)),

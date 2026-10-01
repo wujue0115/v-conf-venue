@@ -314,4 +314,62 @@ describe('project store', () => {
       expect(localStorage.getItem(DRAFT)).toBeNull()
     })
   })
+
+  describe('other people’s saved changes', () => {
+    /** What the editor does with them: takes them in and reports the layout back at once */
+    const editorFor =
+      (planner: ReturnType<typeof usePlannerStore>) => (up: LayoutItem[], del: string[]) => {
+        const byId = new Map(planner.items.map((i) => [i.id!, i]))
+        for (const id of del) byId.delete(id)
+        for (const i of up) byId.set(i.id!, i)
+        planner.items = [...byId.values()]
+      }
+    const xs = (items: readonly LayoutItem[]) => items.map((i) => [i.id, i.x])
+
+    it('are taken in, and never saved back', async () => {
+      const { project, planner } = await openProject('editor')
+      project.takeRemote([item(A, 7), item(C, 1)], [B], editorFor(planner))
+      expect(xs(planner.items)).toEqual([
+        [A, 7],
+        [C, 1],
+      ])
+      await nextTick()
+      await vi.runAllTimersAsync()
+      expect(api.saveChanges).not.toHaveBeenCalled()
+      expect(project.status).toBe('saved')
+    })
+
+    it('leave this person’s unsaved changes standing, which are then saved over them', async () => {
+      const { project, planner } = await openProject('editor')
+      planner.items = [item(A, 5), item(B, 2)]
+      await nextTick()
+      project.takeRemote([item(A, 7), item(B, 9)], [], editorFor(planner))
+      expect(xs(planner.items)).toEqual([
+        [A, 5],
+        [B, 9],
+      ])
+      await nextTick()
+      await vi.runAllTimersAsync()
+      expect(api.saveChanges).toHaveBeenCalledTimes(1)
+      const [, changes] = api.saveChanges.mock.calls[0]!
+      expect(xs(changes.upserts)).toEqual([[A, 5]])
+      expect(changes.deletes).toEqual([])
+    })
+
+    it('after the connection was down, count saved items missing from all of them as removed', async () => {
+      const { project, planner } = await openProject('editor')
+      // C added here and not saved yet
+      planner.items = [...planner.items, item(C, 3)]
+      await nextTick()
+      project.takeRemote([item(A, 1)], [], editorFor(planner), { full: true })
+      expect(xs(planner.items)).toEqual([
+        [A, 1],
+        [C, 3],
+      ])
+      await vi.runAllTimersAsync()
+      const [, changes] = api.saveChanges.mock.calls[0]!
+      expect(xs(changes.upserts)).toEqual([[C, 3]])
+      expect(changes.deletes).toEqual([])
+    })
+  })
 })

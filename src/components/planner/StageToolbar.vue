@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, shallowRef, useTemplateRef } from 'vue'
 import MainMenu from './MainMenu.vue'
+import OnlineUsers from '@/components/cloud/OnlineUsers.vue'
 import ProjectBadge from '@/components/cloud/ProjectBadge.vue'
 import ShareDialog from '@/components/cloud/ShareDialog.vue'
 import StageSettings from './StageSettings.vue'
@@ -100,6 +101,7 @@ function flyTo(view: CameraView, i: number) {
       </div>
     </div>
     <div class="bar side" data-stage-ui>
+      <OnlineUsers />
       <!-- the owner's only -->
       <button
         v-if="project.meta?.role === 'owner'"

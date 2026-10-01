@@ -490,6 +490,29 @@ const zh = {
     ] as { title: string; rows: [key: string, what: string][] }[],
   },
 
+  /** Working on a cloud project together */
+  collab: {
+    /** Picking an item someone else has selected */
+    locked: (name: string) => `${name} 正在編輯這個物件`,
+    /** Both picked the same item at once and they were first */
+    taken: (name: string) => `${name} 先選了這個物件，已取消你的選取`,
+    online: (n: number) => `${n} 人在線上`,
+    you: '你',
+    roles: { owner: '擁有者', editor: '可編輯', viewer: '檢視中' },
+    /** Someone signed in without a name to show */
+    someone: '使用者',
+    /** The owner changed this person's access while they had the project open */
+    nowEditor: '你現在可以編輯這個專案了',
+    nowViewer: '你的權限已改為只能檢視',
+    /** Clicking someone's face follows their view, as in Figma */
+    follow: (name: string) => `跟隨 ${name} 的視角`,
+    following: (name: string) => `正在跟隨 ${name}`,
+    stopFollowing: '停止跟隨',
+    followHint: '移動視角也會停止跟隨',
+    followLeft: (name: string) => `${name} 已離開，停止跟隨`,
+    cantFollow: '檢視中的人無法被跟隨',
+  },
+
   toast: {
     undone: '已復原',
     redone: '已重做',

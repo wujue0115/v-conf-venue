@@ -483,6 +483,23 @@ const en: Messages = {
     ],
   },
 
+  collab: {
+    locked: (name: string) => `${name} is editing this item`,
+    taken: (name: string) => `${name} picked this item first, so it's no longer selected`,
+    online: (n: number) => `${n} online`,
+    you: 'You',
+    roles: { owner: 'Owner', editor: 'Can edit', viewer: 'Viewing' },
+    someone: 'Someone',
+    nowEditor: 'You can edit this project now',
+    nowViewer: 'You can only view this project now',
+    follow: (name: string) => `Follow ${name}'s view`,
+    following: (name: string) => `Following ${name}`,
+    stopFollowing: 'Stop following',
+    followHint: 'Moving the view stops it too',
+    followLeft: (name: string) => `${name} left, so you're no longer following`,
+    cantFollow: "People only viewing can't be followed",
+  },
+
   toast: {
     undone: 'Undone',
     redone: 'Redone',
