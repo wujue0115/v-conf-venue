@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, shallowRef } from 'vue'
+import { computed, shallowRef, useId } from 'vue'
+import CollapseBody from '@/components/planner/CollapseBody.vue'
 import { cleanEmail, isEmail, type AccessEntry } from '@/cloud/access'
 import { cloudMessage } from '@/cloud/messages'
 import type { Grant } from '@/cloud/projects'
@@ -26,6 +27,9 @@ const busy = shallowRef<string | null>(null)
 const message = shallowRef<{ text: string; error: boolean } | null>(null)
 
 const sharing = computed(() => project.meta?.sharing ?? null)
+/** 透過連結開啟過的人: shut until asked for */
+const visitorsOpen = shallowRef(false)
+const visitorsId = useId()
 const GRANTS: Grant[] = ['viewer', 'editor']
 /** Removing someone doesn't keep them out while the link lets signed-in people in */
 const linkLetsIn = computed(
@@ -158,32 +162,52 @@ defineExpose({ refresh })
         {{ t().share.people.removeHint }}
       </p>
 
-      <details v-if="access.linkVisitors.length" class="visitors">
-        <summary>{{ t().share.people.visitors(access.linkVisitors.length) }}</summary>
-        <p class="hint">{{ t().share.people.visitorsHint }}</p>
-        <ul>
-          <li v-for="a in access.linkVisitors" :key="a.id" class="row">
-            <span class="who"
-              ><b>{{ a.email }}</b></span
-            >
-            <button class="txt-btn" type="button" :disabled="!!busy" @click="makeMember(a)">
-              {{ t().share.people.makeMember }}
-            </button>
-            <button
-              class="x"
-              type="button"
-              :title="t().share.people.removeTitle(a.email)"
-              :aria-label="t().share.people.removeTitle(a.email)"
-              :disabled="!!busy"
-              @click="remove(a)"
-            >
-              <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
-                <path d="M6 6l12 12M18 6 6 18" />
-              </svg>
-            </button>
-          </li>
-        </ul>
-      </details>
+      <section v-if="access.linkVisitors.length" class="visitors">
+        <button
+          class="toggle"
+          type="button"
+          :aria-expanded="visitorsOpen"
+          :aria-controls="visitorsId"
+          @click="visitorsOpen = !visitorsOpen"
+        >
+          <svg
+            class="chev"
+            :class="{ closed: !visitorsOpen }"
+            viewBox="0 0 16 16"
+            width="12"
+            height="12"
+            aria-hidden="true"
+          >
+            <path d="M4 6l4 4 4-4" />
+          </svg>
+          {{ t().share.people.visitors(access.linkVisitors.length) }}
+        </button>
+        <CollapseBody :id="visitorsId" :open="visitorsOpen">
+          <p class="hint">{{ t().share.people.visitorsHint }}</p>
+          <ul>
+            <li v-for="a in access.linkVisitors" :key="a.id" class="row">
+              <span class="who"
+                ><b>{{ a.email }}</b></span
+              >
+              <button class="txt-btn" type="button" :disabled="!!busy" @click="makeMember(a)">
+                {{ t().share.people.makeMember }}
+              </button>
+              <button
+                class="x"
+                type="button"
+                :title="t().share.people.removeTitle(a.email)"
+                :aria-label="t().share.people.removeTitle(a.email)"
+                :disabled="!!busy"
+                @click="remove(a)"
+              >
+                <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+                  <path d="M6 6l12 12M18 6 6 18" />
+                </svg>
+              </button>
+            </li>
+          </ul>
+        </CollapseBody>
+      </section>
     </template>
   </section>
 </template>
@@ -234,17 +258,31 @@ h5 {
   font-size: 13px;
   color: var(--ink);
 }
+/* our own chevron, the same as the collapsible sections', with room to its right */
 select {
   height: 34px;
-  padding: 0 6px;
+  padding: 0 28px 0 10px;
   border: 1px solid var(--line);
   border-radius: 7px;
-  background: #fff;
+  background: #fff
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 6l4 4 4-4' fill='none' stroke='%238b8e95' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")
+    no-repeat right 9px center / 12px;
   font-size: 13px;
   color: var(--ink);
+  cursor: pointer;
+  appearance: none;
+}
+select:hover:not(:disabled) {
+  border-color: #d6cfbf;
+}
+select:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 .row select {
   height: 28px;
+  padding: 0 24px 0 8px;
+  background-position: right 7px center;
   font-size: 12px;
 }
 ul {
@@ -331,15 +369,52 @@ button:disabled {
 .visitors {
   margin-top: 12px;
 }
-.visitors summary {
+/* like the sidebar's collapsible section titles */
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  margin: 0 0 2px;
+  padding: 6px 4px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
   font-size: 12px;
+  font-weight: 600;
   color: var(--muted);
+  text-align: left;
   cursor: pointer;
+}
+.toggle:hover {
+  background: #f4f1ea;
+}
+.chev {
+  flex: none;
+  color: var(--faint);
+  transition: transform 0.25s ease;
+}
+.chev path {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.chev.closed {
+  transform: rotate(-90deg);
+}
+.visitors .hint {
+  margin-top: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .chev {
+    transition: none;
+  }
 }
 .add input:focus-visible,
 select:focus-visible,
-button:focus-visible,
-summary:focus-visible {
+button:focus-visible {
   outline: 2px solid var(--yel);
   outline-offset: 1px;
 }
