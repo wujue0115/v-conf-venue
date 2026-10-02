@@ -152,6 +152,8 @@ const en: Messages = {
     notFound: "This share link doesn't work, or its owner stopped sharing",
     signInTitle: 'Sign in to view this project',
     signInHint: 'This project is only open to signed-in people; sign in with Google or GitHub.',
+    skipHint: 'Skipping opens the local project on this device.',
+    skip: 'Skip',
     noAccess: "You don't have access to this project",
     requested: 'Access requested; waiting for the owner to approve',
     signInToEdit: 'Sign in to edit',

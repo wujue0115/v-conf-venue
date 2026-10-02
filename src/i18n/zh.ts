@@ -159,6 +159,8 @@ const zh = {
     notFound: '這個分享連結無效，或擁有者已停止分享',
     signInTitle: '登入以查看這個專案',
     signInHint: '這個專案只開放給登入的人，請用 Google 或 GitHub 帳號登入。',
+    skipHint: '略過將會打開這台裝置上的本機專案。',
+    skip: '略過',
     noAccess: '你沒有查看這個專案的權限',
     requested: '已送出存取要求，正在等待擁有者核准',
     /** For someone viewing a shared project signed out: signing in may let them edit */

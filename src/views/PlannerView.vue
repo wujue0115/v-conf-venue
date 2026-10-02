@@ -145,6 +145,10 @@ onBeforeRouteUpdate((to, from) => {
         <h2>{{ t().share.signInTitle }}</h2>
         <p>{{ t().share.signInHint }}</p>
         <SignInButtons class="providers" />
+        <p class="skip-hint">{{ t().share.skipHint }}</p>
+        <div class="links">
+          <RouterLink to="/">{{ t().share.skip }}</RouterLink>
+        </div>
       </template>
       <template v-else-if="project.loadError || denied">
         <p>{{ denied || t().cloud.errors[project.loadError!] }}</p>
@@ -302,6 +306,14 @@ onBeforeRouteUpdate((to, from) => {
 .card p.error {
   margin-top: 10px;
   color: var(--danger);
+}
+.card p.skip-hint {
+  margin-top: 18px;
+  font-size: 12px;
+  color: var(--faint);
+}
+.skip-hint + .links {
+  margin-top: 6px;
 }
 .links {
   display: flex;
