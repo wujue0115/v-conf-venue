@@ -30,6 +30,16 @@ const hint = computed(() => {
     return t().auth.failures.sameEmail(f.provider ? t().auth.providerNames[f.provider] : '')
   return t().auth.failures[f.reason]
 })
+/** Where the provider lists the account's emails, to see which of them are clashing */
+const EMAILS_PAGE = {
+  github: 'https://github.com/settings/emails',
+  google: 'https://myaccount.google.com/email',
+} as const
+const emailsPage = computed(() => {
+  const f = failure.value
+  return f?.reason === 'sameEmail' && f.provider ? EMAILS_PAGE[f.provider] : ''
+})
+
 /** The providers offered: all to choose from; after a failure, the others, if any would help */
 const offered = computed(() => {
   const f = failure.value
@@ -71,6 +81,12 @@ function onClick(e: MouseEvent) {
     <div class="panel">
       <h3>{{ title }}</h3>
       <p class="hint" :class="{ failure }">{{ hint }}</p>
+      <a v-if="emailsPage" class="emails" :href="emailsPage" target="_blank" rel="noopener">
+        {{ t().auth.seeEmails(t().auth.providerNames[failure!.provider!]) }}
+        <svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true">
+          <path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" />
+        </svg>
+      </a>
       <SignInButtons v-if="offered.length" class="buttons" :only="offered" />
       <div class="foot">
         <button class="txt" type="button" :disabled="auth.busy" @click="dialog?.close()">
@@ -111,6 +127,28 @@ h3 {
   font-size: 13px;
   line-height: 1.5;
   color: var(--muted);
+}
+.emails {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+  font-size: 12.5px;
+  color: #6b5214;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.emails svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.emails:focus-visible {
+  outline: 2px solid var(--yel);
+  outline-offset: 2px;
+  border-radius: 3px;
 }
 .buttons {
   margin-top: 14px;

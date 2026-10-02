@@ -208,6 +208,7 @@ const en: Messages = {
     signInFailedTitle: "Couldn't sign in",
     linkFailedTitle: "Couldn't link",
     ok: 'OK',
+    seeEmails: (provider: string) => `See your ${provider} account's emails`,
     failures: {
       linkedElsewhere: 'That account is already linked to another user.',
       linkingOff: "Linking other sign-in methods isn't turned on yet.",

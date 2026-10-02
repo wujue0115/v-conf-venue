@@ -221,6 +221,8 @@ const zh = {
     signInFailedTitle: '無法登入',
     linkFailedTitle: '無法連結',
     ok: '好',
+    /** Opens the provider's page listing the account's emails, in a new tab */
+    seeEmails: (provider: string) => `查看你 ${provider} 帳號的 Email`,
     failures: {
       linkedElsewhere: '這個帳號已經連結到另一個使用者了。',
       linkingOff: '目前還不能連結其他登入方式。',
