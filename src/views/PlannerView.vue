@@ -38,8 +38,9 @@ watch(
     if (!ready) return
     if (props.projectId) {
       if (user || props.shareToken) void project.openLink(props.projectId, props.shareToken ?? null)
-      // signed out while it was open by id alone: it isn't theirs to see any more
-      else if (project.meta) void router.push('/')
+      // signed out while it was open by id alone: it isn't theirs to see any more, but its page
+      // stays, asking them to sign in again
+      else void project.close()
     } else if (props.shareToken) void project.openShared(props.shareToken)
   },
   { immediate: true },
