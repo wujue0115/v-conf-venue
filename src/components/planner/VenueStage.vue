@@ -7,6 +7,7 @@ import MobileDock from './MobileDock.vue'
 import SelectionBar from './SelectionBar.vue'
 import StageHelp from './StageHelp.vue'
 import StageHistory from './StageHistory.vue'
+import PlaceHint from './PlaceHint.vue'
 import StageToast from './StageToast.vue'
 import StageToolbar from './StageToolbar.vue'
 import VenueLabels from './VenueLabels.vue'
@@ -39,6 +40,7 @@ onMounted(() => {
     onCamera: () => collab.camera(),
     onFollowEnd: () => collab.followEnded(),
     onPointer: (p) => collab.pointer(p),
+    onArmed: (type) => (store.armed = type),
   })
   store.fixedSeats = ed.fixedSeats
   ed.load(store.items)
@@ -59,6 +61,7 @@ onBeforeUnmount(() => {
   if (link) collab.detach(link)
   editor.value?.dispose()
   editor.value = null
+  store.armed = null
 })
 
 // Push view toggles from the store into the scene
@@ -94,6 +97,7 @@ watch(
     <TagLayer />
     <StageToolbar />
     <StageToast />
+    <PlaceHint />
     <CloudNotice />
     <FollowFrame />
     <SelectionBar />

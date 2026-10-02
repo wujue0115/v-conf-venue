@@ -24,7 +24,7 @@ venue's rental documents in [`docs/furniture/`](docs/furniture/).
 ## Experience
 
 * Browse safely in view mode, then switch to edit mode to change the layout
-* Drag furniture from the sidebar straight into the 3D venue
+* Drag furniture from the sidebar straight into the 3D venue; on a phone, tap a piece, then tap where it goes
 * Rotate, duplicate, delete, or lay out selected items in rows and columns
 * Show or hide items, their tags or their notes by kind from the settings panel
 * Switch the interface between Chinese and English in the settings panel (the first visit follows the browser's language)
@@ -44,6 +44,7 @@ venue's rental documents in [`docs/furniture/`](docs/furniture/).
 * Jump between preset views: overview, top-down, A201, the A215 atrium, and the A2 hall
 * Toggle grid snapping, cut-away walls, and room labels
 * Move the camera with WASD or arrow keys, and undo with ⌘Z / Ctrl+Z
+* On touch screens, tap an item to select it and hold it a moment to pick it up, so a drag that starts on an unselected item still moves the view
 * Open the `?` button in the corner for every mouse, touch, and keyboard control
 * Keep the layout saved in the browser automatically, and export or import it as JSON
 

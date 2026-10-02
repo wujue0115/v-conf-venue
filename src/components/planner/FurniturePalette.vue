@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import CollapsibleSection from './CollapsibleSection.vue'
 import { useFurnitureThumbnails } from '@/composables/useFurnitureThumbnails'
+import { usePhone } from '@/composables/usePhone'
 import { useVenueEditor } from '@/composables/useVenueEditor'
 import { usePlannerStore } from '@/stores/planner'
 import { computed } from 'vue'
@@ -10,6 +11,7 @@ import { nameOf, sizeOf, t } from '@/i18n'
 const editor = useVenueEditor()
 const store = usePlannerStore()
 const thumbs = useFurnitureThumbnails()
+const phone = usePhone()
 
 const sections = computed(() =>
   FURNITURE_GROUPS.map((g) => ({
@@ -27,13 +29,30 @@ const sections = computed(() =>
   })),
 )
 
-function onPointerDown(e: PointerEvent, type: FurnitureType) {
-  // placing a kind that is hidden (設定 → 物件顯示) shows it again, or it would vanish on drop
+/** Placing a kind that is hidden (設定 → 物件顯示) shows it again, or it would vanish on drop */
+function reshow(type: FurnitureType) {
   if (store.editing && store.hiddenTypes.includes(type)) {
     store.setTypesVisible([type], true)
     store.notify(t().palette.reshown(nameOf(type)))
   }
+}
+
+/** Wider screens: drag a tile onto the stage (or click it to place it mid-view) */
+function onPointerDown(e: PointerEvent, type: FurnitureType) {
+  if (phone.value) return
+  reshow(type)
   editor.value?.startPlace(e, type)
+}
+
+/**
+ * Phones, the panel covering the stage: a tap picks the kind and closes the panel, and the
+ * next tap on the stage puts it down there
+ */
+function onTap(type: FurnitureType) {
+  if (!phone.value || !store.editing) return
+  reshow(type)
+  store.sidebarCollapsed = true
+  editor.value?.armPlace(type)
 }
 </script>
 
@@ -54,6 +73,7 @@ function onPointerDown(e: PointerEvent, type: FurnitureType) {
         class="tile"
         :data-type="t.type"
         @pointerdown="onPointerDown($event, t.type)"
+        @click="onTap(t.type)"
       >
         <img :src="thumbs[t.type]" alt="" />
         <b>{{ t.name }}</b>

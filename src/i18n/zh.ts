@@ -511,6 +511,9 @@ const zh = {
         title: '物件（編輯模式）',
         rows: [
           ['拖曳', '移動物件'],
+          ['觸控：點物件', '選取；沒選取的物件，拖曳是移動畫面'],
+          ['觸控：長按物件再拖', '拿起來移動；已選取的物件直接拖就能移動'],
+          ['手機：點家具', '面板收起後，點一下場地放置'],
           ['Shift／⌘ + 點擊', '加選或取消選取'],
           ['Shift + 拖曳空白處', '框選多個物件，一起移動'],
           ['群組', '多選後在面板建立；點群組內物件會選取整組，再點一次只選那一個'],
@@ -555,6 +558,17 @@ const zh = {
     followHint: '移動視角也會停止跟隨',
     followLeft: (name: string) => `${name} 已離開，停止跟隨`,
     cantFollow: '檢視中的人無法被跟隨',
+  },
+
+  /** Phones: a kind picked in the palette, waiting for a tap on the stage to place it */
+  place: {
+    floor: (name: string) => `點一下地板，放置「${name}」`,
+    wall: (name: string) => `點一下牆面，掛上「${name}」`,
+    table: (name: string) => `點一下桌面，放上「${name}」`,
+    hint: '可以先拖動或縮放畫面找位置',
+    cancel: '取消',
+    missFloor: (name: string) => `請點在地板上放置「${name}」`,
+    missWall: (name: string) => `請點在牆面上掛上「${name}」`,
   },
 
   toast: {

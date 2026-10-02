@@ -495,6 +495,12 @@ const en: Messages = {
         title: 'Items (Edit mode)',
         rows: [
           ['Drag', 'Move an item'],
+          ['Touch: tap an item', 'Select it; dragging one not selected moves the view'],
+          [
+            'Touch: hold, then drag',
+            'Pick it up and move it; a selected item moves with a plain drag',
+          ],
+          ['Phone: tap a furniture tile', 'The panel closes; tap the stage to place it'],
           ['Shift/⌘ + click', 'Add to or take out of the selection'],
           ['Shift + drag on empty space', 'Box-select items to move together'],
           [
@@ -536,6 +542,16 @@ const en: Messages = {
     followHint: 'Moving the view stops it too',
     followLeft: (name: string) => `${name} left, so you're no longer following`,
     cantFollow: "People only viewing can't be followed",
+  },
+
+  place: {
+    floor: (name: string) => `Tap the floor to place "${name}"`,
+    wall: (name: string) => `Tap a wall to hang "${name}"`,
+    table: (name: string) => `Tap a table to put "${name}" on it`,
+    hint: 'Drag or pinch first to find the spot',
+    cancel: 'Cancel',
+    missFloor: (name: string) => `Tap the floor to place "${name}"`,
+    missWall: (name: string) => `Tap a wall to hang "${name}"`,
   },
 
   toast: {

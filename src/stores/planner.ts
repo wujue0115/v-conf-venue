@@ -42,6 +42,8 @@ export const usePlannerStore = defineStore('planner', () => {
   /** The layout: what the editor starts from when it mounts, then its latest snapshot */
   const items = shallowRef<LayoutItem[]>([])
   const selection = shallowRef<SelectionInfo | null>(null)
+  /** The kind the next tap on the stage places (phones pick it in the palette), if any */
+  const armed = shallowRef<FurnitureType | null>(null)
   const fixedSeats = shallowRef(0)
   /** Whether the editor has a step to undo / redo (reported by it) */
   const canUndo = shallowRef(false)
@@ -157,6 +159,7 @@ export const usePlannerStore = defineStore('planner', () => {
     openProject,
     items,
     selection,
+    armed,
     fixedSeats,
     canUndo,
     canRedo,

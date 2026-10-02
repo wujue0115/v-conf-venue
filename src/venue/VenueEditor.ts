@@ -98,6 +98,8 @@ export interface EditorCallbacks {
   onFollowEnd?: () => void
   /** Where in the venue the pointer is, a few times a second; null once it leaves the stage */
   onPointer?: (point: Vec3 | null) => void
+  /** The kind the next tap on the stage places changed (null: none armed); see armPlace */
+  onArmed?: (type: FurnitureType | null) => void
 }
 
 /** Someone else's pointer, somewhere in the venue */
@@ -158,6 +160,13 @@ const SCENE = {
   light: { background: '#f3f0e8', gridCenter: '#cdbf9d', grid: '#e4dccb' },
   dark: { background: '#16171a', gridCenter: '#6b6250', grid: '#3a3731' },
 } as const
+
+/**
+ * A finger on an item it hasn't selected holds this long, without moving further than
+ * HOLD_SLOP pixels, to pick the item up; moving sooner is the camera's drag
+ */
+const HOLD_MS = 300
+const HOLD_SLOP = 8
 
 const UNDO_LIMIT = 60
 /**
@@ -308,6 +317,23 @@ export class VenueEditor {
   private infoOpen: THREE.Object3D | string | null = null
   /** An unselected zone under the pointer: a click selects it, a drag still pans the camera */
   private zoneClick: THREE.Object3D | null = null
+  /**
+   * A finger down on an item it hasn't selected (touch only): lifted soon without moving, it
+   * selects the item; held still for HOLD_MS, it picks the item up to drag; moved first, the
+   * camera has it. `last` is where the finger is now.
+   */
+  private press: {
+    o: THREE.Object3D
+    id: number
+    x: number
+    y: number
+    last: PointerEvent
+    timer: ReturnType<typeof setTimeout>
+  } | null = null
+  /** The kind the next tap on the stage places (phones pick it in the palette first) */
+  private armed: FurnitureType | null = null
+  /** Where that tap began, until it turns out to be a drag or a pinch instead */
+  private armDown: { id: number; x: number; y: number } | null = null
   private selected: THREE.Object3D | null = null
   /** Items selected along with `selected` (Shift/⌘-click, or a Shift-drag box) */
   private readonly group = new Set<THREE.Object3D>()
@@ -488,6 +514,7 @@ export class VenueEditor {
   }
 
   dispose() {
+    this.cancelPress()
     this.cursorLayer?.remove()
     this.renderer.setAnimationLoop(null)
     this.resizeObserver.disconnect()
@@ -615,6 +642,8 @@ export class VenueEditor {
   setEditable(on: boolean) {
     this.editable = on
     if (on) return
+    this.armPlace(null)
+    this.cancelPress()
     this.drag = null
     this.resizing = null
     this.controls.enabled = true
@@ -1453,6 +1482,140 @@ export class VenueEditor {
     this.commit()
     this.updSel()
     this.cb.onToast(t().toast.beltsRestored)
+  }
+
+  /**
+   * Arm a kind to place with the next tap on the stage, where the tap lands (null disarms):
+   * how phones add items, the palette covering the stage. Dragging or pinching meanwhile still
+   * moves the camera, to find the spot first.
+   */
+  armPlace(type: FurnitureType | null) {
+    if (type && !this.editable) return
+    this.armed = type
+    this.armDown = null
+    if (type) this.setSelection([])
+    // the floor grid a floor item lands on
+    this.grid.visible = !!type && !isWallItem(type) && !onTableOnly(type)
+    this.cb.onArmed?.(type)
+  }
+
+  /** Put the armed kind down where the tap was: on the floor, a wall or a table top */
+  private placeArmed(e: PointerEvent) {
+    const type = this.armed
+    if (!type) return
+    const o = buildFurniture(type)
+    // a new person or laptop turns toward the view
+    if (facesViewer(type)) o.rotation.y = this.facingView()
+    this.placed.add(o)
+    let ok: boolean
+    if (onWall(o)) {
+      const hit = this.wallHit(e)
+      if (hit) this.hangOn(o, hit.point, hit.normal)
+      ok = !!hit
+    } else if (onTable(o)) ok = this.putOnTable(o, e)
+    else {
+      const p = this.floorHit(e)
+      if (p) {
+        this.moveTo(o, p.x, p.z)
+        // a seat put down beside a table turns to it
+        if (seatOf(o)) o.rotation.y = this.facingTable(o) ?? 0
+        this.settle(o)
+      }
+      ok = !!p
+    }
+    this.placed.remove(o)
+    if (!ok) {
+      // still armed, for another try
+      const name = nameOf(type)
+      this.cb.onToast(
+        onWall(o)
+          ? t().place.missWall(name)
+          : onTable(o)
+            ? t().toast.tableOnly(name)
+            : t().place.missFloor(name),
+      )
+      return
+    }
+    // the undo snapshot is without it
+    this.pushUndo()
+    this.placed.add(o)
+    this.armPlace(null)
+    this.select(o)
+    this.commit()
+  }
+
+  /** A finger came down on an item it hasn't selected: see `press` */
+  private startPress(e: PointerEvent, o: THREE.Object3D) {
+    this.cancelPress()
+    this.press = {
+      o,
+      id: e.pointerId,
+      x: e.clientX,
+      y: e.clientY,
+      last: e,
+      timer: setTimeout(() => this.hold(), HOLD_MS),
+    }
+  }
+
+  private cancelPress() {
+    if (this.press) clearTimeout(this.press.timer)
+    this.press = null
+  }
+
+  /** Held still long enough: pick the item up, so the finger drags it rather than the camera */
+  private hold() {
+    const p = this.press
+    this.press = null
+    if (!p || !this.editable) return
+    const lock = this.lockOf(p.o)
+    if (lock) {
+      this.cb.onToast(t().collab.locked(lock.name))
+      return
+    }
+    // a short buzz where the device has one: it's in hand now
+    navigator.vibrate?.(15)
+    this.grab(p.last, p.o)
+  }
+
+  /**
+   * Take hold of an item under the pointer to drag it: a grouped one picks up its whole group,
+   * one of several selected moves them all, anything else is selected and dragged alone
+   */
+  private grab(e: PointerEvent, o: THREE.Object3D) {
+    if (o.userData.group && !this.selection.includes(o)) {
+      // a grouped item picks up its whole group; a second click then selects just it
+      this.setSelection(this.withGroup(o))
+      if (!onWall(o) && !onTable(o)) this.startGroupDrag(e, o, 'keep')
+      return
+    }
+    if (this.group.size && this.selection.includes(o) && !onWall(o) && !onTable(o)) {
+      // grabbing one of several selected items moves them all
+      this.startGroupDrag(e, o, 'single')
+      return
+    }
+    this.select(o)
+    if (onWall(o)) {
+      // remember where on the poster it was grabbed, in its own (right, up) axes
+      const n = new THREE.Vector3(0, 0, 1).applyQuaternion(o.quaternion)
+      this.setRay(e)
+      const p = this.ray.ray.intersectPlane(
+        new THREE.Plane().setFromNormalAndCoplanarPoint(n, o.position),
+        new THREE.Vector3(),
+      )
+      const g = p ? o.worldToLocal(p) : new THREE.Vector3()
+      this.drag = { o, dx: g.x, dz: g.y, moved: false }
+    } else {
+      const p = this.floorHit(e) ?? o.position.clone()
+      this.drag = {
+        o,
+        dx: o.position.x - p.x,
+        dz: o.position.z - p.z,
+        moved: false,
+        riders: this.ridersOf(o),
+      }
+    }
+    this.controls.enabled = false
+    this.canvas.style.cursor = 'grabbing'
   }
 
   /** Begin drag-placing a new object from the palette (call from a pointerdown). */
@@ -2774,11 +2937,22 @@ export class VenueEditor {
           this.cancelMarquee()
           return
         }
+        // a second finger: a pinch or orbit, not a tap or a hold
+        if (this.press && e.pointerId !== this.press.id) this.cancelPress()
+        if (this.armDown && e.pointerId !== this.armDown.id) {
+          this.armDown = null
+          return
+        }
         if (e.target !== canvas || e.button !== 0) return
         this.infoOpen = null
         canvas.focus()
         this.downPt = { x: e.clientX, y: e.clientY }
         if (!this.editable) return
+        if (this.armed) {
+          // placing: a tap puts it down (pointerup); a drag or pinch stays the camera's
+          this.armDown = { id: e.pointerId, x: e.clientX, y: e.clientY }
+          return
+        }
         const hd = this.pickHandle(e)
         if (hd && this.selected) {
           e.stopPropagation()
@@ -2804,6 +2978,11 @@ export class VenueEditor {
           return
         }
         const o = this.pickObj(e)
+        if (o && e.pointerType === 'touch' && !this.multi && !this.selection.includes(o)) {
+          // a finger on an item not selected yet: the camera has the drag unless it holds still
+          this.startPress(e, o)
+          return
+        }
         const lock = o && this.lockOf(o)
         if (lock) {
           // someone else has it selected
@@ -2847,44 +3026,20 @@ export class VenueEditor {
         }
         e.stopPropagation()
         e.preventDefault()
-        if (o.userData.group && !this.selection.includes(o)) {
-          // a grouped item picks up its whole group; a second click then selects just it
-          this.setSelection(this.withGroup(o))
-          if (!onWall(o) && !onTable(o)) this.startGroupDrag(e, o, 'keep')
-          return
-        }
-        if (this.group.size && this.selection.includes(o) && !onWall(o) && !onTable(o)) {
-          // grabbing one of several selected items moves them all
-          this.startGroupDrag(e, o, 'single')
-          return
-        }
-        this.select(o)
-        if (onWall(o)) {
-          // remember where on the poster it was grabbed, in its own (right, up) axes
-          const n = new THREE.Vector3(0, 0, 1).applyQuaternion(o.quaternion)
-          this.setRay(e)
-          const p = this.ray.ray.intersectPlane(
-            new THREE.Plane().setFromNormalAndCoplanarPoint(n, o.position),
-            new THREE.Vector3(),
-          )
-          const g = p ? o.worldToLocal(p) : new THREE.Vector3()
-          this.drag = { o, dx: g.x, dz: g.y, moved: false }
-        } else {
-          const p = this.floorHit(e) ?? o.position.clone()
-          this.drag = {
-            o,
-            dx: o.position.x - p.x,
-            dz: o.position.z - p.z,
-            moved: false,
-            riders: this.ridersOf(o),
-          }
-        }
-        this.controls.enabled = false
-        canvas.style.cursor = 'grabbing'
+        this.grab(e, o)
       },
       true,
     )
     this.listen(window, 'pointermove', (e) => {
+      const pr = this.press
+      if (pr && e.pointerId === pr.id) {
+        pr.last = e
+        // moved before the hold: the camera's drag, not a pick-up
+        if (Math.hypot(e.clientX - pr.x, e.clientY - pr.y) > HOLD_SLOP) this.cancelPress()
+      }
+      const ad = this.armDown
+      if (ad && e.pointerId === ad.id && Math.hypot(e.clientX - ad.x, e.clientY - ad.y) > HOLD_SLOP)
+        this.armDown = null
       const r = this.resizing
       if (r) {
         if (!r.moved) {
@@ -2971,6 +3126,23 @@ export class VenueEditor {
       }
     })
     this.listen(window, 'pointerup', (e) => {
+      const pr = this.press
+      if (pr && e.pointerId === pr.id) {
+        // lifted before the hold, without moving: a tap, which selects it (with its group)
+        this.cancelPress()
+        const lock = this.lockOf(pr.o)
+        if (lock) this.cb.onToast(t().collab.locked(lock.name))
+        else this.setSelection(this.withGroup(pr.o))
+        this.downPt = null
+        return
+      }
+      const ad = this.armDown
+      if (ad && e.pointerId === ad.id) {
+        this.armDown = null
+        this.downPt = null
+        if (this.armed && e.target === canvas) this.placeArmed(e)
+        return
+      }
       if (this.marquee?.id === e.pointerId) {
         this.endMarquee(e)
         this.downPt = null
@@ -3013,6 +3185,11 @@ export class VenueEditor {
       this.zoneClick = null
       this.downPt = null
     })
+    // the browser took the touch over: no tap, no hold
+    this.listen(window, 'pointercancel', (e) => {
+      if (this.press?.id === e.pointerId) this.cancelPress()
+      if (this.armDown?.id === e.pointerId) this.armDown = null
+    })
   }
 
   private onKeyDown = (e: KeyboardEvent) => {
@@ -3023,6 +3200,10 @@ export class VenueEditor {
     // Esc closes an open note first, in either mode
     if (e.key === 'Escape' && this.infoOpen) {
       this.infoOpen = null
+      return
+    }
+    if (e.key === 'Escape' && this.armed) {
+      this.armPlace(null)
       return
     }
     const kk = e.key.toLowerCase()
