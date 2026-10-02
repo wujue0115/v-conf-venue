@@ -69,6 +69,8 @@ onBeforeUnmount(unlisten)
   position: absolute;
   right: 14px;
   bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+  /* over the furniture panel when open, as ⚙'s panel is */
+  z-index: 10;
 }
 .q {
   width: 34px;
