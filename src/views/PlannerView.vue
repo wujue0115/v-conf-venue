@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, shallowRef, watch, watchEffect } from 'vue'
+import { computed, onBeforeUnmount, onMounted, shallowRef, watch, watchEffect } from 'vue'
 import { storeToRefs } from 'pinia'
 import { onBeforeRouteLeave, onBeforeRouteUpdate, RouterLink, useRouter } from 'vue-router'
 import SignInButtons from '@/components/auth/SignInButtons.vue'
@@ -51,15 +51,18 @@ const ready = computed(
     (!!project.meta && !project.loading && !project.loadError && !project.shareDenied),
 )
 // Back from Google or GitHub without signing in or linking: say why, once the stage (and its
-// toast) is showing; 'post' so it has mounted by then
-watch(
-  [() => auth.failure, ready],
-  ([failure, shown]) => {
-    if (!failure || !shown) return
-    store.notify(t().auth.failures[failure])
-    auth.failure = null
-  },
-  { immediate: true, flush: 'post' },
+// toast) is showing. Watched from mount, as an immediate watch runs during setup whatever its
+// flush; 'post' so a stage shown later has mounted by then too.
+onMounted(() =>
+  watch(
+    [() => auth.failure, ready],
+    ([failure, shown]) => {
+      if (!failure || !shown) return
+      store.notify(t().auth.failures[failure])
+      auth.failure = null
+    },
+    { immediate: true, flush: 'post' },
+  ),
 )
 
 const needsSignIn = computed(
