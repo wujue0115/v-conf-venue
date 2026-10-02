@@ -76,7 +76,7 @@ function save() {
   )
 }
 
-/** Set before going to Google from 存到雲端, so it carries on once signed in */
+/** Set before going to Google or GitHub from 存到雲端, so it carries on once signed in */
 const AFTER_SIGN_IN = 'v-conf-venue:after-sign-in'
 const saveDialog = useTemplateRef('saveDialog')
 
@@ -84,16 +84,14 @@ const saveDialog = useTemplateRef('saveDialog')
 async function saveToCloud() {
   open.value = false
   if (!auth.user) {
-    try {
-      sessionStorage.setItem(AFTER_SIGN_IN, 'save-to-cloud')
-    } catch {
-      // without storage it just doesn't carry on after signing in
-    }
-    try {
-      await auth.signInWithGoogle()
-    } catch {
-      store.notify(t().auth.signInFailed)
-    }
+    // only once an account is picked: closing the window instead leaves nothing behind
+    auth.chooseSignIn(() => {
+      try {
+        sessionStorage.setItem(AFTER_SIGN_IN, 'save-to-cloud')
+      } catch {
+        // without storage it just doesn't carry on after signing in
+      }
+    })
     return
   }
   const today = new Date().toLocaleDateString(t().lang)
@@ -112,7 +110,7 @@ async function saveToCloud() {
   })
 }
 
-// Back from Google after choosing 存到雲端 signed out: ask for the name now (once mounted, so
+// Back from signing in after choosing 存到雲端 signed out: ask for the name now (once mounted, so
 // the window is there to open)
 onMounted(() =>
   watch(

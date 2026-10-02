@@ -122,7 +122,7 @@ async function saveAsNew() {
         class="btn primary"
         type="button"
         :disabled="auth.busy"
-        @click="auth.signInWithGoogle()"
+        @click="auth.chooseSignIn()"
       >
         {{ auth.busy ? t().auth.signingIn : t().auth.signIn }}
       </button>

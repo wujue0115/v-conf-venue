@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, shallowRef, useTemplateRef, watch } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
+import SignInButtons from '@/components/auth/SignInButtons.vue'
 import NameDialog from '@/components/cloud/NameDialog.vue'
 import { listSharedWithMe, type SharedSummary } from '@/cloud/access'
 import { cloudMessage, timeAgo } from '@/cloud/messages'
@@ -242,14 +243,7 @@ onBeforeUnmount(() => {
       <div v-else-if="!auth.user" class="card signin">
         <h2>{{ t().cloud.signInTitle }}</h2>
         <p>{{ t().cloud.signInHint }}</p>
-        <button
-          class="primary"
-          type="button"
-          :disabled="auth.busy"
-          @click="auth.signInWithGoogle()"
-        >
-          {{ auth.busy ? t().auth.signingIn : t().auth.signIn }}
-        </button>
+        <SignInButtons class="providers" />
       </div>
 
       <template v-else>

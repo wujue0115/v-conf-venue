@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, shallowRef, watch, watchEffect } from 'vue'
 import { storeToRefs } from 'pinia'
 import { onBeforeRouteLeave, onBeforeRouteUpdate, RouterLink, useRouter } from 'vue-router'
+import SignInButtons from '@/components/auth/SignInButtons.vue'
 import PlannerSidebar from '@/components/planner/PlannerSidebar.vue'
 import VenueStage from '@/components/planner/VenueStage.vue'
 import { provideVenueEditor } from '@/composables/useVenueEditor'
@@ -116,14 +117,7 @@ onBeforeRouteUpdate(leave)
       <template v-if="needsSignIn">
         <h2>{{ shareToken ? t().share.signInTitle : t().cloud.signInTitle }}</h2>
         <p>{{ shareToken ? t().share.signInHint : t().cloud.signInHint }}</p>
-        <button
-          class="primary"
-          type="button"
-          :disabled="auth.busy"
-          @click="auth.signInWithGoogle()"
-        >
-          {{ auth.busy ? t().auth.signingIn : t().auth.signIn }}
-        </button>
+        <SignInButtons class="providers" />
       </template>
       <template v-else-if="project.loadError || denied">
         <p>{{ denied || t().cloud.errors[project.loadError!] }}</p>
@@ -227,6 +221,9 @@ onBeforeRouteUpdate(leave)
   margin: 0;
   font-size: 13px;
   color: var(--muted);
+}
+.providers {
+  margin-top: 16px;
 }
 .loading {
   color: var(--faint);

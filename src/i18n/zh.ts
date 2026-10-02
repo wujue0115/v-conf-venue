@@ -38,7 +38,7 @@ const zh = {
     working: '處理中…',
     saveToCloud: '存到雲端',
     saveToCloudHint: '存成雲端專案，在任何裝置都能開啟',
-    signInToSave: '登入 Google 後存到雲端',
+    signInToSave: '登入後存到雲端',
     saveTitle: '存到雲端',
     saveHint: '目前的配置會存成一個新的雲端專案；這個瀏覽器裡的配置不受影響。',
     save: '儲存',
@@ -70,7 +70,7 @@ const zh = {
     local: '本機專案',
     localHint: '只存在這個瀏覽器，沒有上雲端',
     signInTitle: '登入以使用雲端專案',
-    signInHint: '用 Google 帳號登入後，就能把場地配置存到雲端，在任何裝置開啟。',
+    signInHint: '用 Google 或 GitHub 帳號登入後，就能把場地配置存到雲端，在任何裝置開啟。',
     back: '返回',
     status: {
       saved: '已儲存',
@@ -156,7 +156,7 @@ const zh = {
     /** Opening a share link that doesn't let them in */
     notFound: '這個分享連結無效，或擁有者已停止分享',
     signInTitle: '登入以查看這個專案',
-    signInHint: '這個專案只開放給登入的人，請用 Google 帳號登入。',
+    signInHint: '這個專案只開放給登入的人，請用 Google 或 GitHub 帳號登入。',
     noAccess: '你沒有查看這個專案的權限',
     requested: '已送出存取要求，正在等待擁有者核准',
     /** For someone viewing a shared project signed out: signing in may let them edit */
@@ -168,7 +168,7 @@ const zh = {
       title: '成員',
       offHint: '分享關閉中：名單可以先編輯，重新開啟分享後才生效',
       email: 'Email',
-      emailPlaceholder: '輸入對方的 Google Email',
+      emailPlaceholder: '輸入對方登入用的 Email',
       add: '加入',
       invalidEmail: '請輸入有效的 Email',
       self: '你是擁有者，不需要加入自己',
@@ -205,8 +205,13 @@ const zh = {
   },
 
   auth: {
-    signIn: '使用 Google 登入',
-    signingIn: '前往 Google…',
+    signIn: '登入',
+    signingIn: '登入中…',
+    signInWith: { google: '使用 Google 登入', github: '使用 GitHub 登入' },
+    going: { google: '前往 Google…', github: '前往 GitHub…' },
+    /** The window asking which account to sign in with */
+    chooseTitle: '登入',
+    chooseHint: '選擇要用哪個帳號登入',
     account: '帳號',
     signOut: '登出',
     signedOut: '已登出',

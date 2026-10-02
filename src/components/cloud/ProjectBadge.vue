@@ -94,7 +94,7 @@ function rename() {
       class="retry"
       type="button"
       :disabled="auth.busy"
-      @click="auth.signInWithGoogle()"
+      @click="auth.chooseSignIn()"
     >
       {{ t().share.signInToEdit }}
     </button>

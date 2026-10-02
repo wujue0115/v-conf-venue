@@ -30,7 +30,7 @@ const en: Messages = {
     working: 'Working…',
     saveToCloud: 'Save to the cloud',
     saveToCloudHint: 'Save as a cloud project you can open on any device',
-    signInToSave: 'Sign in with Google to save to the cloud',
+    signInToSave: 'Sign in to save to the cloud',
     saveTitle: 'Save to the cloud',
     saveHint:
       'The current layout becomes a new cloud project; the layout in this browser stays as it is.',
@@ -64,7 +64,7 @@ const en: Messages = {
     localHint: 'Kept only in this browser, not in the cloud',
     signInTitle: 'Sign in to use cloud projects',
     signInHint:
-      'Sign in with Google to save venue layouts to the cloud and open them on any device.',
+      'Sign in with Google or GitHub to save venue layouts to the cloud and open them on any device.',
     back: 'Back',
     status: {
       saved: 'Saved',
@@ -150,7 +150,7 @@ const en: Messages = {
     done: 'Done',
     notFound: "This share link doesn't work, or its owner stopped sharing",
     signInTitle: 'Sign in to view this project',
-    signInHint: 'This project is only open to signed-in people; sign in with Google.',
+    signInHint: 'This project is only open to signed-in people; sign in with Google or GitHub.',
     noAccess: "You don't have access to this project",
     requested: 'Access requested; waiting for the owner to approve',
     signInToEdit: 'Sign in to edit',
@@ -159,7 +159,7 @@ const en: Messages = {
       title: 'People',
       offHint: 'Sharing is off: change the list now, it takes effect once sharing is back on',
       email: 'Email',
-      emailPlaceholder: 'Their Google email',
+      emailPlaceholder: 'The email they sign in with',
       add: 'Add',
       invalidEmail: 'Enter a valid email',
       self: "You're the owner; no need to add yourself",
@@ -195,8 +195,12 @@ const en: Messages = {
   },
 
   auth: {
-    signIn: 'Sign in with Google',
-    signingIn: 'Going to Google…',
+    signIn: 'Sign in',
+    signingIn: 'Signing in…',
+    signInWith: { google: 'Sign in with Google', github: 'Sign in with GitHub' },
+    going: { google: 'Going to Google…', github: 'Going to GitHub…' },
+    chooseTitle: 'Sign in',
+    chooseHint: 'Choose the account to sign in with',
     account: 'Account',
     signOut: 'Sign out',
     signedOut: 'Signed out',

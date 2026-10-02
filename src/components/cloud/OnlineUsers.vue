@@ -23,15 +23,17 @@ const label = computed(() =>
 )
 const initial = (name: string) => [...(name || '?').trim()][0]?.toUpperCase() ?? '?'
 const nameOf = (name: string) => name || t().collab.someone
+/** Where Google's and GitHub's profile pictures are served from */
+const PHOTO_HOSTS = ['googleusercontent.com', 'githubusercontent.com']
 /**
- * Only Google's own profile pictures: a face is whatever its tab says it is, and any other
- * address would have everyone's browser fetch it (telling that server who's looking)
+ * Only Google's and GitHub's own profile pictures: a face is whatever its tab says it is, and
+ * any other address would have everyone's browser fetch it (telling that server who's looking)
  */
 function photo(url: string) {
   try {
     const u = new URL(url)
     return u.protocol === 'https:' &&
-      (u.hostname === 'googleusercontent.com' || u.hostname.endsWith('.googleusercontent.com'))
+      PHOTO_HOSTS.some((h) => u.hostname === h || u.hostname.endsWith('.' + h))
       ? url
       : ''
   } catch {
