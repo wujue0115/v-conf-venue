@@ -78,7 +78,8 @@ function onClick(e: MouseEvent) {
 
 <template>
   <dialog ref="dialog" class="sign-in-dialog" @cancel="onCancel" @click="onClick" @close="onClose">
-    <div class="panel">
+    <!-- Opening focuses the window itself rather than its first button or link: Tab goes on to them -->
+    <div class="panel" tabindex="-1" autofocus>
       <h3>{{ title }}</h3>
       <p class="hint" :class="{ failure }">{{ hint }}</p>
       <a v-if="emailsPage" class="emails" :href="emailsPage" target="_blank" rel="noopener">
@@ -111,6 +112,9 @@ function onClick(e: MouseEvent) {
 }
 .panel {
   padding: 14px 16px 16px;
+}
+.panel:focus {
+  outline: none;
 }
 h3 {
   margin: 0;
