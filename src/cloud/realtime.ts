@@ -10,11 +10,12 @@ import type { CameraState, LiveMove } from '@/venue/VenueEditor'
  * - presence: who has the project open, and whose view they follow. Supabase closes the channel
  *   of a client that updates its presence more than 5 times in 30 seconds, so only what rarely
  *   changes goes here, and updates are held back to stay under that (PRESENCE_BUDGET);
- * - broadcast, from people who can edit: 'move' (items being dragged), 'cursor' (their pointer),
- *   'select' (what they have selected, which locks it for the others), 'camera' (their view,
- *   while someone follows them);
- * - from the database: 'objects' (ids changed or deleted), 'project' (name, settings or sharing),
- *   'access' (someone's access), 'deleted' (the project).
+ * - broadcast, from people who can edit: 'move' (items being dragged, with the pointer dragging
+ *   them), 'cursor' (their pointer), 'select' (what they have selected, which locks it for the
+ *   others), 'camera' (their view, while someone follows them), 'objects' (ids they saved or
+ *   deleted: only the ids, as rows can hold large poster images);
+ * - from the database: 'project' (name, settings or sharing), 'access' (someone's access),
+ *   'deleted' (the project).
  */
 
 /** What each signed-in person with the project open shows the others, in presence */
@@ -43,21 +44,32 @@ export interface ChannelEvents {
   cursor: (key: string, point: Vec3 | null) => void
   select: (key: string, sel: Selection) => void
   camera: (key: string, cam: CameraState) => void
-  objects: (change: { changed?: string[]; deleted?: string[] }) => void
+  objects: (change: ObjectsChange) => void
   project: () => void
   access: () => void
   deleted: () => void
   /** Connected; `again` after the connection dropped (anything may have been missed meanwhile) */
   joined: (again: boolean) => void
+  /** The connection dropped (the client keeps trying by itself) */
+  dropped: () => void
+}
+
+/** Ids saved (upserted) or deleted, in one message */
+export interface ObjectsChange {
+  changed?: string[]
+  deleted?: string[]
 }
 
 export interface ProjectChannel {
   /** Show this to the others (signed-in people only); held back when sent too often */
   track(state: PeerState): void
-  move(moves: LiveMove[]): void
+  /** Items being dragged, and the pointer dragging them when it moved */
+  move(moves: LiveMove[], point?: Vec3): void
   cursor(point: Vec3 | null): void
   select(sel: Selection): void
   camera(cam: CameraState): void
+  /** Whether it went out (not while the connection is down) */
+  objects(change: ObjectsChange): boolean
   leave(): void
 }
 
@@ -148,7 +160,11 @@ export function joinProject(
       }
       on.peers(peers)
     })
-  ch.on('broadcast', { event: 'move' }, ({ payload }) => on.move((payload as { m: LiveMove[] }).m))
+  ch.on('broadcast', { event: 'move' }, ({ payload }) => {
+    const { m, k, p } = payload as { m: LiveMove[]; k?: string; p?: Vec3 }
+    on.move(m)
+    if (k && p) on.cursor(k, p)
+  })
     .on('broadcast', { event: 'cursor' }, ({ payload }) => {
       const { k, p } = payload as { k: string; p: Vec3 | null }
       on.cursor(k, p)
@@ -161,9 +177,7 @@ export function joinProject(
       const { k, c } = payload as { k: string; c: CameraState }
       on.camera(k, c)
     })
-    .on('broadcast', { event: 'objects' }, ({ payload }) =>
-      on.objects(payload as { changed?: string[]; deleted?: string[] }),
-    )
+    .on('broadcast', { event: 'objects' }, ({ payload }) => on.objects(payload as ObjectsChange))
     .on('broadcast', { event: 'project' }, () => on.project())
     .on('broadcast', { event: 'access' }, () => on.access())
     .on('broadcast', { event: 'deleted' }, () => on.deleted())
@@ -179,11 +193,14 @@ export function joinProject(
         joined = false
         // the client keeps trying by itself
         console.warn('[realtime]', status, err ?? '')
+        on.dropped()
       }
     })
 
   const send = (event: string, payload: object) => {
-    if (joined) void ch.send({ type: 'broadcast', event, payload })
+    if (!joined) return false
+    void ch.send({ type: 'broadcast', event, payload })
+    return true
   }
 
   return {
@@ -192,10 +209,11 @@ export function joinProject(
       state = s
       if (joined) presence.push(s)
     },
-    move: (m) => send('move', { m }),
-    cursor: (p) => send('cursor', { k: key, p }),
-    select: (s) => send('select', { k: key, s }),
-    camera: (c) => send('camera', { k: key, c }),
+    move: (m, p) => void send('move', p ? { m, k: key, p } : { m }),
+    cursor: (p) => void send('cursor', { k: key, p }),
+    select: (s) => void send('select', { k: key, s }),
+    camera: (c) => void send('camera', { k: key, c }),
+    objects: (c) => send('objects', c),
     leave() {
       left = true
       presence.stop()

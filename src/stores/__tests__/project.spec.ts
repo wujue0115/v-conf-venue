@@ -108,6 +108,24 @@ describe('project store', () => {
     expect(project.status).toBe('saved')
   })
 
+  it('says what each save wrote once it went through, and only then', async () => {
+    const { project, planner } = await openProject()
+    const told = vi.fn()
+    project.onSaved(told)
+    api.saveChanges.mockRejectedValueOnce(new Error('offline'))
+    planner.items = [item(A, 5), item(C, 3)]
+    await nextTick()
+    await vi.runAllTimersAsync()
+    expect(told).not.toHaveBeenCalled()
+    await project.flush()
+    expect(told).toHaveBeenCalledExactlyOnceWith('p1', { changed: [A, C], deleted: [B] })
+    // settings alone: no items to tell of
+    planner.setSlots(4)
+    await nextTick()
+    await vi.runAllTimersAsync()
+    expect(told).toHaveBeenCalledTimes(1)
+  })
+
   it('saves the pricing in the project’s settings', async () => {
     const { planner } = await openProject()
     planner.setSlots(4)

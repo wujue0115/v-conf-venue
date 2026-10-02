@@ -21,6 +21,7 @@ import {
   type SharedResult,
   type Sharing,
 } from '@/cloud/projects'
+import type { ObjectsChange } from '@/cloud/realtime'
 import { useAuthStore } from '@/stores/auth'
 import { useCloudStore } from '@/stores/cloud'
 import { usePalettesStore } from '@/stores/palettes'
@@ -108,6 +109,12 @@ export const useProjectStore = defineStore('project', () => {
   let failures = 0
   /** The notice was closed: it stays closed until saving works again */
   let alertDismissed = false
+  /** Told the items each save wrote, once it all went through (collab tells the others) */
+  const savedHooks = new Set<(projectId: string, change: ObjectsChange) => void>()
+  function onSaved(fn: (projectId: string, change: ObjectsChange) => void) {
+    savedHooks.add(fn)
+    return () => void savedHooks.delete(fn)
+  }
 
   const settings = (): ProjectSettings => ({
     pricing: { priceMode: planner.priceMode, slots: planner.slots },
@@ -338,6 +345,12 @@ export const useProjectStore = defineStore('project', () => {
     saved = now
     savedSettings = sJson
     if (meta.value?.id === id) meta.value = { ...meta.value, updated_at: updatedAt }
+    if (upserts.length || deletes.length) {
+      const change: ObjectsChange = {}
+      if (upserts.length) change.changed = upserts.map((i) => i.id!)
+      if (deletes.length) change.deleted = deletes
+      for (const fn of savedHooks) fn(id, change)
+    }
   }
 
   /** Keep the unsaved layout in this browser, made on the cloud version last saved or opened */
@@ -565,6 +578,7 @@ export const useProjectStore = defineStore('project', () => {
     requestAccess,
     via,
     takeRemote,
+    onSaved,
     reload,
     refreshMeta,
     dismissAlert,

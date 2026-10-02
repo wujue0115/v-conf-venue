@@ -1,7 +1,7 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
-import type { Peer, ProjectChannel } from '@/cloud/realtime'
+import type { ObjectsChange, Peer, ProjectChannel } from '@/cloud/realtime'
 import type { Holder } from '../collab'
 
 vi.mock('@/lib/supabase', () => ({ supabase: null }))
@@ -65,6 +65,7 @@ describe('the project’s channel', () => {
       cursor: vi.fn<ProjectChannel['cursor']>(),
       select: vi.fn<ProjectChannel['select']>(),
       camera: vi.fn<ProjectChannel['camera']>(),
+      objects: vi.fn<ProjectChannel['objects']>(() => true),
       leave: vi.fn<ProjectChannel['leave']>(),
     }
     rt.joinProject.mockReset().mockReturnValue(channel)
@@ -111,6 +112,7 @@ describe('the project’s channel', () => {
       cursor: vi.fn<ProjectChannel['cursor']>(),
       select: vi.fn<ProjectChannel['select']>(),
       camera: vi.fn<ProjectChannel['camera']>(),
+      objects: vi.fn<ProjectChannel['objects']>(() => true),
       leave: vi.fn<ProjectChannel['leave']>(),
     }
     rt.joinProject.mockReset().mockReturnValue(channel)
@@ -121,7 +123,8 @@ describe('the project’s channel', () => {
       allowUpdate: true,
       allowRealtime: true,
     }
-    useProjectStore().meta = {
+    const project = useProjectStore()
+    project.meta = {
       id: 'p1',
       name: 'Test',
       updated_at: '2026-10-01T00:00:00Z',
@@ -129,9 +132,16 @@ describe('the project’s channel', () => {
       requested: null,
       sharing: null,
     }
+    // what a save reports, as the project store would after one went through
+    let saved: Parameters<typeof project.onSaved>[0] = () => {}
+    vi.spyOn(project, 'onSaved').mockImplementation((fn) => {
+      saved = fn
+      return () => {}
+    })
     const collab = useCollabStore()
     await nextTick()
-    return { collab, channel }
+    const on = rt.joinProject.mock.calls[0]?.[2]
+    return { collab, channel, on, save: (c: ObjectsChange) => saved('p1', c) }
   }
   const alice: Peer = {
     key: 'k1',
@@ -157,6 +167,69 @@ describe('the project’s channel', () => {
     collab.pointer([1.01, 0, 1])
     collab.pointer([2, 0, 1])
     expect(channel.cursor).toHaveBeenCalledTimes(2)
+  })
+
+  describe('while dragging', () => {
+    afterEach(() => void vi.useRealTimers())
+
+    it('sends the pointer with the drag rather than on its own', async () => {
+      vi.useFakeTimers()
+      const { collab, channel } = await joined()
+      collab.peers = [alice]
+      collab.move([{ id: 'A', x: 1, y: 0, z: 1, r: 0 }])
+      collab.pointer([1, 0, 1])
+      vi.advanceTimersByTime(200)
+      expect(channel.cursor).not.toHaveBeenCalled()
+      expect(channel.move).toHaveBeenCalledWith([{ id: 'A', x: 1, y: 0, z: 1, r: 0 }], [1, 0, 1])
+      // the drag over, the pointer goes out on its own again
+      vi.advanceTimersByTime(1000)
+      collab.pointer([3, 0, 1])
+      expect(channel.cursor).toHaveBeenCalledWith([3, 0, 1])
+    })
+
+    it('still sends the last pointer when the drag sent nothing more', async () => {
+      vi.useFakeTimers()
+      const { collab, channel } = await joined()
+      collab.peers = [alice]
+      collab.move([{ id: 'A', x: 1, y: 0, z: 1, r: 0 }])
+      vi.advanceTimersByTime(200)
+      collab.pointer([2, 0, 1])
+      vi.advanceTimersByTime(200)
+      expect(channel.cursor).toHaveBeenCalledWith([2, 0, 1])
+    })
+  })
+
+  describe('saved items', () => {
+    it('are told to the others in one message, and to nobody when alone', async () => {
+      const { collab, channel, on, save } = await joined()
+      on!.joined(false)
+      save({ changed: ['A'] })
+      expect(channel.objects).not.toHaveBeenCalled()
+      collab.peers = [alice]
+      save({ changed: ['B'], deleted: ['C'] })
+      expect(channel.objects).toHaveBeenCalledWith({ changed: ['B'], deleted: ['C'] })
+    })
+
+    it('saved just before someone came are told to them', async () => {
+      const { channel, on, save } = await joined()
+      on!.joined(false)
+      save({ changed: ['A'], deleted: ['B'] })
+      on!.peers([alice])
+      expect(channel.objects).toHaveBeenCalledWith({ changed: ['A'], deleted: ['B'] })
+    })
+
+    it('saved while the connection was down go out once it is back', async () => {
+      const { collab, channel, on, save } = await joined()
+      on!.joined(false)
+      collab.peers = [alice]
+      on!.dropped()
+      save({ changed: ['A'] })
+      save({ deleted: ['A', 'B'] })
+      expect(channel.objects).not.toHaveBeenCalled()
+      on!.joined(true)
+      // the later word on an id wins
+      expect(channel.objects).toHaveBeenCalledWith({ deleted: ['A', 'B'] })
+    })
   })
 
   it('leaves guests off the channel', async () => {

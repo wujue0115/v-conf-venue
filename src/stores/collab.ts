@@ -1,7 +1,13 @@
 import { computed, shallowRef, watch } from 'vue'
 import { acceptHMRUpdate, defineStore } from 'pinia'
 import { CloudError, loadItems } from '@/cloud/projects'
-import { joinProject, type Peer, type ProjectChannel, type Selection } from '@/cloud/realtime'
+import {
+  joinProject,
+  type ObjectsChange,
+  type Peer,
+  type ProjectChannel,
+  type Selection,
+} from '@/cloud/realtime'
 import { t } from '@/i18n'
 import { useAccessStore } from '@/stores/access'
 import { useAuthStore } from '@/stores/auth'
@@ -40,6 +46,11 @@ const FETCH_DELAY = 120
 const FETCH_RETRY = 3000
 /** Joined this long after the project opened (or after realtime was off): catch up on all of it */
 const CATCH_UP_AFTER = 3000
+/**
+ * Ids saved this recently go to someone who comes in: they may have loaded the project before
+ * the save, and this tab not seen them yet when it was sent
+ */
+const RECENT_SAVE = 5000
 
 /** One colour per person, the same on every screen */
 const COLORS = [
@@ -150,6 +161,11 @@ export const useCollabStore = defineStore('collab', () => {
     pendingMoves.clear()
     clearTimeout(moveTimer)
     moveTimer = undefined
+    movedAt = 0
+    pointerHeld = null
+    recent.clear()
+    unsent.clear()
+    channelProject = null
     points.value = new Map()
     selections.value = new Map()
     following.value = null
@@ -172,6 +188,8 @@ export const useCollabStore = defineStore('collab', () => {
     // someone new: they don't know what this tab has selected yet
     if (next.some((p) => !before.has(p.key))) {
       if (mine.value.size) sendSelectSoon()
+      // nor of what was saved just before they came
+      sendRecent()
       // and where this tab's pointer is, at its next move
       pointerSent = null
     }
@@ -295,6 +313,13 @@ export const useCollabStore = defineStore('collab', () => {
     const q = pointerSent
     if (p && q && Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]) < POINTER_STEP) return
     if (!p && !q) return
+    // mid-drag: it goes out with the drag's next send rather than on its own
+    if (p && Date.now() - movedAt < 2 * MOVE_EVERY) {
+      pointerHeld = p
+      moveTimer ??= setTimeout(sendMoves, MOVE_EVERY)
+      return
+    }
+    pointerHeld = null
     pointerSent = p
     channel.cursor(p)
   }
@@ -303,17 +328,78 @@ export const useCollabStore = defineStore('collab', () => {
 
   const pendingMoves = new Map<string, LiveMove>()
   let moveTimer: ReturnType<typeof setTimeout> | undefined
+  /** When this tab last dragged something: its pointer meanwhile goes out with the drag */
+  let movedAt = 0
+  /** This tab's pointer, waiting to go out with the drag (see pointer) */
+  let pointerHeld: Vec3 | null = null
   function sendMoves() {
     moveTimer = undefined
-    if (!channel || !pendingMoves.size) return
-    channel.move([...pendingMoves.values()])
-    pendingMoves.clear()
+    const p = pointerHeld
+    pointerHeld = null
+    if (!channel) return
+    if (p) pointerSent = p
+    if (pendingMoves.size) {
+      channel.move([...pendingMoves.values()], p ?? undefined)
+      pendingMoves.clear()
+    } else if (p) channel.cursor(p)
   }
   /** Items this tab is dragging; the last of a drag goes out within MOVE_EVERY too */
   function move(moves: readonly LiveMove[]) {
     if (!channel || !project.canEdit || !others.value) return
+    movedAt = Date.now()
     for (const m of moves) pendingMoves.set(m.id, m)
     moveTimer ??= setTimeout(sendMoves, MOVE_EVERY)
+  }
+
+  // ─── Saved changes going out ───────────────────────────────────────────────
+
+  /** The project the channel is for (a save may finish after another project opened) */
+  let channelProject: string | null = null
+  /** Ids saved lately, and when, and whether deleted: for someone who comes in (see RECENT_SAVE) */
+  const recent = new Map<string, { at: number; gone: boolean }>()
+  /** Saved while the connection was down: sent once it's back. Whether each was deleted */
+  const unsent = new Map<string, boolean>()
+
+  /** Ids and whether each was deleted, as one message */
+  function change(ids: Iterable<[string, boolean]>): ObjectsChange | null {
+    const out: ObjectsChange = {}
+    for (const [id, gone] of ids) (gone ? (out.deleted ??= []) : (out.changed ??= [])).push(id)
+    return out.changed || out.deleted ? out : null
+  }
+
+  /** Tell the others what this tab just saved (they fetch those rows); nobody there, nothing sent */
+  function sendSaved(projectId: string, c: ObjectsChange) {
+    if (!channel || projectId !== channelProject) return
+    const now = Date.now()
+    const ids: [string, boolean][] = [
+      ...(c.changed ?? []).map((id): [string, boolean] => [id, false]),
+      ...(c.deleted ?? []).map((id): [string, boolean] => [id, true]),
+    ]
+    for (const [id, gone] of ids) {
+      // the latest save of an id last
+      recent.delete(id)
+      recent.set(id, { at: now, gone })
+    }
+    if (!connected.value) {
+      for (const [id, gone] of ids) unsent.set(id, gone)
+      return
+    }
+    if (others.value && !channel.objects(c)) for (const [id, gone] of ids) unsent.set(id, gone)
+  }
+  project.onSaved(sendSaved)
+
+  /** What was saved in the last RECENT_SAVE, to someone who just came */
+  function sendRecent() {
+    const since = Date.now() - RECENT_SAVE
+    for (const [id, { at }] of recent) if (at < since) recent.delete(id)
+    const c = change([...recent].map(([id, { gone }]) => [id, gone]))
+    if (c) channel?.objects(c)
+  }
+
+  /** Back after the connection dropped: what was saved meanwhile */
+  function sendUnsent() {
+    const c = change(unsent)
+    if (c && channel?.objects(c)) unsent.clear()
   }
 
   // ─── Saved changes coming in ───────────────────────────────────────────────
@@ -322,7 +408,7 @@ export const useCollabStore = defineStore('collab', () => {
   const deleted = new Set<string>()
   let fetchTimer: ReturnType<typeof setTimeout> | undefined
 
-  function onObjects(c: { changed?: string[]; deleted?: string[] }) {
+  function onObjects(c: ObjectsChange) {
     // the later word on an id wins
     for (const id of c.changed ?? []) {
       deleted.delete(id)
@@ -405,6 +491,7 @@ export const useCollabStore = defineStore('collab', () => {
       // connections, and every message to each of them counts (they catch up when they come
       // back to the tab instead, see below)
       if (!id || !role || !on || !user) return
+      channelProject = id
       channel = joinProject(
         id,
         { key, present: !!user },
@@ -420,10 +507,12 @@ export const useCollabStore = defineStore('collab', () => {
           deleted: () => void project.reload(),
           joined: (again) => {
             connected.value = true
+            sendUnsent()
             // things may have changed while the connection was down, or before it was first
             // made (realtime switched on late): catch up on all of it
             if (again || Date.now() - openedAt > CATCH_UP_AFTER) void resync()
           },
+          dropped: () => (connected.value = false),
         },
       )
       track()
