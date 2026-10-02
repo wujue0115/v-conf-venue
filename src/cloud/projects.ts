@@ -327,6 +327,14 @@ export async function loadItems(
   return itemsOf(rows)
 }
 
+/**
+ * A project's address, and its link: with the share token while sharing is on, so the address
+ * bar can be copied and passed on as it is
+ */
+export function projectPath(id: string, shareToken?: string | null) {
+  return shareToken ? `/project/${id}?share=${shareToken}` : `/project/${id}`
+}
+
 /** What a share link opens to */
 export type SharedResult =
   | { status: 'ok'; project: LoadedProject }
@@ -371,6 +379,16 @@ export async function loadShared(token: string): Promise<SharedResult> {
       settings: settings ?? {},
     },
   }
+}
+
+/**
+ * The project an old /share/:token link opens, when it lets this person in, for it to go to
+ * the project's own link instead. Waits for the saved session first, so it asks as them.
+ */
+export async function sharedProjectId(token: string): Promise<string | null> {
+  await db().auth.getSession()
+  const r = await loadShared(token)
+  return r.status === 'ok' ? r.project.meta.id : null
 }
 
 /**

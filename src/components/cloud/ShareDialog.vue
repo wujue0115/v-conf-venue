@@ -2,7 +2,7 @@
 import { computed, shallowRef, useTemplateRef } from 'vue'
 import SharePeople from './SharePeople.vue'
 import { cloudMessage } from '@/cloud/messages'
-import type { EditAccess, Sharing, ViewAccess } from '@/cloud/projects'
+import { projectPath, type EditAccess, type Sharing, type ViewAccess } from '@/cloud/projects'
 import { t } from '@/i18n'
 import { useCloudStore } from '@/stores/cloud'
 import { useProjectStore } from '@/stores/project'
@@ -28,7 +28,9 @@ const copied = shallowRef(false)
 
 const sharing = computed(() => project.meta?.sharing ?? null)
 const link = computed(() =>
-  sharing.value ? `${location.origin}/share/${sharing.value.share_token}` : '',
+  sharing.value && project.meta
+    ? location.origin + projectPath(project.meta.id, sharing.value.share_token)
+    : '',
 )
 
 const VIEW: ViewAccess[] = ['anyone', 'authenticated', 'allowed']

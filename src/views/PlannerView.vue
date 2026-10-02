@@ -14,8 +14,9 @@ import { usePlannerStore } from '@/stores/planner'
 import { useProjectStore } from '@/stores/project'
 
 /**
- * The layout kept in this browser, or a cloud project: by its id (`projectId`, My projects) or
- * through its share link (`shareToken`)
+ * The layout kept in this browser, or a cloud project by its link: its id (`projectId`), with
+ * the share token (`shareToken`, ?share=) while sharing is on. An old /share/:token link that
+ * didn't let them in has just the token.
  */
 const props = defineProps<{ projectId?: string; shareToken?: string }>()
 const cloud = computed(() => !!(props.projectId || props.shareToken))
@@ -35,14 +36,30 @@ watch(
   [() => auth.ready, () => auth.user?.id],
   ([ready, user]) => {
     if (!ready) return
-    if (props.shareToken) void project.openShared(props.shareToken)
-    else if (props.projectId) {
-      if (user) void project.open(props.projectId)
-      // signed out while it was open: it isn't theirs to see any more
+    if (props.projectId) {
+      if (user || props.shareToken) void project.openLink(props.projectId, props.shareToken ?? null)
+      // signed out while it was open by id alone: it isn't theirs to see any more
       else if (project.meta) void router.push('/')
-    }
+    } else if (props.shareToken) void project.openShared(props.shareToken)
   },
   { immediate: true },
+)
+
+// The address is the project's link: its id, with the share token while sharing is on (as its
+// owner sets it; anyone else keeps the token they came with), so copying it passes it on
+watch(
+  () => project.meta,
+  (m) => {
+    if (!m || !cloud.value) return
+    const s = m.sharing
+    const token = s ? (s.share_enabled ? s.share_token : undefined) : props.shareToken
+    if (props.projectId === m.id && props.shareToken === token) return
+    void router.replace({
+      name: 'project',
+      params: { projectId: m.id },
+      query: token ? { share: token } : {},
+    })
+  },
 )
 
 const ready = computed(
@@ -54,12 +71,17 @@ const needsSignIn = computed(
   () =>
     auth.ready &&
     !auth.user &&
-    (!!props.projectId || project.shareDenied?.status === 'sign_in_required'),
+    ((!!props.projectId && !props.shareToken) ||
+      project.shareDenied?.status === 'sign_in_required'),
 )
 const denied = computed(() => {
   const d = project.shareDenied
   if (!d || d.status === 'sign_in_required') return ''
-  if (d.status === 'no_access') return d.requested ? t().share.requested : t().share.noAccess
+  if (d.status === 'no_access') {
+    if (d.requested) return t().share.requested
+    // by id alone, a project they can't open looks the same as one that isn't there
+    return d.byId ? t().cloud.errors.not_found : t().share.noAccess
+  }
   return t().share.notFound
 })
 
@@ -92,7 +114,10 @@ async function leave() {
   if (cloud.value) await project.close()
 }
 onBeforeRouteLeave(leave)
-onBeforeRouteUpdate(leave)
+// not when only the share token in the address changes (the owner turned sharing on or off)
+onBeforeRouteUpdate((to, from) => {
+  if (to.params.projectId !== from.params.projectId) return leave()
+})
 </script>
 
 <template>
@@ -115,8 +140,8 @@ onBeforeRouteUpdate(leave)
   <div v-else class="notice">
     <div class="card">
       <template v-if="needsSignIn">
-        <h2>{{ shareToken ? t().share.signInTitle : t().cloud.signInTitle }}</h2>
-        <p>{{ shareToken ? t().share.signInHint : t().cloud.signInHint }}</p>
+        <h2>{{ t().share.signInTitle }}</h2>
+        <p>{{ t().share.signInHint }}</p>
         <SignInButtons class="providers" />
       </template>
       <template v-else-if="project.loadError || denied">

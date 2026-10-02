@@ -111,8 +111,24 @@ export async function removeAccess(entry: Pick<AccessEntry, 'id'>) {
 }
 
 /**
- * Ask the owner for a role: through a share link (`token`), or on a project already open to
- * them (`projectId`). 'already' when they turn out to have it.
+ * Whether this person has asked for access to a project they can't open (row level security
+ * shows them their own access row even so)
+ */
+export async function hasAsked(projectId: string): Promise<boolean> {
+  const mine = check(
+    await db()
+      .from('project_access')
+      .select('requested_role')
+      .eq('project_id', projectId)
+      .maybeSingle(),
+  ) as { requested_role: Grant | null } | null
+  return !!mine?.requested_role
+}
+
+/**
+ * Ask the owner for a role: through a share link (`token`), or by the project's id
+ * (`projectId`): while its sharing is on, or to edit one already open to them. 'already' when
+ * they turn out to have it.
  */
 export async function requestAccess(
   role: Grant,

@@ -17,6 +17,15 @@ vi.mock('@/cloud/projects', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/cloud/projects')>()),
   ...api,
 }))
+type AccessApi = typeof import('@/cloud/access')
+const accessApi = vi.hoisted(() => ({
+  hasAsked: vi.fn<AccessApi['hasAsked']>(),
+  requestAccess: vi.fn<AccessApi['requestAccess']>(),
+}))
+vi.mock('@/cloud/access', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/cloud/access')>()),
+  ...accessApi,
+}))
 // no real client (.env.local is read in tests too): its session check would sign the test out
 vi.mock('@/lib/supabase', () => ({ supabase: null }))
 
@@ -448,6 +457,76 @@ describe('project store', () => {
       await project.refreshMeta()
       expect(project.meta).toBeNull()
       expect(project.shareDenied?.status).toBe('not_found')
+    })
+  })
+
+  describe('opening a project by its link', () => {
+    const loaded = {
+      meta: {
+        id: 'p1',
+        name: 'Test',
+        updated_at: '2026-10-01T00:00:00Z',
+        role: 'viewer' as const,
+        requested: null,
+        sharing: null,
+      },
+      items: [item(A, 1)],
+      settings: {},
+    }
+    beforeEach(() => {
+      api.loadProject.mockReset()
+      api.loadShared.mockReset().mockResolvedValue({ status: 'ok', project: loaded })
+      accessApi.hasAsked.mockReset().mockResolvedValue(false)
+      accessApi.requestAccess.mockReset().mockResolvedValue('requested')
+    })
+
+    it('opens by id for someone who may, without going through the share token', async () => {
+      useAuthStore().user = { id: OWNER } as never
+      api.loadProject.mockResolvedValue(loaded)
+      const project = useProjectStore()
+      await project.openLink('p1', 'tok')
+      expect(project.meta?.id).toBe('p1')
+      expect(api.loadShared).not.toHaveBeenCalled()
+    })
+
+    it('goes through the share token when their own access doesn’t open it', async () => {
+      useAuthStore().user = { id: OWNER } as never
+      api.loadProject.mockRejectedValue(new CloudError('not_found'))
+      const project = useProjectStore()
+      await project.openLink('p1', 'tok')
+      expect(api.loadShared).toHaveBeenCalledWith('tok')
+      expect(project.meta?.id).toBe('p1')
+      expect(project.loadError).toBeNull()
+    })
+
+    it('opens a guest’s link through the share token alone', async () => {
+      const project = useProjectStore()
+      await project.openLink('p1', 'tok')
+      expect(api.loadProject).not.toHaveBeenCalled()
+      expect(project.meta?.id).toBe('p1')
+    })
+
+    it('lets someone it doesn’t open by id alone ask the owner, by the id', async () => {
+      useAuthStore().user = { id: OWNER } as never
+      api.loadProject.mockRejectedValue(new CloudError('not_found'))
+      const project = useProjectStore()
+      await project.openLink('p1', null)
+      expect(project.loadError).toBeNull()
+      expect(project.shareDenied).toEqual({ status: 'no_access', requested: false, byId: true })
+      await project.requestAccess('editor')
+      expect(accessApi.requestAccess).toHaveBeenCalledWith('editor', { projectId: 'p1' })
+      expect(project.shareDenied).toEqual({ status: 'no_access', requested: true, byId: true })
+    })
+
+    it('says so when they asked already', async () => {
+      useAuthStore().user = { id: OWNER } as never
+      api.loadProject.mockRejectedValue(new CloudError('not_found'))
+      accessApi.hasAsked.mockResolvedValue(true)
+      const project = useProjectStore()
+      await project.openLink('p1', null)
+      expect(project.shareDenied?.status === 'no_access' && project.shareDenied.requested).toBe(
+        true,
+      )
     })
   })
 })

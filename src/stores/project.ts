@@ -1,6 +1,6 @@
 import { computed, shallowRef, watch } from 'vue'
 import { acceptHMRUpdate, defineStore } from 'pinia'
-import { requestAccess as askOwner } from '@/cloud/access'
+import { hasAsked, requestAccess as askOwner } from '@/cloud/access'
 import { clearDraft, loadDraft, saveDraft, type Draft } from '@/cloud/drafts'
 import {
   checkAccess,
@@ -79,12 +79,19 @@ export const useProjectStore = defineStore('project', () => {
   const canEdit = computed(() => mayEdit.value && cloud.canUpdate)
   /** This person may edit, but the cloud has changes paused: read-only until it's back */
   const paused = computed(() => mayEdit.value && !cloud.canUpdate)
-  /** Opened through a share link that didn't let them in: why (null when it did, or by id) */
-  const shareDenied = shallowRef<Exclude<SharedResult, { status: 'ok' }> | null>(null)
+  /**
+   * Opened through a share link that didn't let them in: why (null when it did). `byId`: by its
+   * link without the share token, which their own access doesn't open (or no such project).
+   */
+  const shareDenied = shallowRef<
+    (Exclude<SharedResult, { status: 'ok' }> & { byId?: boolean }) | null
+  >(null)
   /** The share link it was opened through, if any */
   let token: string | null = null
   /** The share link last tried, even one that didn't let them in (to ask for access through) */
   let openedToken: string | null = null
+  /** The project last tried by id that didn't let them in (to ask for access to) */
+  let deniedId: string | null = null
 
   /** Each item as last saved (rowKey), by id; null until the editor reports the opened layout */
   let saved: Map<string, string> | null = null
@@ -142,6 +149,8 @@ export const useProjectStore = defineStore('project', () => {
     if (meta.value?.id === id && !token && !again) return
     await close()
     openedToken = null
+    deniedId = null
+    shareDenied.value = null
     loading.value = true
     loadError.value = null
     try {
@@ -163,6 +172,7 @@ export const useProjectStore = defineStore('project', () => {
     loading.value = true
     loadError.value = null
     shareDenied.value = null
+    deniedId = null
     openedToken = shareToken
     try {
       const r = await loadShared(shareToken)
@@ -176,6 +186,33 @@ export const useProjectStore = defineStore('project', () => {
     } finally {
       loading.value = false
     }
+  }
+
+  /**
+   * Open a project by its link (/project/:id, with ?share=<token> while sharing is on): by id
+   * for someone signed in who may open it so, else through the share token (a guest always). By
+   * id alone and not let in, they may ask the owner for access.
+   */
+  async function openLink(id: string, shareToken: string | null) {
+    if (auth.user) {
+      await open(id)
+      if (loadError.value !== 'not_found') return
+      if (!shareToken) return denyById(id)
+    }
+    if (shareToken) await openShared(shareToken)
+  }
+
+  /** Not let in by id: no access (or no such project, which looks the same from here) */
+  async function denyById(id: string) {
+    let requested = false
+    try {
+      requested = await hasAsked(id)
+    } catch {
+      // not known: they may ask (again)
+    }
+    loadError.value = null
+    deniedId = id
+    shareDenied.value = { status: 'no_access', requested, byId: true }
   }
 
   /** Leave the project, saving what's still waiting first (kept as a draft if that fails) */
@@ -325,10 +362,11 @@ export const useProjectStore = defineStore('project', () => {
    * Ask the owner for a role: from a share link that didn't let them in, or (viewing) to edit.
    * When it turns out they have it already, the project opens again to take it up.
    */
-  /** Where an ask goes: through the share link it was opened by, else to the project open */
+  /** Where an ask goes: through the share link it was opened by, else to the project by id */
   function askWhere(): { token: string } | { projectId: string } | null {
     if (openedToken) return { token: openedToken }
     if (meta.value) return { projectId: meta.value.id }
+    if (deniedId) return { projectId: deniedId }
     return null
   }
 
@@ -519,6 +557,7 @@ export const useProjectStore = defineStore('project', () => {
     paused,
     open,
     openShared,
+    openLink,
     close,
     flush,
     rename,
