@@ -201,6 +201,17 @@ const en: Messages = {
     going: { google: 'Going to Google…', github: 'Going to GitHub…' },
     chooseTitle: 'Sign in',
     chooseHint: 'Choose the account to sign in with',
+    providerNames: { google: 'Google', github: 'GitHub' },
+    signsInWith: 'Signs in with',
+    link: { google: 'Link Google', github: 'Link GitHub' },
+    linkHint: (provider: string) => `Link it to sign in to this account with ${provider} too`,
+    failures: {
+      linkedElsewhere: 'That account is already linked to another user',
+      linkingOff: "Linking other sign-in methods isn't turned on yet",
+      sameEmail:
+        "That account's emails belong to more than one user; sign in the usual way first, then link it under Signs in with in the menu",
+      failed: "Couldn't sign in, please try again",
+    },
     account: 'Account',
     signOut: 'Sign out',
     signedOut: 'Signed out',

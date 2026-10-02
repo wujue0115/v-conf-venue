@@ -212,6 +212,19 @@ const zh = {
     /** The window asking which account to sign in with */
     chooseTitle: '登入',
     chooseHint: '選擇要用哪個帳號登入',
+    providerNames: { google: 'Google', github: 'GitHub' },
+    /** In ☰ under who is signed in: the providers this account signs in with */
+    signsInWith: '登入方式',
+    link: { google: '連結 Google', github: '連結 GitHub' },
+    linkHint: (provider: string) => `連結後，也能用 ${provider} 登入這個帳號`,
+    /** Coming back from Google or GitHub without signing in or linking */
+    failures: {
+      linkedElsewhere: '這個帳號已經連結到另一個使用者了',
+      linkingOff: '目前還不能連結其他登入方式',
+      sameEmail:
+        '這個帳號的 Email 對應到多個使用者，請先用原本的方式登入，再從選單的「登入方式」連結',
+      failed: '無法登入，請再試一次',
+    },
     account: '帳號',
     signOut: '登出',
     signedOut: '已登出',

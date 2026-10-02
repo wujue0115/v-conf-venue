@@ -7,6 +7,37 @@ import { supabase } from '@/lib/supabase'
 export type Provider = 'google' | 'github'
 export const PROVIDERS: readonly Provider[] = ['google', 'github']
 
+/** Why coming back from a provider didn't sign in or link, read off the address it returned to */
+export type AuthFailure = 'linkedElsewhere' | 'linkingOff' | 'sameEmail' | 'failed'
+
+const URL_ERRORS = ['error', 'error_code', 'error_description']
+
+/**
+ * Take a provider's error off the address bar, saying which: the client doesn't (and only
+ * throws it into the console), so it would otherwise sit there unexplained
+ */
+function takeUrlFailure(): AuthFailure | null {
+  const url = new URL(location.href)
+  const hash = new URLSearchParams(url.hash.slice(1))
+  const from = URL_ERRORS.some((k) => url.searchParams.has(k)) ? url.searchParams : hash
+  if (!URL_ERRORS.some((k) => from.has(k))) return null
+  const code = from.get('error_code') ?? ''
+  const description = from.get('error_description') ?? ''
+  for (const k of URL_ERRORS) {
+    url.searchParams.delete(k)
+    hash.delete(k)
+  }
+  hash.delete('sb')
+  url.hash = hash.size ? hash.toString() : ''
+  history.replaceState(history.state, '', url)
+
+  if (code === 'identity_already_exists') return 'linkedElsewhere'
+  if (code === 'manual_linking_disabled') return 'linkingOff'
+  // the provider's emails belong to more than one account here, so it can't tell which
+  if (description.includes('Multiple accounts with the same email')) return 'sameEmail'
+  return 'failed'
+}
+
 /**
  * Who is signed in. `ready` turns true once the saved session (or one coming back from Google
  * or GitHub in the URL) has been checked, so the UI doesn't flash "Sign in" for someone already
@@ -25,6 +56,8 @@ export const useAuthStore = defineStore('auth', () => {
   const choosing = shallowRef(false)
   /** Runs just before leaving for the provider chosen in that window */
   let beforeLeave: (() => void) | null = null
+  /** Coming back from a provider didn't work: for the page to say so, then clear */
+  const failure = shallowRef<AuthFailure | null>(supabase ? takeUrlFailure() : null)
 
   const email = computed(() => user.value?.email ?? '')
   const name = computed(() => {
@@ -37,6 +70,10 @@ export const useAuthStore = defineStore('auth', () => {
     )
   })
   const avatar = computed(() => (user.value?.user_metadata?.avatar_url as string | undefined) ?? '')
+  /** The providers this account can sign in with */
+  const linked = computed(
+    () => new Set((user.value?.identities ?? []).map((i) => i.provider as Provider)),
+  )
 
   // Fires INITIAL_SESSION once the client has read the saved session and any `?code=` in the
   // URL, then again on every sign-in, sign-out and token refresh, in this tab or another one
@@ -57,6 +94,25 @@ export const useAuthStore = defineStore('auth', () => {
       options: { redirectTo: location.origin + location.pathname },
     })
     // on success the browser is already leaving the page
+    if (error) {
+      busy.value = false
+      going.value = null
+      throw error
+    }
+  }
+
+  /**
+   * Add another provider to the signed-in account, to sign in to it with that one too. Off to
+   * the provider; it comes back to this page, signed in to the same account.
+   */
+  async function link(provider: Provider) {
+    if (!supabase) return
+    busy.value = true
+    going.value = provider
+    const { error } = await supabase.auth.linkIdentity({
+      provider,
+      options: { redirectTo: location.origin + location.pathname },
+    })
     if (error) {
       busy.value = false
       going.value = null
@@ -97,10 +153,13 @@ export const useAuthStore = defineStore('auth', () => {
     busy,
     going,
     choosing,
+    failure,
     email,
     name,
     avatar,
+    linked,
     signIn,
+    link,
     chooseSignIn,
     cancelSignIn,
     signOut,

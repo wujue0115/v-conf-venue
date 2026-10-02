@@ -45,6 +45,17 @@ watch(
   { immediate: true },
 )
 
+// Back from Google or GitHub without signing in or linking: say why
+watch(
+  () => auth.failure,
+  (failure) => {
+    if (!failure) return
+    store.notify(t().auth.failures[failure])
+    auth.failure = null
+  },
+  { immediate: true },
+)
+
 const ready = computed(
   () =>
     !cloud.value ||
