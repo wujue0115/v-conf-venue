@@ -199,19 +199,19 @@ async function saveAsNew() {
   max-width: min(520px, calc(100% - 28px));
   margin-inline: auto;
   padding: 12px 14px;
-  background: #fff;
+  background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 14px;
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.14);
 }
 .notice.error {
-  border-color: #f0c4bf;
+  border-color: var(--danger-line);
 }
 .body b {
   font-size: 14px;
 }
 .error .body b {
-  color: #b3261e;
+  color: var(--danger);
 }
 .body p {
   margin: 4px 0 0;
@@ -223,7 +223,7 @@ async function saveAsNew() {
   color: var(--faint);
 }
 .body .warn {
-  color: #a8321f;
+  color: var(--danger);
 }
 .acts {
   display: flex;
@@ -234,15 +234,16 @@ async function saveAsNew() {
 }
 .btn {
   border: 1px solid var(--line);
-  background: #fff;
+  background: var(--surface);
 }
 .btn.primary {
   border-color: transparent;
   background: var(--yel);
+  color: var(--on-yel);
   font-weight: 600;
 }
 .btn.primary:hover:not(:disabled) {
-  background: #e0a71f;
+  background: var(--yel-hover);
 }
 @media (max-width: 720px) {
   .notice {

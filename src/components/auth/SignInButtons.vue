@@ -55,7 +55,7 @@ async function signIn(provider: Provider) {
   height: 36px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #fff;
+  background: var(--surface);
   font: inherit;
   font-size: 13px;
   font-weight: 600;
@@ -66,8 +66,8 @@ async function signIn(provider: Provider) {
     border-color 0.15s;
 }
 .sign-in:hover:not(:disabled) {
-  background: #f4f1ea;
-  border-color: #d6cfbf;
+  background: var(--hover);
+  border-color: var(--line-strong);
 }
 .sign-in:disabled {
   cursor: progress;
@@ -80,6 +80,6 @@ async function signIn(provider: Provider) {
 .failed {
   margin: 0;
   font-size: 12px;
-  color: #b3261e;
+  color: var(--danger);
 }
 </style>

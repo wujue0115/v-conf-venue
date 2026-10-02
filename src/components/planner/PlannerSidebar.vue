@@ -58,7 +58,7 @@ const store = usePlannerStore()
 
 <style scoped>
 .side {
-  background: #fff;
+  background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 14px;
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.1);
@@ -69,7 +69,7 @@ const store = usePlannerStore()
 }
 .hd {
   padding: 14px 14px 12px 16px;
-  border-bottom: 1px solid #eee9de;
+  border-bottom: 1px solid var(--line-soft);
 }
 .top {
   display: flex;
@@ -93,7 +93,7 @@ const store = usePlannerStore()
     background 0.15s;
 }
 .gh {
-  color: #8a6a1c;
+  color: var(--yel-ink);
 }
 .close {
   color: var(--muted);
@@ -101,7 +101,7 @@ const store = usePlannerStore()
 .gh:hover,
 .close:hover {
   color: var(--ink);
-  background: #f4f1ea;
+  background: var(--hover);
 }
 .gh:focus-visible,
 .close:focus-visible {
@@ -114,7 +114,7 @@ const store = usePlannerStore()
   min-width: 0;
   font: 500 11px/1.3 var(--mono);
   letter-spacing: 0.08em;
-  color: #8a6a1c;
+  color: var(--yel-ink);
 }
 h1 {
   margin: 4px 0 0;

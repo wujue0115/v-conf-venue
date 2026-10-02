@@ -28,6 +28,7 @@ venue's rental documents in [`docs/furniture/`](docs/furniture/).
 * Rotate, duplicate, delete, or lay out selected items in rows and columns
 * Show or hide items, their tags or their notes by kind from the settings panel
 * Switch the interface between Chinese and English in the settings panel (the first visit follows the browser's language)
+* Switch between a light and a dark theme from the ☰ menu, or let it follow the system's (the exported image stays light)
 * Colour rows grow with every custom colour you pick, and can be reordered by dragging, retuned, pruned or reset (kept in the browser and exported with the layout)
 * Pick a colour for pieces that come in more than one (high stool, shaped sofa)
 * Place stanchions and have belts link neighbouring posts automatically; click a belt to remove it

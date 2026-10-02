@@ -676,7 +676,7 @@ const generate = () =>
   max-height: calc(100% - var(--top-clear, 66px) - 66px - env(safe-area-inset-bottom, 0px));
   overflow-y: auto;
   overscroll-behavior: contain;
-  background: #fff;
+  background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 14px;
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.1);
@@ -690,7 +690,7 @@ const generate = () =>
   gap: 10px;
   padding-bottom: 10px;
   margin-bottom: 10px;
-  border-bottom: 1px solid #eee9de;
+  border-bottom: 1px solid var(--line-soft);
 }
 .head img {
   flex: none;
@@ -716,7 +716,7 @@ const generate = () =>
 .price {
   margin-left: 8px;
   font: 500 12px var(--mono);
-  color: #8a6a1c;
+  color: var(--yel-ink);
 }
 .pos {
   font: 500 10.5px var(--mono);
@@ -747,7 +747,7 @@ const generate = () =>
   background: var(--paper);
 }
 .ctl .btn:hover {
-  background: #f0ece2;
+  background: var(--hover);
 }
 .dup {
   margin-left: auto;
@@ -772,7 +772,7 @@ const generate = () =>
   padding: 0 4px;
   border: 1px solid var(--line);
   border-radius: 7px;
-  background: #fff;
+  background: var(--surface);
   font: 500 12px var(--mono);
   font-variant-numeric: tabular-nums;
   text-align: center;
@@ -796,19 +796,19 @@ const generate = () =>
   font-weight: 600;
 }
 .ctl .gen:hover {
-  background: #e3a817;
+  background: var(--yel-hover);
 }
 .fit-dialog {
   width: min(380px, calc(100vw - 32px));
   padding: 18px 18px 14px;
   border: 1px solid var(--line);
   border-radius: 14px;
-  background: #fff;
+  background: var(--surface);
   color: var(--ink);
   box-shadow: 0 16px 50px rgba(0, 0, 0, 0.18);
 }
 .fit-dialog::backdrop {
-  background: rgba(31, 33, 38, 0.35);
+  background: var(--backdrop);
 }
 .fit-dialog h3 {
   margin: 0;
@@ -843,7 +843,7 @@ const generate = () =>
 .choice:focus-visible {
   outline: none;
   border-color: var(--yel);
-  box-shadow: 0 0 0 3px rgba(237, 179, 42, 0.18);
+  box-shadow: 0 0 0 3px var(--yel-ring);
 }
 .frame {
   display: grid;
@@ -855,7 +855,7 @@ const generate = () =>
 .frame img {
   display: block;
   object-fit: contain;
-  background: #fff;
+  background: var(--surface);
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
 }
 .frame img.crop {
@@ -887,12 +887,12 @@ const generate = () =>
 }
 .lock:hover {
   color: var(--ink);
-  background: #f4f1ea;
+  background: var(--hover);
 }
 .lock.on {
-  color: #8a6a1c;
-  background: #fdf7e6;
-  border-color: rgba(237, 179, 42, 0.45);
+  color: var(--yel-ink);
+  background: var(--yel-soft);
+  border-color: var(--yel-line);
 }
 .lock:focus-visible {
   outline: 2px solid var(--yel);
@@ -914,7 +914,7 @@ const generate = () =>
   gap: 6px;
   border: 1px solid var(--line);
   border-radius: 999px;
-  background: #fff;
+  background: var(--surface);
   font-size: 12px;
   cursor: pointer;
 }
@@ -975,7 +975,7 @@ const generate = () =>
   padding: 0 8px;
   border: 1px solid var(--line);
   border-radius: 7px;
-  background: #fff;
+  background: var(--surface);
   font: inherit;
   font-size: 12px;
 }
@@ -990,7 +990,7 @@ const generate = () =>
   padding: 6px 8px;
   border: 1px solid var(--line);
   border-radius: 7px;
-  background: #fff;
+  background: var(--surface);
   font: inherit;
   font-size: 12px;
   line-height: 1.5;

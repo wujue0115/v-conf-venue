@@ -7,6 +7,7 @@ import NameDialog from '@/components/cloud/NameDialog.vue'
 import { cloudMessage } from '@/cloud/messages'
 import { createProject } from '@/cloud/projects'
 import { LOCALES, LOCALE_NAMES, locale, t } from '@/i18n'
+import { THEMES, theme } from '@/theme'
 import { useVenueEditor } from '@/composables/useVenueEditor'
 import { useAuthStore } from '@/stores/auth'
 import { useCloudStore } from '@/stores/cloud'
@@ -348,6 +349,37 @@ onBeforeUnmount(unlisten)
           </button>
         </div>
       </div>
+      <div class="lang-row">
+        <span>{{ t().theme.label }}</span>
+        <div class="langs themes" role="radiogroup" :aria-label="t().theme.label">
+          <button
+            v-for="th in THEMES"
+            :key="th"
+            class="lang"
+            :class="{ on: theme === th }"
+            type="button"
+            role="radio"
+            :aria-checked="theme === th"
+            :aria-label="t().theme[th]"
+            :title="t().theme[th]"
+            @click="theme = th"
+          >
+            <svg class="theme-ico" viewBox="0 0 24 24" aria-hidden="true">
+              <template v-if="th === 'system'">
+                <rect x="3" y="4" width="18" height="12" rx="2" />
+                <path d="M8 20h8M12 16v4" />
+              </template>
+              <template v-else-if="th === 'light'">
+                <circle cx="12" cy="12" r="4" />
+                <path
+                  d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"
+                />
+              </template>
+              <path v-else d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z" />
+            </svg>
+          </button>
+        </div>
+      </div>
     </div>
 
     <input ref="file" type="file" accept=".json,application/json" hidden @change="onFile" />
@@ -375,7 +407,7 @@ onBeforeUnmount(unlisten)
   padding: 0;
   border: 1px solid var(--line);
   border-radius: 10px;
-  background: #fff;
+  background: var(--surface);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
   color: var(--muted);
   cursor: pointer;
@@ -386,10 +418,10 @@ onBeforeUnmount(unlisten)
 }
 .burger:hover {
   color: var(--ink);
-  background: #f4f1ea;
+  background: var(--hover);
 }
 .burger.on {
-  color: var(--ink);
+  color: var(--on-yel);
   background: var(--yel);
   border-color: transparent;
 }
@@ -410,7 +442,7 @@ onBeforeUnmount(unlisten)
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 6px;
-  background: #fff;
+  background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 12px;
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
@@ -430,11 +462,11 @@ onBeforeUnmount(unlisten)
   cursor: pointer;
 }
 .item:hover:not(:disabled) {
-  background: #f4f1ea;
+  background: var(--hover);
 }
 .item.danger:hover:not(:disabled) {
-  background: #fbe9e7;
-  color: #b3261e;
+  background: var(--danger-soft);
+  color: var(--danger);
 }
 .item:disabled {
   opacity: 0.45;
@@ -454,7 +486,7 @@ onBeforeUnmount(unlisten)
 hr {
   margin: 6px 2px;
   border: 0;
-  border-top: 1px solid #eee9de;
+  border-top: 1px solid var(--line-soft);
 }
 
 .lang-row {
@@ -468,6 +500,8 @@ hr {
 .langs {
   display: grid;
   grid-template-columns: 1fr 1fr;
+  /* the language and theme switches line up, one under the other */
+  width: 150px;
   gap: 2px;
   padding: 2px;
   border: 1px solid var(--line);
@@ -487,7 +521,21 @@ hr {
 }
 .lang.on {
   background: var(--yel);
-  color: var(--ink);
+  color: var(--on-yel);
   font-weight: 600;
+}
+.themes {
+  grid-template-columns: repeat(3, 1fr);
+}
+.theme-ico {
+  display: block;
+  width: 15px;
+  height: 15px;
+  margin: auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 </style>

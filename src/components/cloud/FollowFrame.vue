@@ -54,7 +54,7 @@ const who = computed(() => collab.peers.find((p) => p.key === collab.following) 
   padding: 0 10px;
   border: 0;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.92);
+  background: var(--surface-glass);
   color: var(--c);
   font-size: 12px;
   font-weight: 700;

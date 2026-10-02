@@ -110,7 +110,7 @@ watch(
   padding: 0 9px;
   border: 1px solid var(--line);
   border-radius: 7px;
-  background: #fff;
+  background: var(--surface);
   font: inherit;
   font-size: 12px;
   font-weight: 600;
@@ -122,7 +122,7 @@ watch(
   height: 13px;
 }
 .link:hover:not(:disabled) {
-  background: #f4f1ea;
+  background: var(--hover);
 }
 .link:disabled {
   cursor: progress;
@@ -145,12 +145,12 @@ watch(
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  background: #f4f1ea;
+  background: var(--hover);
   border: 1px solid var(--line);
   overflow: hidden;
   font-size: 14px;
   font-weight: 700;
-  color: #6b5214;
+  color: var(--yel-ink);
 }
 .avatar img {
   width: 100%;

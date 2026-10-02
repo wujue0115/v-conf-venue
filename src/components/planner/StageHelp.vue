@@ -78,7 +78,7 @@ onBeforeUnmount(unlisten)
   place-items: center;
   border: 1px solid var(--line);
   border-radius: 50%;
-  background: #fff;
+  background: var(--surface);
   color: var(--muted);
   font: 600 15px var(--mono);
   cursor: pointer;
@@ -89,10 +89,10 @@ onBeforeUnmount(unlisten)
 }
 .q:hover {
   color: var(--ink);
-  background: #f4f1ea;
+  background: var(--hover);
 }
 .q.on {
-  color: var(--ink);
+  color: var(--on-yel);
   background: var(--yel);
   border-color: transparent;
 }
@@ -108,7 +108,7 @@ onBeforeUnmount(unlisten)
   width: max-content;
   max-width: min(300px, calc(100vw - 28px));
   padding: 10px 14px 12px;
-  background: #fff;
+  background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 12px;
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
@@ -122,7 +122,7 @@ onBeforeUnmount(unlisten)
   bottom: -5px;
   width: 9px;
   height: 9px;
-  background: #fff;
+  background: var(--surface);
   border-right: 1px solid var(--line);
   border-bottom: 1px solid var(--line);
   transform: rotate(45deg);
@@ -130,7 +130,7 @@ onBeforeUnmount(unlisten)
 section + section {
   margin-top: 8px;
   padding-top: 8px;
-  border-top: 1px solid #eee9de;
+  border-top: 1px solid var(--line-soft);
 }
 h4 {
   margin: 0 0 4px;

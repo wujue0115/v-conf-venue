@@ -153,6 +153,12 @@ interface Fly {
   g1: THREE.Vector3
 }
 
+/** Around the building in each theme: the background (the page's) and the grid's lines */
+const SCENE = {
+  light: { background: '#f3f0e8', gridCenter: '#cdbf9d', grid: '#e4dccb' },
+  dark: { background: '#16171a', gridCenter: '#6b6250', grid: '#3a3731' },
+} as const
+
 const UNDO_LIMIT = 60
 /**
  * How often the pointer's place in the venue is reported, at most (ms). Each report goes to
@@ -395,7 +401,7 @@ export class VenueEditor {
     renderer.shadowMap.type = THREE.PCFShadowMap
 
     const { scene, camera } = this
-    scene.background = new THREE.Color('#f3f0e8')
+    scene.background = new THREE.Color(SCENE.light.background)
     camera.position.set(-29, 62, 82)
 
     const controls = (this.controls = new OrbitControls(camera, canvas))
@@ -451,7 +457,12 @@ export class VenueEditor {
     }
     this.handles.visible = false
 
-    const grid = (this.grid = new THREE.GridHelper(90, 180, '#cdbf9d', '#e4dccb'))
+    const grid = (this.grid = new THREE.GridHelper(
+      90,
+      180,
+      SCENE.light.gridCenter,
+      SCENE.light.grid,
+    ))
     grid.position.set(19, 0.015, 17.5)
     const gm = grid.material as THREE.Material
     gm.transparent = true
@@ -626,6 +637,16 @@ export class VenueEditor {
 
   setWallsCut(on: boolean) {
     this.archi.wallsG.scale.y = on ? 0.28 : 1
+  }
+
+  /** Light or dark around the building: the background and the grid (the page's theme) */
+  setDark(on: boolean) {
+    const c = on ? SCENE.dark : SCENE.light
+    ;(this.scene.background as THREE.Color).set(c.background)
+    this.grid.geometry.dispose()
+    const fresh = new THREE.GridHelper(90, 180, c.gridCenter, c.grid)
+    this.grid.geometry = fresh.geometry
+    fresh.material.dispose()
   }
 
   /** Turn the sun's shadows on or off (off is lighter on slow devices) */
@@ -944,6 +965,10 @@ export class VenueEditor {
       (o) => o.visible && (o instanceof THREE.Box3Helper || o === this.grid || o === this.handles),
     )
     hide.forEach((o) => (o.visible = false))
+    // a picture to share or print is light, whatever the page's theme
+    const bg = scene.background as THREE.Color
+    const bgWas = bg.clone()
+    bg.set(SCENE.light.background)
     const ratio = renderer.getPixelRatio()
     const was = renderer.getSize(new THREE.Vector2())
     renderer.setPixelRatio(1)
@@ -959,6 +984,7 @@ export class VenueEditor {
     const url = out.toDataURL('image/png')
     renderer.setPixelRatio(ratio)
     renderer.setSize(was.x, was.y, false)
+    bg.copy(bgWas)
     hide.forEach((o) => (o.visible = true))
     renderer.render(scene, this.camera)
     return url

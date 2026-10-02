@@ -27,9 +27,9 @@ defineEmits<{ toggle: [] }>()
   margin: 0;
   display: grid;
   place-items: center;
-  border: 1.5px solid #c9c3b6;
+  border: 1.5px solid var(--control-line);
   border-radius: 4px;
-  background: #fff;
+  background: var(--surface);
   cursor: pointer;
   transition:
     background 0.15s,
@@ -42,6 +42,7 @@ defineEmits<{ toggle: [] }>()
 .tri:indeterminate {
   border-color: var(--yel);
   background: var(--yel);
+  color: var(--on-yel);
 }
 /* a tick when checked, a bar when only some of the group is */
 .tri::after {

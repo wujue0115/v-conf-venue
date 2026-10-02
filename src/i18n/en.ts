@@ -6,6 +6,7 @@ const en: Messages = {
   heading: 'NCCU CPBAE · Building A 2F · Venue Planner',
   sidebar: { title: 'Furniture', open: 'Show the furniture', close: 'Hide the furniture' },
   language: 'Language',
+  theme: { label: 'Theme', system: 'Match system', light: 'Light', dark: 'Dark' },
 
   menu: {
     title: 'Menu',

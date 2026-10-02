@@ -171,10 +171,10 @@ onBeforeUnmount(unlisten)
 }
 .gear:hover {
   color: var(--ink);
-  background: #f4f1ea;
+  background: var(--hover);
 }
 .gear.on {
-  color: var(--ink);
+  color: var(--on-yel);
   background: var(--yel);
   border-color: transparent;
 }
@@ -200,7 +200,7 @@ onBeforeUnmount(unlisten)
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 10px 14px 14px;
-  background: #fff;
+  background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 12px;
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
@@ -208,7 +208,7 @@ onBeforeUnmount(unlisten)
 section + section {
   margin-top: 8px;
   padding-top: 8px;
-  border-top: 1px solid #eee9de;
+  border-top: 1px solid var(--line-soft);
 }
 h4 {
   margin: 0 0 4px;
@@ -255,12 +255,13 @@ h4 {
   padding: 0;
   border: 0;
   border-radius: 999px;
-  background: #dcd7cb;
+  background: var(--switch-off);
   cursor: pointer;
   transition: background 0.2s;
 }
 .switch.on {
   background: var(--yel);
+  color: var(--on-yel);
 }
 .knob {
   position: absolute;

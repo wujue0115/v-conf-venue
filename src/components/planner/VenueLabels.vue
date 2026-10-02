@@ -86,7 +86,7 @@ watch(
   will-change: transform;
 }
 .bx {
-  background: #fff;
+  background: var(--surface);
   border: 1.5px solid var(--yel);
   border-radius: 7px;
   overflow: hidden;
@@ -105,6 +105,7 @@ watch(
 }
 .c {
   background: var(--yel);
+  color: var(--on-yel);
   padding: 2px 10px;
   font: 500 12px var(--mono);
 }
@@ -117,6 +118,7 @@ watch(
   width: 1.5px;
   height: 22px;
   background: var(--yel);
+  color: var(--on-yel);
   transform: translateX(-50%);
 }
 .tag::before {
@@ -128,11 +130,13 @@ watch(
   height: 7px;
   border-radius: 50%;
   background: var(--yel);
+  color: var(--on-yel);
   transform: translateX(-50%);
 }
 .fac .bx {
   border-radius: 99px;
   background: var(--yel);
+  color: var(--on-yel);
   border: none;
   padding: 3px 10px;
   font-size: 11.5px;

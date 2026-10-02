@@ -75,7 +75,7 @@ const bodyId = useId()
   cursor: pointer;
 }
 .st:hover {
-  background: #f4f1ea;
+  background: var(--hover);
 }
 .st:focus-visible {
   outline: 2px solid var(--yel);

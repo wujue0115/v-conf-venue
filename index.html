@@ -5,6 +5,17 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>v-conf Taiwan 2026 · 政大公企 A 棟 2F 場地規劃</title>
     <meta name="theme-color" content="#f3f0e8">
+    <!-- the theme before the first paint, as src/theme.ts resolves it (same storage key) -->
+    <script>
+      try {
+        var t = JSON.parse(localStorage.getItem('vueconf26-theme'))
+        if (t !== 'light' && t !== 'dark')
+          t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+        document.documentElement.dataset.theme = t
+        if (t === 'dark')
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#16171a')
+      } catch (e) {}
+    </script>
     <meta
       name="description"
       content="v-conf Taiwan 2026 場地規劃工具。以 3D 還原政大公企 A 棟 2F，直接在場地中配置設備物件，同步試算租借費用，配置可存檔與匯出。"

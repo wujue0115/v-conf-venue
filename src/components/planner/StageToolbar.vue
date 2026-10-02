@@ -193,12 +193,13 @@ const { views, active, flyTo } = useCameraViews()
   padding: 0 14px 0 12px;
   border-color: transparent;
   background: var(--yel);
+  color: var(--on-yel);
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
 }
 .share:hover {
-  background: #e0a71f;
+  background: var(--yel-hover);
 }
 .share {
   position: relative;
@@ -210,9 +211,9 @@ const { views, active, flyTo } = useCameraViews()
   min-width: 18px;
   height: 18px;
   padding: 0 5px;
-  border: 2px solid #fff;
+  border: 2px solid var(--surface);
   border-radius: 999px;
-  background: #d93025;
+  background: var(--danger-strong);
   color: #fff;
   font-size: 10px;
   font-weight: 700;

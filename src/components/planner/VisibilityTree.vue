@@ -197,7 +197,7 @@ const groups = computed(() =>
 .kids {
   margin-left: 7px;
   padding-left: 14px;
-  border-left: 1px solid #eee9de;
+  border-left: 1px solid var(--line-soft);
 }
 .leaf {
   cursor: pointer;

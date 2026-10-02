@@ -195,7 +195,7 @@ defineExpose({ open })
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2);
 }
 .share-dialog::backdrop {
-  background: rgba(31, 33, 38, 0.25);
+  background: var(--backdrop);
 }
 .panel {
   /* the window's height, less its border */
@@ -231,7 +231,7 @@ h3 {
   cursor: pointer;
 }
 .x:hover {
-  background: #f4f1ea;
+  background: var(--hover);
   color: var(--ink);
 }
 .x svg {
@@ -268,12 +268,13 @@ h3 {
   padding: 0;
   border: 0;
   border-radius: 999px;
-  background: #dcd7cb;
+  background: var(--switch-off);
   cursor: pointer;
   transition: background 0.2s;
 }
 .switch.on {
   background: var(--yel);
+  color: var(--on-yel);
 }
 .knob {
   position: absolute;
@@ -320,6 +321,7 @@ h3 {
   border: 0;
   border-radius: 7px;
   background: var(--yel);
+  color: var(--on-yel);
   font-size: 13px;
   font-weight: 600;
   white-space: nowrap;
@@ -355,25 +357,25 @@ legend {
   cursor: pointer;
 }
 .opt:hover {
-  background: #f8f6f0;
+  background: var(--paper);
 }
 .opt input {
   margin: 0;
-  accent-color: #b07d0c;
+  accent-color: var(--link-hover);
 }
 .error {
   margin: 12px 0 0;
   font-size: 12px;
-  color: #b3261e;
+  color: var(--danger);
 }
 .paused {
   margin: 10px 0 0;
   padding: 8px 10px;
-  border: 1px solid #ecd9a6;
+  border: 1px solid var(--yel-line);
   border-radius: 8px;
-  background: #fdf7e6;
+  background: var(--yel-soft);
   font-size: 12px;
-  color: #6b5317;
+  color: var(--yel-ink);
 }
 .foot {
   display: flex;
@@ -392,20 +394,21 @@ legend {
   cursor: pointer;
 }
 .replace:hover:not(:disabled) {
-  color: #b3261e;
+  color: var(--danger);
 }
 .txt-btn {
   height: 32px;
   padding: 0 14px;
   border: 1px solid var(--line);
   border-radius: 7px;
-  background: #fff;
+  background: var(--surface);
   font-size: 13px;
   cursor: pointer;
 }
 .txt-btn.ok {
   border-color: transparent;
   background: var(--yel);
+  color: var(--on-yel);
   font-weight: 600;
 }
 .x:focus-visible,

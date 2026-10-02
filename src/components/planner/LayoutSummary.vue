@@ -379,8 +379,8 @@ function onSlotsInput(e: Event) {
 }
 .sumbox {
   margin-top: 12px;
-  background: #fdf7e6;
-  border: 1px solid rgba(237, 179, 42, 0.45);
+  background: var(--yel-soft);
+  border: 1px solid var(--yel-line);
   border-radius: 10px;
   padding: 12px 12px 10px;
 }
@@ -404,9 +404,9 @@ function onSlotsInput(e: Event) {
   display: block;
   margin-top: 6px;
   padding-top: 6px;
-  border-top: 1px dashed rgba(237, 179, 42, 0.45);
+  border-top: 1px dashed var(--yel-line);
   font-style: normal;
   font-size: 11px;
-  color: #8a6a1c;
+  color: var(--yel-ink);
 }
 </style>

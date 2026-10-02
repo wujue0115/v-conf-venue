@@ -112,7 +112,7 @@ onBeforeUnmount(unlisten)
   margin: 0;
   padding: 4px;
   list-style: none;
-  background: #fff;
+  background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 12px;
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
@@ -130,10 +130,11 @@ onBeforeUnmount(unlisten)
   cursor: pointer;
 }
 .item:hover {
-  background: #f4f1ea;
+  background: var(--hover);
 }
 .item.on {
   background: var(--yel);
+  color: var(--on-yel);
   font-weight: 600;
 }
 .item:focus-visible {

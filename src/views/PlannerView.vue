@@ -239,7 +239,7 @@ onBeforeRouteUpdate((to, from) => {
 .card {
   width: min(380px, 100%);
   padding: 20px;
-  background: #fff;
+  background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 14px;
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
@@ -267,6 +267,7 @@ onBeforeRouteUpdate((to, from) => {
   border: 0;
   border-radius: 8px;
   background: var(--yel);
+  color: var(--on-yel);
   font-weight: 600;
   font-size: 13px;
   cursor: pointer;
@@ -290,7 +291,7 @@ onBeforeRouteUpdate((to, from) => {
   padding: 0 16px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #fff;
+  background: var(--surface);
   font-size: 13px;
   cursor: pointer;
 }
@@ -300,7 +301,7 @@ onBeforeRouteUpdate((to, from) => {
 }
 .card p.error {
   margin-top: 10px;
-  color: #b3261e;
+  color: var(--danger);
 }
 .links {
   display: flex;

@@ -5,14 +5,84 @@
 }
 
 :root {
+  color-scheme: light;
   --yel: #edb32a;
+  --yel-hover: #e0a71f;
+  /* text and icons on a yellow ground: dark in both themes */
+  --on-yel: #1f2126;
   --ink: #1f2126;
   --muted: #5d6068;
   --faint: #8b8e95;
   --line: #e3ded2;
+  /* hairlines inside a panel, between its rows */
+  --line-soft: #eee9de;
+  /* borders on hover, dashed outlines, a checkbox's edge */
+  --line-strong: #d6cfbf;
+  --control-line: #c9c3b6;
   --paper: #faf8f3;
   --bg: #f3f0e8;
+  /* panels, cards, menus and buttons */
+  --surface: #fff;
+  /* a translucent surface floating over the stage */
+  --surface-glass: rgba(255, 255, 255, 0.92);
+  /* a row or button under the pointer */
+  --hover: #f4f1ea;
+  /* sunk below the surface: a preview's board */
+  --sunken: #e9e5dc;
+  /* a switch that's off */
+  --switch-off: #dcd7cb;
+  /* text in the yellow's family (a hint, a count, a link) and its pale ground */
+  --yel-ink: #8a6a1c;
+  --yel-soft: #fdf7e6;
+  --yel-line: rgba(237, 179, 42, 0.45);
+  --yel-ring: rgba(237, 179, 42, 0.18);
+  --link-hover: #b07d0c;
+  --danger: #b3261e;
+  --danger-soft: #fbe9e7;
+  --danger-line: #f0c4bf;
+  /* a red dot or badge */
+  --danger-strong: #d93025;
+  --ok: #2f7d4f;
+  --info: #3a5f8a;
+  --info-soft: #eef4fb;
+  --backdrop: rgba(31, 33, 38, 0.25);
+  --shadow: rgba(0, 0, 0, 0.12);
   --mono: 'JetBrains Mono', monospace;
+}
+
+/*
+ * Dark: data-theme is always set, to the theme chosen in ☰ or, left to the system, the one it
+ * prefers (index.html sets it before the first paint, src/theme.ts from then on)
+ */
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --ink: #eceae4;
+  --muted: #b1b3b9;
+  --faint: #868a93;
+  --line: #3a3d45;
+  --line-soft: #2f3138;
+  --line-strong: #4b4f58;
+  --control-line: #5d616b;
+  --paper: #1c1e22;
+  --bg: #16171a;
+  --surface: #24262b;
+  --surface-glass: rgba(36, 38, 43, 0.92);
+  --hover: #2f3238;
+  --sunken: #111215;
+  --switch-off: #4b4f58;
+  --yel-ink: #e9c467;
+  --yel-soft: #2f2a1d;
+  --yel-line: rgba(237, 179, 42, 0.38);
+  --yel-ring: rgba(237, 179, 42, 0.22);
+  --link-hover: #f0c35a;
+  --danger: #f28b82;
+  --danger-soft: #3b2422;
+  --danger-line: #6e3631;
+  --ok: #7bd3a0;
+  --info: #9cc3ec;
+  --info-soft: #1f2a37;
+  --backdrop: rgba(0, 0, 0, 0.55);
+  --shadow: rgba(0, 0, 0, 0.45);
 }
 
 html,
@@ -33,10 +103,10 @@ body {
 /* Scrollbars: thin, in the page's warm greys, darker while held or hovered */
 * {
   scrollbar-width: thin;
-  scrollbar-color: #d6cfbf transparent;
+  scrollbar-color: var(--line-strong) transparent;
 }
 *:hover {
-  scrollbar-color: #bfb59f transparent;
+  scrollbar-color: var(--control-line) transparent;
 }
 /* Browsers without scrollbar-color (Safari) */
 @supports not (scrollbar-color: auto) {
@@ -51,11 +121,11 @@ body {
     /* the transparent border keeps a gap around the thumb */
     border: 3px solid transparent;
     border-radius: 10px;
-    background: #d6cfbf padding-box;
+    background: var(--line-strong) padding-box;
   }
   ::-webkit-scrollbar-thumb:hover,
   ::-webkit-scrollbar-thumb:active {
-    background-color: #bfb59f;
+    background-color: var(--control-line);
   }
   ::-webkit-scrollbar-corner {
     background: transparent;
@@ -66,12 +136,18 @@ a {
   color: var(--ink);
 }
 a:hover {
-  color: #b07d0c;
+  color: var(--link-hover);
 }
 
 button {
   font: inherit;
   color: inherit;
+}
+
+/* Windows take the theme's surface, not the browser's own (near black in dark) */
+dialog {
+  background: var(--surface);
+  color: var(--ink);
 }
 
 /* A toast's look, on the stage and on My projects: a white card like the panels, with a yellow
@@ -83,8 +159,8 @@ button {
   padding: 8px 14px 8px 12px;
   border: 1px solid var(--line);
   border-radius: 10px;
-  background: #fff;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+  background: var(--surface);
+  box-shadow: 0 8px 24px var(--shadow);
   color: var(--ink);
   font-size: 13px;
   font-weight: 500;
@@ -112,7 +188,7 @@ button {
 /* Shared toolbar primitives (used by sidebar, stage toolbar and selection bar) */
 .grp {
   display: flex;
-  background: #fff;
+  background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 10px;
   padding: 3px;
@@ -133,14 +209,15 @@ button {
   gap: 6px;
 }
 .btn:hover {
-  background: #f4f1ea;
+  background: var(--hover);
 }
 .btn.on {
   background: var(--yel);
+  color: var(--on-yel);
 }
 .btn.danger:hover {
-  background: #fbe9e7;
-  color: #a8321f;
+  background: var(--danger-soft);
+  color: var(--danger);
 }
 .btn:disabled {
   opacity: 0.4;

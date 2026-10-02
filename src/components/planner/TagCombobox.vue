@@ -131,7 +131,7 @@ input {
   padding: 0 28px 0 10px;
   border: 1px solid var(--line);
   border-radius: 7px;
-  background: #fff;
+  background: var(--surface);
   font: inherit;
   font-size: 13px;
   color: var(--ink);
@@ -158,7 +158,7 @@ input:focus {
 }
 .clear:hover {
   color: var(--ink);
-  background: #f4f1ea;
+  background: var(--hover);
 }
 /* The selection panel sits at the bottom of the screen, so the list opens upward */
 .list {
@@ -172,7 +172,7 @@ input:focus {
   padding: 4px;
   overflow-y: auto;
   list-style: none;
-  background: #fff;
+  background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 10px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
@@ -188,14 +188,14 @@ li {
 }
 li:hover,
 li.active {
-  background: #f4f1ea;
+  background: var(--hover);
 }
 li.cur {
   font-weight: 700;
 }
 /* "新增" uses the page's accent (the dark gold of its accent text: plain yellow is unreadable on white) */
 li.add {
-  color: #8a6a1c;
+  color: var(--yel-ink);
   font-weight: 600;
 }
 </style>

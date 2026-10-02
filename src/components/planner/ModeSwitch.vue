@@ -91,6 +91,7 @@ const MODES = computed(() =>
   width: calc((100% - 8px) / 2);
   border-radius: 7px;
   background: var(--yel);
+  color: var(--on-yel);
   transition: transform 0.25s cubic-bezier(0.3, 0.7, 0.4, 1);
 }
 .mode.edit .thumb {
@@ -100,6 +101,9 @@ const MODES = computed(() =>
   position: relative;
   background: transparent;
   transition: color 0.2s;
+}
+.mode .btn.cur {
+  color: var(--on-yel);
 }
 .mode .btn:not(.cur) {
   color: var(--muted);

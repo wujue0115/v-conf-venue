@@ -12,6 +12,8 @@ const zh = {
   /** The furniture panel on the right */
   sidebar: { title: '家具', open: '打開家具面板', close: '收起家具面板' },
   language: '語言',
+  /** ☰'s light / dark switch */
+  theme: { label: '外觀', system: '跟隨系統', light: '淺色', dark: '深色' },
 
   /** ☰: the layout file, the account and the language */
   menu: {

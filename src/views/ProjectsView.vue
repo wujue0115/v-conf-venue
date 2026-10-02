@@ -404,13 +404,13 @@ onBeforeUnmount(() => {
   padding: 0 12px 0 8px;
   border: 1px solid var(--line);
   border-radius: 10px;
-  background: #fff;
+  background: var(--surface);
   font-size: 13px;
   text-decoration: none;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
 .back:hover {
-  background: #f4f1ea;
+  background: var(--hover);
 }
 .main {
   max-width: 960px;
@@ -437,6 +437,7 @@ h1 {
   border: 0;
   border-radius: 9px;
   background: var(--yel);
+  color: var(--on-yel);
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
@@ -461,10 +462,10 @@ h1 {
   color: var(--muted);
 }
 .note.error {
-  color: #b3261e;
+  color: var(--danger);
 }
 .card {
-  background: #fff;
+  background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 14px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
@@ -488,8 +489,8 @@ h1 {
   font-size: 16px;
 }
 .thumb.shared {
-  background: #eef4fb;
-  color: #3a5f8a;
+  background: var(--info-soft);
+  color: var(--info);
 }
 .grid {
   display: grid;
@@ -506,7 +507,7 @@ h1 {
     box-shadow 0.15s;
 }
 .project:hover {
-  border-color: #d6cfbf;
+  border-color: var(--line-strong);
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.07);
 }
 .project.busy {
@@ -529,7 +530,7 @@ h1 {
   cursor: pointer;
 }
 .local {
-  border: 1px dashed #d6cfbf;
+  border: 1px dashed var(--line-strong);
   background: var(--paper);
   box-shadow: none;
 }
@@ -548,11 +549,11 @@ h1 {
   width: 44px;
   height: 44px;
   border-radius: 10px;
-  background: #fdf7e6;
-  color: #8a6a1c;
+  background: var(--yel-soft);
+  color: var(--yel-ink);
 }
 .local .thumb {
-  background: #fff;
+  background: var(--surface);
   color: var(--muted);
 }
 .thumb svg {
@@ -600,7 +601,7 @@ h1 {
 }
 .more:hover,
 .more[aria-expanded='true'] {
-  background: #f4f1ea;
+  background: var(--hover);
   color: var(--ink);
 }
 .more .ico {
@@ -615,7 +616,7 @@ h1 {
   z-index: 5;
   min-width: 160px;
   padding: 4px;
-  background: #fff;
+  background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 10px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
@@ -632,7 +633,7 @@ h1 {
   cursor: pointer;
 }
 .item:hover:not(:disabled) {
-  background: #f4f1ea;
+  background: var(--hover);
 }
 .item:disabled {
   color: var(--faint);
@@ -641,11 +642,11 @@ h1 {
 .banner {
   margin: 0 0 16px;
   padding: 10px 14px;
-  border: 1px solid #ecd9a6;
+  border: 1px solid var(--yel-line);
   border-radius: 10px;
-  background: #fdf7e6;
+  background: var(--yel-soft);
   font-size: 13px;
-  color: #6b5317;
+  color: var(--yel-ink);
 }
 /* a card's shape while the list loads, gently pulsing */
 .skeleton {
@@ -657,14 +658,14 @@ h1 {
   animation: pulse 1.4s ease-in-out infinite;
 }
 .skeleton .thumb {
-  background: #f1ede4;
+  background: var(--hover);
 }
 .skeleton b,
 .skeleton span {
   display: block;
   height: 10px;
   border-radius: 5px;
-  background: #f1ede4;
+  background: var(--hover);
 }
 .skeleton b {
   width: 140px;
@@ -692,8 +693,8 @@ h1 {
   white-space: nowrap;
 }
 .item.danger:hover:not(:disabled) {
-  background: #fbe9e7;
-  color: #b3261e;
+  background: var(--danger-soft);
+  color: var(--danger);
 }
 .toast {
   position: fixed;

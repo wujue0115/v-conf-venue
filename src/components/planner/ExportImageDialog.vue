@@ -132,7 +132,7 @@ defineExpose({ open })
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2);
 }
 .export::backdrop {
-  background: rgba(31, 33, 38, 0.25);
+  background: var(--backdrop);
 }
 .panel {
   padding: 14px 16px 16px;
@@ -161,7 +161,7 @@ h3 {
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #e9e5dc;
+  background: var(--sunken);
 }
 .frame img {
   display: block;
@@ -221,7 +221,7 @@ h3 {
   padding: 0 14px;
   border: 1px solid var(--line);
   border-radius: 7px;
-  background: #fff;
+  background: var(--surface);
   font: inherit;
   font-size: 13px;
   color: var(--muted);
@@ -230,7 +230,7 @@ h3 {
 .txt.ok {
   border-color: transparent;
   background: var(--yel);
-  color: var(--ink);
+  color: var(--on-yel);
   font-weight: 600;
 }
 </style>

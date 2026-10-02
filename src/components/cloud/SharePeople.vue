@@ -246,10 +246,10 @@ h5 {
 .msg {
   margin: 6px 0 0;
   font-size: 12px;
-  color: #2f7d4f;
+  color: var(--ok);
 }
 .msg.error {
-  color: #b3261e;
+  color: var(--danger);
 }
 .add {
   display: flex;
@@ -263,7 +263,7 @@ h5 {
   padding: 0 10px;
   border: 1px solid var(--line);
   border-radius: 7px;
-  background: #fff;
+  background: var(--surface);
   font-size: 13px;
   color: var(--ink);
 }
@@ -273,7 +273,7 @@ select {
   padding: 0 28px 0 10px;
   border: 1px solid var(--line);
   border-radius: 7px;
-  background: #fff
+  background: var(--surface)
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 6l4 4 4-4' fill='none' stroke='%238b8e95' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")
     no-repeat right 9px center / 12px;
   font-size: 13px;
@@ -282,7 +282,7 @@ select {
   appearance: none;
 }
 select:hover:not(:disabled) {
-  border-color: #d6cfbf;
+  border-color: var(--line-strong);
 }
 select:disabled {
   opacity: 0.5;
@@ -306,7 +306,7 @@ ul {
   padding: 5px 0;
 }
 .row + .row {
-  border-top: 1px solid #f1eee6;
+  border-top: 1px solid var(--line-soft);
 }
 .who {
   flex: 1;
@@ -326,7 +326,7 @@ ul {
 .who i {
   font-style: normal;
   font-size: 12px;
-  color: #a06a00;
+  color: var(--yel-ink);
 }
 .txt-btn,
 .ok {
@@ -334,7 +334,7 @@ ul {
   padding: 0 10px;
   border: 1px solid var(--line);
   border-radius: 7px;
-  background: #fff;
+  background: var(--surface);
   font-size: 12px;
   white-space: nowrap;
   cursor: pointer;
@@ -347,6 +347,7 @@ ul {
 .ok {
   border-color: transparent;
   background: var(--yel);
+  color: var(--on-yel);
   font-weight: 600;
 }
 button:disabled {
@@ -366,8 +367,8 @@ button:disabled {
   cursor: pointer;
 }
 .x:hover:not(:disabled) {
-  background: #fbe9e7;
-  color: #b3261e;
+  background: var(--danger-soft);
+  color: var(--danger);
 }
 .x svg {
   fill: none;
@@ -396,7 +397,7 @@ button:disabled {
   cursor: pointer;
 }
 .toggle:hover {
-  background: #f4f1ea;
+  background: var(--hover);
 }
 .chev {
   flex: none;

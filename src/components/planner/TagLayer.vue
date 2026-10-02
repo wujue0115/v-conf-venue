@@ -120,9 +120,9 @@ onBeforeUnmount(() => KINDS.forEach((k) => editor.value?.setTagLayer(k, null)))
   height: 20px;
   padding: 0;
   /* without a tag: a quiet grey outline and icon, a light grey fill on hover */
-  border: 1.5px solid #b4b0a6;
+  border: 1.5px solid var(--control-line);
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.92);
+  background: var(--surface-glass);
   color: var(--muted, #5d6068);
   font:
     italic 700 12px/1 Georgia,
@@ -136,7 +136,7 @@ onBeforeUnmount(() => KINDS.forEach((k) => editor.value?.setTagLayer(k, null)))
     border-color 0.15s;
 }
 .tags :deep(.tinfo:hover) {
-  background: #eeece6;
+  background: var(--hover);
 }
 /*
  * Beside a tag, the ⓘ and its note take the tag's colour (--ti, darkened when pale) for their
@@ -144,17 +144,17 @@ onBeforeUnmount(() => KINDS.forEach((k) => editor.value?.setTagLayer(k, null)))
  */
 .tags :deep(.trow.tagged .tinfo) {
   border: 1.5px solid var(--ti);
-  background: #fff;
+  background: var(--surface);
   color: var(--ti);
 }
 .tags :deep(.trow.tagged .tinfo:hover) {
   border-color: var(--ti);
-  background: color-mix(in srgb, var(--tc) 22%, #fff);
+  background: color-mix(in srgb, var(--tc) 22%, var(--surface));
   color: var(--ti);
 }
 .tags :deep(.trow.tagged .tbox) {
   border: 1.5px solid var(--ti);
-  background: color-mix(in srgb, var(--tc) 12%, #fff);
+  background: color-mix(in srgb, var(--tc) 12%, var(--surface));
 }
 .tags :deep(.tinfo:focus-visible) {
   outline: 2px solid var(--yel, #edb32a);
@@ -171,7 +171,7 @@ onBeforeUnmount(() => KINDS.forEach((k) => editor.value?.setTagLayer(k, null)))
   padding: 8px 10px;
   border: 1px solid var(--line, #e4dfd3);
   border-radius: 8px;
-  background: #fff;
+  background: var(--surface);
   color: var(--ink, #1f2126);
   font-size: 12px;
   line-height: 1.5;

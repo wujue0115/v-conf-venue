@@ -91,11 +91,11 @@ function titleOf(p: { key: string; name: string; role: string }) {
   overflow: hidden;
   border: 2px solid var(--c, var(--line));
   border-radius: 50%;
-  background: #fff;
+  background: var(--surface);
   font-size: 12px;
   font-weight: 700;
   color: var(--c, var(--muted));
-  box-shadow: 0 0 0 2px #fff;
+  box-shadow: 0 0 0 2px var(--surface);
   padding: 0;
 }
 /* Phones: the faces overlap more, leaving the top row room for the project's name */

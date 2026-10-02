@@ -68,11 +68,11 @@ function onPointerDown(e: PointerEvent, type: FurnitureType) {
 .locked {
   margin: 0 4px 10px;
   padding: 8px 10px;
-  border: 1px solid rgba(237, 179, 42, 0.45);
+  border: 1px solid var(--yel-line);
   border-radius: 8px;
-  background: #fdf7e6;
+  background: var(--yel-soft);
   font-size: 12px;
-  color: #8a6a1c;
+  color: var(--yel-ink);
 }
 .palette.off {
   opacity: 0.45;
@@ -88,7 +88,7 @@ function onPointerDown(e: PointerEvent, type: FurnitureType) {
   margin-bottom: 22px;
 }
 .tile {
-  border: 1px solid #e6e1d6;
+  border: 1px solid var(--line);
   border-radius: 10px;
   background: var(--paper);
   padding: 6px 6px 8px;
@@ -102,7 +102,7 @@ function onPointerDown(e: PointerEvent, type: FurnitureType) {
 }
 .tile:hover {
   border-color: var(--yel);
-  box-shadow: 0 0 0 3px rgba(237, 179, 42, 0.18);
+  box-shadow: 0 0 0 3px var(--yel-ring);
 }
 .tile:active {
   cursor: grabbing;
@@ -128,6 +128,6 @@ function onPointerDown(e: PointerEvent, type: FurnitureType) {
   margin: 1px 2px 0;
 }
 .tile .pr {
-  color: #8a6a1c;
+  color: var(--yel-ink);
 }
 </style>

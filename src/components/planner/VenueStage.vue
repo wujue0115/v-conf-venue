@@ -14,6 +14,7 @@ import { usePhone } from '@/composables/usePhone'
 import { useVenueEditor } from '@/composables/useVenueEditor'
 import { useCollabStore, type EditorLink } from '@/stores/collab'
 import { usePlannerStore } from '@/stores/planner'
+import { dark } from '@/theme'
 import { VenueEditor } from '@/venue/VenueEditor'
 
 const store = usePlannerStore()
@@ -69,6 +70,7 @@ watch([editor, () => store.multiSelect], ([ed, on]) => ed?.setMultiSelect(on), {
 watch([editor, () => store.wallsCut], ([ed, on]) => ed?.setWallsCut(on), { immediate: true })
 watch([editor, () => store.showLabels], ([ed, on]) => ed?.setLabelsVisible(on), { immediate: true })
 watch([editor, () => store.shadows], ([ed, on]) => ed?.setShadows(on), { immediate: true })
+watch([editor, dark], ([ed, on]) => ed?.setDark(on), { immediate: true })
 watch([editor, () => store.hiddenTypes], ([ed, types]) => ed?.setHiddenTypes(types), {
   immediate: true,
 })

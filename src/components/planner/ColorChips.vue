@@ -288,7 +288,7 @@ onBeforeUnmount(unlisten)
 }
 .chip.on {
   box-shadow:
-    0 0 0 2px #fff,
+    0 0 0 2px var(--surface),
     0 0 0 4px var(--ink);
 }
 .chip:focus-visible,
@@ -303,12 +303,12 @@ onBeforeUnmount(unlisten)
 .tool {
   display: grid;
   place-items: center;
-  background: #fff;
+  background: var(--surface);
   color: var(--muted);
 }
 .tool:hover {
   color: var(--ink);
-  background: #f4f1ea;
+  background: var(--hover);
 }
 .tool svg {
   width: 13px;
@@ -329,7 +329,7 @@ onBeforeUnmount(unlisten)
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18);
 }
 .editor::backdrop {
-  background: rgba(31, 33, 38, 0.25);
+  background: var(--backdrop);
 }
 .panel {
   position: relative;
@@ -362,7 +362,7 @@ p {
   min-height: 38px;
   padding: 0 4px;
   border-radius: 8px;
-  background: #fff;
+  background: var(--surface);
 }
 .line:hover {
   background: var(--paper);
@@ -378,7 +378,7 @@ p {
   transition: none;
 }
 .slot.lifted .line {
-  background: #fff;
+  background: var(--surface);
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.14);
   transition: none;
 }
@@ -441,8 +441,8 @@ p {
   cursor: pointer;
 }
 .del:hover:not(:disabled) {
-  background: #fbe9e7;
-  color: #a8321f;
+  background: var(--danger-soft);
+  color: var(--danger);
 }
 .del:disabled {
   opacity: 0.3;
@@ -467,7 +467,7 @@ p {
 .plus {
   display: grid;
   place-items: center;
-  background: #fff;
+  background: var(--surface);
   box-shadow: inset 0 0 0 1.5px var(--line);
   font-size: 15px;
 }
@@ -482,7 +482,7 @@ p {
   padding: 0 12px;
   border: 1px solid var(--line);
   border-radius: 7px;
-  background: #fff;
+  background: var(--surface);
   font: inherit;
   font-size: 12px;
   color: var(--muted);
@@ -495,7 +495,7 @@ p {
 .txt.done {
   border-color: transparent;
   background: var(--yel);
-  color: var(--ink);
+  color: var(--on-yel);
   font-weight: 600;
 }
 .chip-move {

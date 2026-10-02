@@ -142,7 +142,7 @@ function rename() {
   cursor: pointer;
 }
 .name:hover:not(:disabled) {
-  background: #f4f1ea;
+  background: var(--hover);
 }
 .name:disabled {
   cursor: default;
@@ -186,12 +186,13 @@ function rename() {
 .pending .dot,
 .saving .dot {
   background: var(--yel);
+  color: var(--on-yel);
 }
 .error {
-  color: #b3261e;
+  color: var(--danger);
 }
 .error .dot {
-  background: #d93025;
+  background: var(--danger-strong);
 }
 .readOnly .dot,
 .paused .dot {
@@ -214,7 +215,7 @@ function rename() {
   padding: 0 8px;
   border: 1px solid var(--line);
   border-radius: 6px;
-  background: #fff;
+  background: var(--surface);
   font-size: 12px;
   cursor: pointer;
 }
