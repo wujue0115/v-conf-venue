@@ -187,7 +187,8 @@ defineExpose({ open })
   width: min(460px, calc(100vw - 28px));
   max-width: none;
   max-height: calc(100dvh - 28px);
-  overflow-y: auto;
+  /* the panel scrolls inside, so the scrollbar stays within the rounded corners */
+  overflow: hidden;
   padding: 0;
   border: 1px solid var(--line);
   border-radius: 12px;
@@ -197,6 +198,9 @@ defineExpose({ open })
   background: rgba(31, 33, 38, 0.25);
 }
 .panel {
+  /* the window's height, less its border */
+  max-height: calc(100dvh - 30px);
+  overflow-y: auto;
   padding: 14px 16px 16px;
 }
 .title {
