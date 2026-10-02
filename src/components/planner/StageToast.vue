@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onBeforeUnmount, shallowRef, watch } from 'vue'
-import { usePlannerStore } from '@/stores/planner'
+import { toastDuration, usePlannerStore } from '@/stores/planner'
 
 const store = usePlannerStore()
 const visible = shallowRef(false)
@@ -12,7 +12,8 @@ watch(
     if (!t) return
     visible.value = true
     clearTimeout(timer)
-    timer = setTimeout(() => (visible.value = false), 2200)
+    // longer ones stay up long enough to read
+    timer = setTimeout(() => (visible.value = false), toastDuration(t.message))
   },
 )
 onBeforeUnmount(() => clearTimeout(timer))

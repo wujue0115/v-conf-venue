@@ -45,22 +45,23 @@ watch(
   { immediate: true },
 )
 
-// Back from Google or GitHub without signing in or linking: say why
-watch(
-  () => auth.failure,
-  (failure) => {
-    if (!failure) return
-    store.notify(t().auth.failures[failure])
-    auth.failure = null
-  },
-  { immediate: true },
-)
-
 const ready = computed(
   () =>
     !cloud.value ||
     (!!project.meta && !project.loading && !project.loadError && !project.shareDenied),
 )
+// Back from Google or GitHub without signing in or linking: say why, once the stage (and its
+// toast) is showing; 'post' so it has mounted by then
+watch(
+  [() => auth.failure, ready],
+  ([failure, shown]) => {
+    if (!failure || !shown) return
+    store.notify(t().auth.failures[failure])
+    auth.failure = null
+  },
+  { immediate: true, flush: 'post' },
+)
+
 const needsSignIn = computed(
   () =>
     auth.ready &&

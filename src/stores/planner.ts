@@ -27,6 +27,10 @@ export type PlannerMode = 'view' | 'edit'
  * UI-facing planner state. The three.js scene (VenueEditor) is the source of
  * truth for object transforms and reports snapshots here via `items`.
  */
+/** How long a toast shows: 2.2s, more for a long one, up to 6s */
+export const toastDuration = (message: string) =>
+  Math.min(6000, Math.max(2200, message.length * 70))
+
 export const usePlannerStore = defineStore('planner', () => {
   /**
    * The cloud project being edited, or null for the layout kept in this browser. Only the

@@ -17,6 +17,7 @@ import {
 import { t } from '@/i18n'
 import { useAuthStore } from '@/stores/auth'
 import { useCloudStore } from '@/stores/cloud'
+import { toastDuration } from '@/stores/planner'
 import { downloadJSON, stamp } from '@/venue/download'
 import { exportLayout } from '@/venue/layout'
 
@@ -42,7 +43,7 @@ let toastTimer: ReturnType<typeof setTimeout> | undefined
 function notify(message: string) {
   toast.value = message
   clearTimeout(toastTimer)
-  toastTimer = setTimeout(() => (toast.value = ''), 2600)
+  toastTimer = setTimeout(() => (toast.value = ''), Math.max(2600, toastDuration(message)))
 }
 
 // Back from Google or GitHub without signing in or linking: say why
