@@ -45,11 +45,16 @@ function shade(c: string, k = 0.8) {
   return `rgb(${ch(16)},${ch(8)},${ch(0)})`
 }
 
-function fonts() {
+/** The page's fonts, and its colours in the current theme (main.css's tokens) */
+function pageStyle() {
   const css = getComputedStyle(document.documentElement)
+  const v = (name: string, or: string) => css.getPropertyValue(name).trim() || or
   return {
     sans: getComputedStyle(document.body).fontFamily || 'sans-serif',
-    mono: css.getPropertyValue('--mono').trim() || 'monospace',
+    mono: v('--mono', 'monospace'),
+    surface: v('--surface', '#fff'),
+    ink: v('--ink', '#1f2126'),
+    onYel: v('--on-yel', '#1f2126'),
   }
 }
 
@@ -133,7 +138,7 @@ interface Box {
 }
 
 /** A room label's box (and how to draw it), its bottom `offset` px above (x, y) */
-function roomLabel(ctx: CanvasRenderingContext2D, l: LabelMark, f: ReturnType<typeof fonts>) {
+function roomLabel(ctx: CanvasRenderingContext2D, l: LabelMark, f: ReturnType<typeof pageStyle>) {
   const face = l.face
   if (face.kind === 'facility') {
     ctx.font = `500 11.5px ${f.sans}`
@@ -148,7 +153,7 @@ function roomLabel(ctx: CanvasRenderingContext2D, l: LabelMark, f: ReturnType<ty
       shadow(ctx, 8, 2, 0.08)
       ctx.fill()
       noShadow(ctx)
-      ctx.fillStyle = '#1f2126'
+      ctx.fillStyle = f.onYel
       ctx.font = `500 11.5px ${f.sans}`
       ctx.textAlign = 'center'
       ctx.textBaseline = 'middle'
@@ -174,7 +179,7 @@ function roomLabel(ctx: CanvasRenderingContext2D, l: LabelMark, f: ReturnType<ty
     ctx.beginPath()
     ctx.roundRect(box.x, box.y, w, h, 7)
     shadow(ctx, 8, 2, 0.08)
-    ctx.fillStyle = '#fff'
+    ctx.fillStyle = f.surface
     ctx.fill()
     noShadow(ctx)
     ctx.save()
@@ -187,7 +192,7 @@ function roomLabel(ctx: CanvasRenderingContext2D, l: LabelMark, f: ReturnType<ty
     ctx.beginPath()
     ctx.roundRect(box.x + 0.75, box.y + 0.75, w - 1.5, h - 1.5, 6.25)
     ctx.stroke()
-    ctx.fillStyle = '#1f2126'
+    ctx.fillStyle = f.ink
     ctx.textAlign = 'left'
     ctx.textBaseline = 'alphabetic'
     const base = box.y + 1.5 + 4 + 13 * LINE * 0.78
@@ -196,6 +201,7 @@ function roomLabel(ctx: CanvasRenderingContext2D, l: LabelMark, f: ReturnType<ty
     ctx.fillText(face.id, left, base)
     ctx.font = `700 13px ${f.sans}`
     ctx.fillText(face.name, left + idW + 6, base)
+    ctx.fillStyle = f.onYel
     ctx.font = `500 12px ${f.mono}`
     ctx.textBaseline = 'middle'
     ctx.fillText(face.cap, left, box.y + 1.5 + r1 + r2 / 2 + 0.5)
@@ -214,7 +220,7 @@ export function drawLabels(
   labels: readonly LabelMark[],
   tags: readonly TagMark[],
 ) {
-  const f = fonts()
+  const f = pageStyle()
   const at = <T extends { x: number; y: number }>(m: T): T => ({
     ...m,
     x: m.x / scale,

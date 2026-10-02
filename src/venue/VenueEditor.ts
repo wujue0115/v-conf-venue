@@ -984,7 +984,7 @@ export class VenueEditor {
    * `padding` pixels round it (see imageFrame). Pass a smaller `size` for a preview; its
    * padding (and its tags and labels) are scaled to match, so it looks like the full picture.
    * The room labels and tags showing on the stage are drawn over it (imageLabels.ts);
-   * selection outlines, handles and the grid are left out.
+   * selection outlines, handles and the grid are left out. It takes the page's theme.
    */
   exportImage({ padding = 40, size = IMAGE_SIZE } = {}) {
     const { cam, width, height } = this.imageFrame((padding * size) / IMAGE_SIZE, size)
@@ -994,10 +994,6 @@ export class VenueEditor {
       (o) => o.visible && (o instanceof THREE.Box3Helper || o === this.grid || o === this.handles),
     )
     hide.forEach((o) => (o.visible = false))
-    // a picture to share or print is light, whatever the page's theme
-    const bg = scene.background as THREE.Color
-    const bgWas = bg.clone()
-    bg.set(SCENE.light.background)
     const ratio = renderer.getPixelRatio()
     const was = renderer.getSize(new THREE.Vector2())
     renderer.setPixelRatio(1)
@@ -1013,7 +1009,6 @@ export class VenueEditor {
     const url = out.toDataURL('image/png')
     renderer.setPixelRatio(ratio)
     renderer.setSize(was.x, was.y, false)
-    bg.copy(bgWas)
     hide.forEach((o) => (o.visible = true))
     renderer.render(scene, this.camera)
     return url
