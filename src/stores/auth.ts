@@ -38,6 +38,10 @@ function takeUrlFailure(): AuthFailure | null {
   return 'failed'
 }
 
+// Taken as this module loads, which is before the router is made: the router keeps the address
+// it was made with and writes it back on its first navigation, error and all
+const urlFailure = supabase ? takeUrlFailure() : null
+
 /**
  * Who is signed in. `ready` turns true once the saved session (or one coming back from Google
  * or GitHub in the URL) has been checked, so the UI doesn't flash "Sign in" for someone already
@@ -57,7 +61,7 @@ export const useAuthStore = defineStore('auth', () => {
   /** Runs just before leaving for the provider chosen in that window */
   let beforeLeave: (() => void) | null = null
   /** Coming back from a provider didn't work: for the page to say so, then clear */
-  const failure = shallowRef<AuthFailure | null>(supabase ? takeUrlFailure() : null)
+  const failure = shallowRef<AuthFailure | null>(urlFailure)
 
   const email = computed(() => user.value?.email ?? '')
   const name = computed(() => {
