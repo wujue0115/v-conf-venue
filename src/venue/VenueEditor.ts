@@ -406,6 +406,8 @@ export class VenueEditor {
   private pointerLast: PointerEvent | null = null
   /** Someone's view the camera is following (see follow) */
   private following: { p: THREE.Vector3; t: THREE.Vector3 } | null = null
+  /** Items someone else is dragging, and where to (see applyLive) */
+  private readonly glides = new Map<THREE.Object3D, { to: THREE.Vector3; r: number }>()
   /** Items other people have selected, by id (see setLocks) */
   private locks = new Map<string, Lock>()
   /** An outline in its holder's colour round each locked item */
@@ -592,15 +594,44 @@ export class VenueEditor {
     this.commit()
   }
 
-  /** Move items to where someone else is dragging them (their save follows when they let go) */
+  /**
+   * Move items to where someone else is dragging them (their save follows when they let go).
+   * They glide there over the next frames (see glideLive), as the drag comes a few times a second.
+   */
   applyLive(moves: readonly LiveMove[]) {
     const byId = this.byId()
-    let posts = false
     for (const m of moves) {
       const o = byId.get(m.id)
       if (!o || o === this.drag?.o || o === this.resizing?.o) continue
-      o.position.set(m.x, m.y, m.z)
-      o.rotation.y = m.r
+      const g = this.glides.get(o)
+      if (g) {
+        g.to.set(m.x, m.y, m.z)
+        g.r = m.r
+      } else this.glides.set(o, { to: new THREE.Vector3(m.x, m.y, m.z), r: m.r })
+    }
+  }
+
+  /** Ease the items someone else is dragging towards where they last were, frame-rate independent */
+  private glideLive(dt: number) {
+    if (!this.glides.size) return
+    const k = 1 - Math.exp(-dt * 14)
+    let posts = false
+    for (const [o, g] of this.glides) {
+      // replaced by their save (or anything else) since, or taken up here
+      if (!o.parent || o === this.drag?.o || o === this.resizing?.o) {
+        this.glides.delete(o)
+        continue
+      }
+      // the short way round
+      const dr = Math.atan2(Math.sin(g.r - o.rotation.y), Math.cos(g.r - o.rotation.y))
+      if (o.position.distanceToSquared(g.to) < 1e-6 && Math.abs(dr) < 1e-4) {
+        o.position.copy(g.to)
+        o.rotation.y = g.r
+        this.glides.delete(o)
+      } else {
+        o.position.lerp(g.to, k)
+        o.rotation.y += dr * k
+      }
       if (isPost(o)) posts = true
     }
     if (posts) this.updateBelts()
@@ -3374,6 +3405,7 @@ export class VenueEditor {
       controls.target.lerp(f.t, k)
     }
     controls.update()
+    this.glideLive(dt)
     if (this.selected) {
       this.selBox.setFromObject(this.selected)
       if (this.handles.visible) this.updHandles()

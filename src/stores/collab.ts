@@ -23,8 +23,11 @@ export interface EditorLink {
   cameraState(): CameraState
 }
 
-/** How often a drag is sent to the others */
-const MOVE_EVERY = 80
+/**
+ * How often a drag is sent to the others: as often as the pointer (POINTER_EVERY in the editor),
+ * so on their screens the items, gliding between sends as the pointer does, keep up with it
+ */
+const MOVE_EVERY = 200
 /** A pointer that moved less than this in the venue (metres) isn't sent again */
 const POINTER_STEP = 0.05
 /** How often this tab's view goes out while someone follows it */
