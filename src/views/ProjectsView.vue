@@ -381,7 +381,7 @@ onBeforeUnmount(() => {
       :hint="dialogText.hint"
       :confirm="dialogText.confirm"
     />
-    <div class="toast" :class="{ show: toast }" role="status">{{ toast }}</div>
+    <div class="toast toast-card" :class="{ show: toast }" role="status">{{ toast }}</div>
   </div>
 </template>
 
@@ -701,16 +701,5 @@ h1 {
   bottom: calc(24px + env(safe-area-inset-bottom, 0px));
   transform: translateX(-50%);
   max-width: calc(100vw - 32px);
-  padding: 8px 14px;
-  border-radius: 8px;
-  background: var(--ink);
-  color: #fff;
-  font-size: 12.5px;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.25s;
-}
-.toast.show {
-  opacity: 1;
 }
 </style>

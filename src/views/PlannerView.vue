@@ -4,6 +4,7 @@ import { storeToRefs } from 'pinia'
 import { onBeforeRouteLeave, onBeforeRouteUpdate, RouterLink, useRouter } from 'vue-router'
 import SignInButtons from '@/components/auth/SignInButtons.vue'
 import PlannerSidebar from '@/components/planner/PlannerSidebar.vue'
+import StageToast from '@/components/planner/StageToast.vue'
 import VenueStage from '@/components/planner/VenueStage.vue'
 import { provideVenueEditor } from '@/composables/useVenueEditor'
 import { cloudMessage } from '@/cloud/messages'
@@ -163,6 +164,8 @@ onBeforeRouteUpdate((to, from) => {
       </template>
       <p v-else class="loading">{{ t().cloud.loading }}</p>
     </div>
+    <!-- 已登出 and the like, given as the project closed for this card -->
+    <StageToast />
   </div>
 </template>
 
@@ -224,6 +227,9 @@ onBeforeRouteUpdate((to, from) => {
 }
 
 .notice {
+  /* no top bar here: the toast sits near the top */
+  --top-clear: calc(24px + env(safe-area-inset-top, 0px));
+  position: relative;
   display: grid;
   place-items: center;
   height: 100vh;

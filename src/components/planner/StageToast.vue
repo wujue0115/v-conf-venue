@@ -6,21 +6,28 @@ const store = usePlannerStore()
 const visible = shallowRef(false)
 let timer: ReturnType<typeof setTimeout> | undefined
 
+// From mount too: a toast given just before the page changed under it (signing out closes the
+// project for the sign-in card) shows on for the rest of its time
 watch(
   () => store.toast,
   (t) => {
     if (!t) return
+    // longer ones stay up long enough to read
+    const left = t.at + toastDuration(t.message) - Date.now()
+    if (left <= 0) return
     visible.value = true
     clearTimeout(timer)
-    // longer ones stay up long enough to read
-    timer = setTimeout(() => (visible.value = false), toastDuration(t.message))
+    timer = setTimeout(() => (visible.value = false), left)
   },
+  { immediate: true },
 )
 onBeforeUnmount(() => clearTimeout(timer))
 </script>
 
 <template>
-  <div class="hint" :class="{ show: visible }" role="status">{{ store.toast?.message }}</div>
+  <div class="hint toast-card" :class="{ show: visible }" role="status">
+    {{ store.toast?.message }}
+  </div>
 </template>
 
 <style scoped>
@@ -31,16 +38,5 @@ onBeforeUnmount(() => clearTimeout(timer))
   width: fit-content;
   margin-inline: auto;
   top: var(--top-clear, 66px);
-  background: var(--ink);
-  color: #fff;
-  font-size: 12.5px;
-  padding: 7px 12px;
-  border-radius: 8px;
-  opacity: 0;
-  transition: opacity 0.25s;
-  pointer-events: none;
-}
-.hint.show {
-  opacity: 1;
 }
 </style>

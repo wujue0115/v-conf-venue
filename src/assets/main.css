@@ -30,6 +30,38 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* Scrollbars: thin, in the page's warm greys, darker while held or hovered */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #d6cfbf transparent;
+}
+*:hover {
+  scrollbar-color: #bfb59f transparent;
+}
+/* Browsers without scrollbar-color (Safari) */
+@supports not (scrollbar-color: auto) {
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    /* the transparent border keeps a gap around the thumb */
+    border: 3px solid transparent;
+    border-radius: 10px;
+    background: #d6cfbf padding-box;
+  }
+  ::-webkit-scrollbar-thumb:hover,
+  ::-webkit-scrollbar-thumb:active {
+    background-color: #bfb59f;
+  }
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+}
+
 a {
   color: var(--ink);
 }
@@ -40,6 +72,41 @@ a:hover {
 button {
   font: inherit;
   color: inherit;
+}
+
+/* A toast's look, on the stage and on My projects: a white card like the panels, with a yellow
+   dot, sliding in a little as it shows */
+.toast-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.45;
+  opacity: 0;
+  translate: 0 -4px;
+  pointer-events: none;
+  transition:
+    opacity 0.25s,
+    translate 0.25s;
+}
+.toast-card::before {
+  content: '';
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--yel);
+}
+.toast-card.show {
+  opacity: 1;
+  translate: 0 0;
 }
 
 /* Shared toolbar primitives (used by sidebar, stage toolbar and selection bar) */

@@ -117,7 +117,8 @@ export const usePlannerStore = defineStore('planner', () => {
       : !!globalThis.matchMedia?.('(max-width: 720px)').matches,
   )
 
-  const toast = shallowRef<{ id: number; message: string } | null>(null)
+  /** The last toast, and when it was given (a toast shown again after the page changes under it) */
+  const toast = shallowRef<{ id: number; message: string; at: number } | null>(null)
   /** ⚙ 設定 or ? 操作說明 showing (on phones they open from ☰) */
   const panel = shallowRef<'settings' | 'help' | null>(null)
   let toastId = 0
@@ -128,7 +129,7 @@ export const usePlannerStore = defineStore('planner', () => {
     slots.value = clampSlots(n)
   }
   function notify(message: string) {
-    toast.value = { id: ++toastId, message }
+    toast.value = { id: ++toastId, message, at: Date.now() }
   }
 
   // Poster images can push the layout past the browser's storage quota: say so once
