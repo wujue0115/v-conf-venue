@@ -29,6 +29,8 @@ import { usePlannerStore } from '@/stores/planner'
 import type { LayoutItem } from '@/venue/layout'
 import { t } from '@/i18n'
 
+type SavedHook = (projectId: string, change: ObjectsChange, updatedAt: string) => void
+
 /** Saved: nothing waiting. Pending: a change waits for the next save. */
 export type SaveStatus = 'saved' | 'pending' | 'saving' | 'error'
 
@@ -109,9 +111,12 @@ export const useProjectStore = defineStore('project', () => {
   let failures = 0
   /** The notice was closed: it stays closed until saving works again */
   let alertDismissed = false
-  /** Told the items each save wrote, once it all went through (collab tells the others) */
-  const savedHooks = new Set<(projectId: string, change: ObjectsChange) => void>()
-  function onSaved(fn: (projectId: string, change: ObjectsChange) => void) {
+  /**
+   * Told the items each save wrote, once it all went through, and the project's updated_at
+   * after it (collab tells the others)
+   */
+  const savedHooks = new Set<SavedHook>()
+  function onSaved(fn: SavedHook) {
     savedHooks.add(fn)
     return () => void savedHooks.delete(fn)
   }
@@ -349,7 +354,7 @@ export const useProjectStore = defineStore('project', () => {
       const change: ObjectsChange = {}
       if (upserts.length) change.changed = upserts.map((i) => i.id!)
       if (deletes.length) change.deleted = deletes
-      for (const fn of savedHooks) fn(id, change)
+      for (const fn of savedHooks) fn(id, change, updatedAt)
     }
   }
 

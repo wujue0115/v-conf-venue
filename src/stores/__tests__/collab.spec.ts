@@ -11,6 +11,16 @@ vi.mock('@/cloud/realtime', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/cloud/realtime')>()),
   ...rt,
 }))
+type Api = typeof import('@/cloud/projects')
+const api = vi.hoisted(() => ({
+  loadItems: vi.fn<Api['loadItems']>(),
+  loadUpdatedAt: vi.fn<Api['loadUpdatedAt']>(),
+  loadVersions: vi.fn<Api['loadVersions']>(),
+}))
+vi.mock('@/cloud/projects', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/cloud/projects')>()),
+  ...api,
+}))
 
 import { useAuthStore } from '../auth'
 import { useCloudStore } from '../cloud'
@@ -116,6 +126,9 @@ describe('the project’s channel', () => {
       leave: vi.fn<ProjectChannel['leave']>(),
     }
     rt.joinProject.mockReset().mockReturnValue(channel)
+    api.loadItems.mockReset().mockResolvedValue([])
+    api.loadUpdatedAt.mockReset().mockResolvedValue(null)
+    api.loadVersions.mockReset().mockResolvedValue(new Map())
     useAuthStore().user = user ? ({ id: user } as never) : null
     useCloudStore().settings = {
       enabled: true,
@@ -141,7 +154,13 @@ describe('the project’s channel', () => {
     const collab = useCollabStore()
     await nextTick()
     const on = rt.joinProject.mock.calls[0]?.[2]
-    return { collab, channel, on, save: (c: ObjectsChange) => saved('p1', c) }
+    return {
+      collab,
+      project,
+      channel,
+      on,
+      save: (c: ObjectsChange, at = '2026-10-01T00:00:00Z') => saved('p1', c, at),
+    }
   }
   const alice: Peer = {
     key: 'k1',
@@ -229,6 +248,74 @@ describe('the project’s channel', () => {
       on!.joined(true)
       // the later word on an id wins
       expect(channel.objects).toHaveBeenCalledWith({ deleted: ['A', 'B'] })
+    })
+  })
+
+  describe('checking for saves whose word never came', () => {
+    afterEach(() => void vi.useRealTimers())
+    const T1 = '2026-10-01T00:00:01.000001+00:00'
+    const T2 = '2026-10-01T00:00:02.000002+00:00'
+    const T3 = '2026-10-01T00:00:03.000003+00:00'
+
+    /** Joined with Alice there; the items' updated_at noted as A at T1 */
+    async function watching() {
+      vi.useFakeTimers()
+      const j = await joined()
+      j.collab.attach({
+        applyRemote: vi.fn(),
+        applyLive: vi.fn(),
+        setLocks: vi.fn(),
+        setCursors: vi.fn(),
+        follow: vi.fn(),
+        cameraState: vi.fn(),
+      } as never)
+      api.loadItems.mockReset().mockResolvedValue([])
+      api.loadUpdatedAt.mockReset().mockResolvedValue(T1)
+      api.loadVersions.mockReset().mockResolvedValue(new Map([['A', T1]]))
+      j.on!.joined(false)
+      j.on!.peers([alice])
+      await vi.advanceTimersByTimeAsync(0)
+      expect(api.loadVersions).toHaveBeenCalledTimes(1)
+      return j
+    }
+
+    it('fetches the items changed or added since, and drops those gone', async () => {
+      const { project } = await watching()
+      const take = vi.spyOn(project, 'takeRemote')
+      api.loadUpdatedAt.mockResolvedValue(T3)
+      api.loadVersions.mockResolvedValue(new Map([['B', T2]]))
+      await vi.advanceTimersByTimeAsync(60_000 + 200)
+      expect(api.loadItems).toHaveBeenCalledWith('p1', ['B'], null, expect.any(Map))
+      expect(take.mock.calls[0]?.[1]).toEqual(['A'])
+    })
+
+    it('fetches nothing when only this tab saved, or nothing changed', async () => {
+      const { save } = await watching()
+      save({ changed: ['A', 'B'] }, T2)
+      api.loadUpdatedAt.mockResolvedValue(T2)
+      api.loadVersions.mockResolvedValue(new Map([['A', T2], ['B', T2]]))
+      await vi.advanceTimersByTimeAsync(60_000 + 200)
+      expect(api.loadVersions).toHaveBeenCalledTimes(2)
+      // the project unchanged since: not even the versions are read
+      await vi.advanceTimersByTimeAsync(60_000 + 200)
+      expect(api.loadVersions).toHaveBeenCalledTimes(2)
+      expect(api.loadItems).not.toHaveBeenCalled()
+    })
+
+    it('catches someone else saving an item after this tab did', async () => {
+      const { save } = await watching()
+      save({ changed: ['A'] }, T2)
+      api.loadUpdatedAt.mockResolvedValue(T3)
+      api.loadVersions.mockResolvedValue(new Map([['A', T3]]))
+      await vi.advanceTimersByTimeAsync(60_000 + 200)
+      expect(api.loadItems).toHaveBeenCalledWith('p1', ['A'], null, expect.any(Map))
+    })
+
+    it('reads nothing with nobody else there', async () => {
+      const { on } = await watching()
+      on!.peers([])
+      await vi.advanceTimersByTimeAsync(5 * 60_000)
+      expect(api.loadUpdatedAt).toHaveBeenCalledTimes(1)
     })
   })
 

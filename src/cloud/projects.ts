@@ -226,7 +226,7 @@ export async function createProject(
   return id
 }
 
-type ObjectRow = { id: string; type: string; data: Record<string, unknown> }
+type ObjectRow = { id: string; type: string; data: Record<string, unknown>; updated_at?: string }
 
 /** Rows of project_objects (or open_shared_project's objects) as layout items */
 export function itemsOf(rows: ObjectRow[]) {
@@ -289,13 +289,19 @@ export async function loadProject(id: string, userId?: string): Promise<LoadedPr
 
 /**
  * Some of a project's items as they're saved now: through the share link (`token`) for a guest,
- * who can't read project_objects themselves. All of them with no `ids`.
+ * who can't read project_objects themselves. All of them with no `ids`. Without a token,
+ * `versions` is given each row's updated_at, by id.
  */
 export async function loadItems(
   projectId: string,
   ids: readonly string[] | null,
   token?: string | null,
+  versions?: Map<string, string>,
 ): Promise<LayoutItem[]> {
+  const versioned = (rows: ObjectRow[]) => {
+    if (versions) for (const r of rows) if (r.updated_at) versions.set(r.id, r.updated_at)
+    return rows
+  }
   if (!ids) {
     if (token) {
       const r = await loadShared(token)
@@ -303,9 +309,14 @@ export async function loadItems(
       return r.project.items
     }
     return itemsOf(
-      check(
-        await db().from('project_objects').select('id, type, data').eq('project_id', projectId),
-      ) as ObjectRow[],
+      versioned(
+        check(
+          await db()
+            .from('project_objects')
+            .select('id, type, data, updated_at')
+            .eq('project_id', projectId),
+        ) as ObjectRow[],
+      ),
     )
   }
   const rows: ObjectRow[] = []
@@ -315,16 +326,34 @@ export async function loadItems(
     rows.push(
       ...((token
         ? check(await db().rpc('shared_objects', { p_token: token, p_ids: batch }))
-        : check(
-            await db()
-              .from('project_objects')
-              .select('id, type, data')
-              .eq('project_id', projectId)
-              .in('id', batch),
+        : versioned(
+            check(
+              await db()
+                .from('project_objects')
+                .select('id, type, data, updated_at')
+                .eq('project_id', projectId)
+                .in('id', batch),
+            ) as ObjectRow[],
           )) as ObjectRow[]),
     )
   }
   return itemsOf(rows)
+}
+
+/** When the project was last changed in any way (its items, name, settings or sharing) */
+export async function loadUpdatedAt(projectId: string): Promise<string | null> {
+  const row = check(
+    await db().from('projects').select('updated_at').eq('id', projectId).maybeSingle(),
+  ) as { updated_at: string } | null
+  return row?.updated_at ?? null
+}
+
+/** Each of a project's items' updated_at, by id: small, without the items themselves */
+export async function loadVersions(projectId: string): Promise<Map<string, string>> {
+  const rows = check(
+    await db().from('project_objects').select('id, updated_at').eq('project_id', projectId),
+  ) as { id: string; updated_at: string }[]
+  return new Map(rows.map((r) => [r.id, r.updated_at]))
 }
 
 /**

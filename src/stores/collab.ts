@@ -1,6 +1,6 @@
 import { computed, shallowRef, watch } from 'vue'
 import { acceptHMRUpdate, defineStore } from 'pinia'
-import { CloudError, loadItems } from '@/cloud/projects'
+import { CloudError, loadItems, loadUpdatedAt, loadVersions } from '@/cloud/projects'
 import {
   joinProject,
   type ObjectsChange,
@@ -51,6 +51,11 @@ const CATCH_UP_AFTER = 3000
  * the save, and this tab not seen them yet when it was sent
  */
 const RECENT_SAVE = 5000
+/**
+ * How often, with someone else there, the saved items are checked against what this tab has,
+ * in case word of a save never came (its sender's tab closed or lost its connection as it saved)
+ */
+const CHECK_EVERY = 60_000
 
 /** One colour per person, the same on every screen */
 const COLORS = [
@@ -166,6 +171,11 @@ export const useCollabStore = defineStore('collab', () => {
     recent.clear()
     unsent.clear()
     channelProject = null
+    versions.clear()
+    baselined = false
+    checkedAt = null
+    clearInterval(checkTimer)
+    checkTimer = undefined
     points.value = new Map()
     selections.value = new Map()
     following.value = null
@@ -190,6 +200,8 @@ export const useCollabStore = defineStore('collab', () => {
       if (mine.value.size) sendSelectSoon()
       // nor of what was saved just before they came
       sendRecent()
+      // from now on, saves are worth checking for: note where the items stand
+      if (!baselined) void check()
       // and where this tab's pointer is, at its next move
       pointerSent = null
     }
@@ -368,13 +380,18 @@ export const useCollabStore = defineStore('collab', () => {
   }
 
   /** Tell the others what this tab just saved (they fetch those rows); nobody there, nothing sent */
-  function sendSaved(projectId: string, c: ObjectsChange) {
+  function sendSaved(projectId: string, c: ObjectsChange, updatedAt: string) {
     if (!channel || projectId !== channelProject) return
     const now = Date.now()
     const ids: [string, boolean][] = [
       ...(c.changed ?? []).map((id): [string, boolean] => [id, false]),
       ...(c.deleted ?? []).map((id): [string, boolean] => [id, true]),
     ]
+    // saved at or before the project's updated_at after it (see check)
+    const at = Date.parse(updatedAt)
+    for (const [id, gone] of ids)
+      if (gone) versions.delete(id)
+      else versions.set(id, { at, upTo: true })
     for (const [id, gone] of ids) {
       // the latest save of an id last
       recent.delete(id)
@@ -430,8 +447,15 @@ export const useCollabStore = defineStore('collab', () => {
     changed.clear()
     deleted.clear()
     try {
-      const rows = ids.length ? await loadItems(m.id, ids, auth.user ? null : project.via()) : []
+      const seen = new Map<string, string>()
+      const rows = ids.length
+        ? await loadItems(m.id, ids, auth.user ? null : project.via(), seen)
+        : []
       if (project.meta?.id !== m.id) return
+      if (auth.user) {
+        for (const id of [...ids, ...gone]) versions.delete(id)
+        for (const [id, at] of seen) versions.set(id, { at: Date.parse(at), upTo: false })
+      }
       project.takeRemote(rows, gone, (up, del) => editor?.applyRemote(up, del))
     } catch (e) {
       console.error('[realtime] fetching changed items failed', e)
@@ -449,8 +473,14 @@ export const useCollabStore = defineStore('collab', () => {
     const m = project.meta
     if (!m || !editor) return
     try {
-      const rows = await loadItems(m.id, null, auth.user ? null : project.via())
+      const seen = new Map<string, string>()
+      const rows = await loadItems(m.id, null, auth.user ? null : project.via(), seen)
       if (project.meta?.id !== m.id) return
+      if (auth.user) {
+        versions.clear()
+        for (const [id, at] of seen) versions.set(id, { at: Date.parse(at), upTo: false })
+        baselined = true
+      }
       project.takeRemote(rows, [], (up, del) => editor?.applyRemote(up, del), { full: true })
     } catch (e) {
       // a guest's link that no longer opens it: the page says so
@@ -468,6 +498,62 @@ export const useCollabStore = defineStore('collab', () => {
     void project.refreshMeta()
     if (project.meta?.role === 'owner') void access.refresh()
   }
+
+  // ─── Checking for saves whose word never came ──────────────────────────────
+
+  /**
+   * Each item's updated_at as this tab has it, by id: exactly, as fetched, or (`upTo`) no later
+   * than this, for this tab's own saves
+   */
+  const versions = new Map<string, { at: number; upTo: boolean }>()
+  /** `versions` holds every item: taken from the saved items once someone else came */
+  let baselined = false
+  /** The project's updated_at at the last check: unchanged since, nothing to look at */
+  let checkedAt: string | null = null
+  let checking = false
+  let checkTimer: ReturnType<typeof setInterval> | undefined
+
+  /**
+   * With someone else there: when the project changed since the last check, read each saved
+   * item's updated_at (not the items: they can hold large images) and fetch those this tab
+   * hasn't, and drop those gone, as if word of them had come
+   */
+  async function check() {
+    const id = channelProject
+    if (!id || checking || !others.value || !connected.value) return
+    if (document.visibilityState === 'hidden') return
+    checking = true
+    try {
+      const at = await loadUpdatedAt(id)
+      if (channelProject !== id || at === checkedAt) return
+      const saved = await loadVersions(id)
+      if (channelProject !== id) return
+      checkedAt = at
+      if (!baselined) {
+        versions.clear()
+        for (const [k, v] of saved) versions.set(k, { at: Date.parse(v), upTo: false })
+        baselined = true
+        return
+      }
+      const missed: string[] = []
+      for (const [k, v] of saved) {
+        const had = versions.get(k)
+        const t = Date.parse(v)
+        if (!had || (had.upTo ? t > had.at : t !== had.at)) missed.push(k)
+      }
+      const gone = [...versions.keys()].filter((k) => !saved.has(k))
+      if (missed.length || gone.length) onObjects({ changed: missed, deleted: gone })
+    } catch (e) {
+      console.warn('[realtime] checking for missed saves failed', e)
+    } finally {
+      checking = false
+    }
+  }
+
+  if (typeof document !== 'undefined')
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') void check()
+    })
 
   // ─── Joining (last: it runs at once, using everything above) ────────────────
 
@@ -492,6 +578,7 @@ export const useCollabStore = defineStore('collab', () => {
       // back to the tab instead, see below)
       if (!id || !role || !on || !user) return
       channelProject = id
+      checkTimer = setInterval(() => void check(), CHECK_EVERY)
       channel = joinProject(
         id,
         { key, present: !!user },

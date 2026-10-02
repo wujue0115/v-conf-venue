@@ -118,7 +118,11 @@ describe('project store', () => {
     await vi.runAllTimersAsync()
     expect(told).not.toHaveBeenCalled()
     await project.flush()
-    expect(told).toHaveBeenCalledExactlyOnceWith('p1', { changed: [A, C], deleted: [B] })
+    expect(told).toHaveBeenCalledExactlyOnceWith(
+      'p1',
+      { changed: [A, C], deleted: [B] },
+      '2026-10-01T00:01:00Z',
+    )
     // settings alone: no items to tell of
     planner.setSlots(4)
     await nextTick()
