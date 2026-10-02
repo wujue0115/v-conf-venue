@@ -6,9 +6,10 @@ import ProviderIcon from './ProviderIcon.vue'
 
 /**
  * One button per account people sign in with (使用 Google 登入, 使用 GitHub 登入), stacked,
- * saying below them when leaving for one didn't work.
+ * saying below them when leaving for one didn't work. `only` keeps to some of them.
  */
 
+const props = defineProps<{ only?: readonly Provider[] }>()
 const auth = useAuthStore()
 const failed = shallowRef(false)
 
@@ -25,7 +26,7 @@ async function signIn(provider: Provider) {
 <template>
   <div class="sign-in-buttons">
     <button
-      v-for="p in PROVIDERS"
+      v-for="p in props.only ?? PROVIDERS"
       :key="p"
       class="sign-in"
       type="button"

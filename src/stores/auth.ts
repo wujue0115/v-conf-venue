@@ -8,15 +8,39 @@ export type Provider = 'google' | 'github'
 export const PROVIDERS: readonly Provider[] = ['google', 'github']
 
 /** Why coming back from a provider didn't sign in or link, read off the address it returned to */
-export type AuthFailure = 'linkedElsewhere' | 'linkingOff' | 'sameEmail' | 'failed'
+export type AuthFailure = {
+  reason: 'linkedElsewhere' | 'linkingOff' | 'sameEmail' | 'failed'
+  /** The provider it came back from, when this tab remembers going to it */
+  provider: Provider | null
+}
 
 const URL_ERRORS = ['error', 'error_code', 'error_description']
+/** The provider last gone to from this tab, to say which one came back with an error */
+const GONE_TO = 'v-conf-venue:auth-provider'
+
+function rememberGoneTo(provider: Provider) {
+  try {
+    sessionStorage.setItem(GONE_TO, provider)
+  } catch {
+    // without storage the error just doesn't name the provider
+  }
+}
+function takeGoneTo(): Provider | null {
+  try {
+    const p = sessionStorage.getItem(GONE_TO)
+    sessionStorage.removeItem(GONE_TO)
+    return PROVIDERS.includes(p as Provider) ? (p as Provider) : null
+  } catch {
+    return null
+  }
+}
 
 /**
  * Take a provider's error off the address bar, saying which: the client doesn't (and only
  * throws it into the console), so it would otherwise sit there unexplained
  */
 function takeUrlFailure(): AuthFailure | null {
+  const provider = takeGoneTo()
   const url = new URL(location.href)
   const hash = new URLSearchParams(url.hash.slice(1))
   const from = URL_ERRORS.some((k) => url.searchParams.has(k)) ? url.searchParams : hash
@@ -31,11 +55,12 @@ function takeUrlFailure(): AuthFailure | null {
   url.hash = hash.size ? hash.toString() : ''
   history.replaceState(history.state, '', url)
 
-  if (code === 'identity_already_exists') return 'linkedElsewhere'
-  if (code === 'manual_linking_disabled') return 'linkingOff'
+  let reason: AuthFailure['reason'] = 'failed'
+  if (code === 'identity_already_exists') reason = 'linkedElsewhere'
+  else if (code === 'manual_linking_disabled') reason = 'linkingOff'
   // the provider's emails belong to more than one account here, so it can't tell which
-  if (description.includes('Multiple accounts with the same email')) return 'sameEmail'
-  return 'failed'
+  else if (description.includes('Multiple accounts with the same email')) reason = 'sameEmail'
+  return { reason, provider }
 }
 
 // Taken as this module loads, which is before the router is made: the router keeps the address
@@ -60,7 +85,7 @@ export const useAuthStore = defineStore('auth', () => {
   const choosing = shallowRef(false)
   /** Runs just before leaving for the provider chosen in that window */
   let beforeLeave: (() => void) | null = null
-  /** Coming back from a provider didn't work: for the page to say so, then clear */
+  /** Coming back from a provider didn't work: for the window saying so, cleared once closed */
   const failure = shallowRef<AuthFailure | null>(urlFailure)
 
   const email = computed(() => user.value?.email ?? '')
@@ -91,6 +116,7 @@ export const useAuthStore = defineStore('auth', () => {
     if (!supabase) return
     busy.value = true
     going.value = provider
+    rememberGoneTo(provider)
     beforeLeave?.()
     beforeLeave = null
     const { error } = await supabase.auth.signInWithOAuth({
@@ -113,6 +139,7 @@ export const useAuthStore = defineStore('auth', () => {
     if (!supabase) return
     busy.value = true
     going.value = provider
+    rememberGoneTo(provider)
     const { error } = await supabase.auth.linkIdentity({
       provider,
       options: { redirectTo: location.origin + location.pathname },

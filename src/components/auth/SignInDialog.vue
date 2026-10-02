@@ -1,24 +1,61 @@
 <script setup lang="ts">
-import { useTemplateRef, watch } from 'vue'
+import { computed, onMounted, useTemplateRef, watch } from 'vue'
 import { t } from '@/i18n'
-import { useAuthStore } from '@/stores/auth'
+import { PROVIDERS, useAuthStore } from '@/stores/auth'
 import SignInButtons from './SignInButtons.vue'
 
 /**
  * 登入: which account to sign in with, for the buttons with room for only one (存到雲端,
  * 登入以編輯, signing in again after being signed out). Opened by `auth.chooseSignIn()`.
+ *
+ * Also opens, on any page, when coming back from Google or GitHub didn't work: saying why, with
+ * the other providers to sign in with instead when that would help.
  */
 
 const auth = useAuthStore()
 const dialog = useTemplateRef('dialog')
+const failure = computed(() => auth.failure)
 
-watch(
-  () => auth.choosing,
-  (choosing) => {
-    if (choosing && !dialog.value?.open) dialog.value?.showModal()
-    else if (!choosing && dialog.value?.open) dialog.value.close()
-  },
+const title = computed(() => {
+  const f = failure.value
+  if (!f) return t().auth.chooseTitle
+  return f.reason === 'linkedElsewhere' || f.reason === 'linkingOff'
+    ? t().auth.linkFailedTitle
+    : t().auth.signInFailedTitle
+})
+const hint = computed(() => {
+  const f = failure.value
+  if (!f) return t().auth.chooseHint
+  if (f.reason === 'sameEmail')
+    return t().auth.failures.sameEmail(f.provider ? t().auth.providerNames[f.provider] : '')
+  return t().auth.failures[f.reason]
+})
+/** The providers offered: all to choose from; after a failure, the others, if any would help */
+const offered = computed(() => {
+  const f = failure.value
+  if (!f) return PROVIDERS
+  if (f.reason === 'linkedElsewhere' || f.reason === 'linkingOff') return []
+  return f.provider && f.reason === 'sameEmail'
+    ? PROVIDERS.filter((p) => p !== f.provider)
+    : PROVIDERS
+})
+
+// from mount, as a failure is known before the page is
+onMounted(() =>
+  watch(
+    () => auth.choosing || !!auth.failure,
+    (show) => {
+      if (show && !dialog.value?.open) dialog.value?.showModal()
+      else if (!show && dialog.value?.open) dialog.value.close()
+    },
+    { immediate: true },
+  ),
 )
+
+function onClose() {
+  auth.cancelSignIn()
+  auth.failure = null
+}
 
 /** Closed by Esc, a click outside or 取消, but not once on the way to a provider */
 function onCancel(e: Event) {
@@ -30,20 +67,14 @@ function onClick(e: MouseEvent) {
 </script>
 
 <template>
-  <dialog
-    ref="dialog"
-    class="sign-in-dialog"
-    @cancel="onCancel"
-    @click="onClick"
-    @close="auth.cancelSignIn()"
-  >
+  <dialog ref="dialog" class="sign-in-dialog" @cancel="onCancel" @click="onClick" @close="onClose">
     <div class="panel">
-      <h3>{{ t().auth.chooseTitle }}</h3>
-      <p class="hint">{{ t().auth.chooseHint }}</p>
-      <SignInButtons class="buttons" />
+      <h3>{{ title }}</h3>
+      <p class="hint" :class="{ failure }">{{ hint }}</p>
+      <SignInButtons v-if="offered.length" class="buttons" :only="offered" />
       <div class="foot">
         <button class="txt" type="button" :disabled="auth.busy" @click="dialog?.close()">
-          {{ t().cloud.cancel }}
+          {{ offered.length ? t().cloud.cancel : t().auth.ok }}
         </button>
       </div>
     </div>
@@ -74,6 +105,12 @@ h3 {
   margin: 2px 0 0;
   font-size: 12px;
   color: var(--faint);
+}
+.hint.failure {
+  margin-top: 6px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted);
 }
 .buttons {
   margin-top: 14px;

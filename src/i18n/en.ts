@@ -205,12 +205,15 @@ const en: Messages = {
     signsInWith: 'Signs in with',
     link: { google: 'Link Google', github: 'Link GitHub' },
     linkHint: (provider: string) => `Link it to sign in to this account with ${provider} too`,
+    signInFailedTitle: "Couldn't sign in",
+    linkFailedTitle: "Couldn't link",
+    ok: 'OK',
     failures: {
-      linkedElsewhere: 'That account is already linked to another user',
-      linkingOff: "Linking other sign-in methods isn't turned on yet",
-      sameEmail:
-        "That account's emails belong to more than one user; sign in the usual way first, then link it under Signs in with in the menu",
-      failed: "Couldn't sign in, please try again",
+      linkedElsewhere: 'That account is already linked to another user.',
+      linkingOff: "Linking other sign-in methods isn't turned on yet.",
+      sameEmail: (provider: string) =>
+        `That ${provider ? `${provider} ` : ''}account's emails belong to more than one user, so it can't sign in directly. Sign in the usual way first, then link ${provider || 'it'} under Signs in with in the menu.`,
+      failed: "Couldn't sign in, please try again.",
     },
     account: 'Account',
     signOut: 'Sign out',

@@ -46,17 +46,6 @@ function notify(message: string) {
   toastTimer = setTimeout(() => (toast.value = ''), Math.max(2600, toastDuration(message)))
 }
 
-// Back from Google or GitHub without signing in or linking: say why
-watch(
-  () => auth.failure,
-  (failure) => {
-    if (!failure) return
-    notify(t().auth.failures[failure])
-    auth.failure = null
-  },
-  { immediate: true },
-)
-
 async function refresh() {
   if (!auth.user) return
   listError.value = ''
