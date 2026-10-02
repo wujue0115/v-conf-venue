@@ -139,11 +139,12 @@ const { views, active, flyTo } = useCameraViews()
   }
 }
 /*
- * Narrow screens with a cloud project open: its name, the faces and 分享 don't fit beside the
- * tools, so the top row is ☰ and the name (giving way first) with the side buttons, and the
- * tools start the row of views below (the views scrolling sideways when they run out of room)
+ * Narrower screens with a cloud project open: its name, the faces and 分享 don't fit beside the
+ * tools and views, so the top row is ☰ and the name (taking the room there is, and giving way
+ * first) with the side buttons, and the tools start the row of views below (the views
+ * scrolling sideways when they run out of room)
  */
-@media (max-width: 871px) {
+@media (max-width: 1080px) {
   .topbars.cloud {
     display: flex;
     flex-wrap: wrap;

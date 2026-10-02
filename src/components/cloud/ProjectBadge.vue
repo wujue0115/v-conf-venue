@@ -154,7 +154,7 @@ function rename() {
   outline-offset: 1px;
 }
 .text {
-  max-width: 200px;
+  max-width: 280px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -169,6 +169,7 @@ function rename() {
   stroke-linejoin: round;
 }
 .status {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   gap: 5px;
@@ -201,12 +202,15 @@ function rename() {
   box-shadow: inset 0 0 0 1.5px var(--faint);
 }
 .asked {
+  flex-shrink: 0;
   font-size: 12px;
   color: var(--faint);
   white-space: nowrap;
 }
 .retry {
+  flex-shrink: 0;
   height: 26px;
+  white-space: nowrap;
   padding: 0 8px;
   border: 1px solid var(--line);
   border-radius: 6px;
@@ -214,18 +218,18 @@ function rename() {
   font-size: 12px;
   cursor: pointer;
 }
-/* Narrow screens: the name gives way first, then the status is just its dot */
-@media (max-width: 871px) {
+/*
+ * Narrower screens, where it has the top row to itself beside the side buttons (StageToolbar):
+ * the name takes the room there is, giving way first; on phones the status is just its dot
+ */
+@media (max-width: 1080px) {
   .text {
-    max-width: 120px;
+    max-width: none;
   }
 }
 @media (max-width: 560px) {
   .label {
     display: none;
-  }
-  .text {
-    max-width: 80px;
   }
 }
 </style>
