@@ -504,11 +504,33 @@ describe('project store', () => {
 
     it('opens by id for someone who may, without going through the share token', async () => {
       useAuthStore().user = { id: OWNER } as never
-      api.loadProject.mockResolvedValue(loaded)
+      api.loadProject.mockResolvedValue({ ...loaded, meta: { ...loaded.meta, role: 'editor' } })
       const project = useProjectStore()
       await project.openLink('p1', 'tok')
       expect(project.meta?.id).toBe('p1')
       expect(api.loadShared).not.toHaveBeenCalled()
+    })
+
+    it('lets someone viewing by name edit when the link they came with allows it', async () => {
+      useAuthStore().user = { id: OWNER } as never
+      const editing = { ...loaded, meta: { ...loaded.meta, role: 'editor' as const } }
+      api.loadProject.mockResolvedValueOnce(loaded).mockResolvedValueOnce(editing)
+      api.loadShared.mockResolvedValue({ status: 'ok', project: editing })
+      const project = useProjectStore()
+      await project.openLink('p1', 'tok')
+      expect(api.loadShared).toHaveBeenCalledWith('tok')
+      expect(api.loadProject).toHaveBeenCalledTimes(2)
+      expect(project.meta?.role).toBe('editor')
+    })
+
+    it('keeps them viewing by name when the link allows no more', async () => {
+      useAuthStore().user = { id: OWNER } as never
+      api.loadProject.mockResolvedValue(loaded)
+      const project = useProjectStore()
+      await project.openLink('p1', 'tok')
+      expect(api.loadShared).toHaveBeenCalledWith('tok')
+      expect(api.loadProject).toHaveBeenCalledTimes(1)
+      expect(project.meta?.role).toBe('viewer')
     })
 
     it('goes through the share token when their own access doesn’t open it', async () => {

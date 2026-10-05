@@ -208,6 +208,15 @@ export const useProjectStore = defineStore('project', () => {
   async function openLink(id: string, shareToken: string | null) {
     if (auth.user) {
       await open(id)
+      // viewing by their own access: the link may let them edit, once it's known they hold it
+      if (shareToken && meta.value?.id === id && meta.value.role === 'viewer') {
+        try {
+          const r = await loadShared(shareToken)
+          if (r.status === 'ok' && r.project.meta.role === 'editor') await open(id, { again: true })
+        } catch (e) {
+          logError('opening the share link failed', e)
+        }
+      }
       if (loadError.value !== 'not_found') return
       if (!shareToken) return denyById(id)
     }
