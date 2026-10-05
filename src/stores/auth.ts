@@ -121,7 +121,7 @@ export const useAuthStore = defineStore('auth', () => {
     beforeLeave = null
     const { error } = await supabase.auth.signInWithOAuth({
       provider,
-      options: { redirectTo: location.origin + location.pathname },
+      options: { redirectTo: location.origin + location.pathname + location.search },
     })
     // on success the browser is already leaving the page
     if (error) {
@@ -142,7 +142,7 @@ export const useAuthStore = defineStore('auth', () => {
     rememberGoneTo(provider)
     const { error } = await supabase.auth.linkIdentity({
       provider,
-      options: { redirectTo: location.origin + location.pathname },
+      options: { redirectTo: location.origin + location.pathname + location.search },
     })
     if (error) {
       busy.value = false
