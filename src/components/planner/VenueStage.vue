@@ -11,6 +11,7 @@ import PlaceHint from './PlaceHint.vue'
 import StageToast from './StageToast.vue'
 import StageToolbar from './StageToolbar.vue'
 import VenueLabels from './VenueLabels.vue'
+import WalkControls from './WalkControls.vue'
 import { usePhone } from '@/composables/usePhone'
 import { useVenueEditor } from '@/composables/useVenueEditor'
 import { useCollabStore, type EditorLink } from '@/stores/collab'
@@ -41,6 +42,7 @@ onMounted(() => {
     onFollowEnd: () => collab.followEnded(),
     onPointer: (p) => collab.pointer(p),
     onArmed: (type) => (store.armed = type),
+    onWalk: (w) => (store.walk = w),
   })
   store.fixedSeats = ed.fixedSeats
   ed.load(store.items)
@@ -62,6 +64,7 @@ onBeforeUnmount(() => {
   editor.value?.dispose()
   editor.value = null
   store.armed = null
+  store.walk = null
 })
 
 // Push view toggles from the store into the scene
@@ -101,8 +104,10 @@ watch(
     <CloudNotice />
     <FollowFrame />
     <SelectionBar />
+    <WalkControls />
     <StageHistory v-if="!phone" />
-    <MobileDock v-if="phone" />
+    <!-- walking, the stick and the hint take the bottom -->
+    <MobileDock v-if="phone && !store.walk" />
     <StageHelp />
   </main>
 </template>

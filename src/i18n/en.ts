@@ -546,6 +546,21 @@ const en: Messages = {
     cantFollow: "People only viewing can't be followed",
   },
 
+  walk: {
+    start: 'Walk in',
+    startHint: 'Walk through the venue in first or third person',
+    button: 'Walk as this person',
+    as: (name: string) => `Walking as ${name}`,
+    someone: 'Person',
+    virtual: 'Walking',
+    first: 'First person',
+    third: 'Third person',
+    leave: 'Leave',
+    hint: 'WASD or arrows to move · Shift to run · Drag to look · V to switch view · Esc to leave',
+    touchHint: 'Move with the stick · Drag to look',
+    stick: 'Movement stick',
+  },
+
   place: {
     floor: (name: string) => `Tap the floor to place "${name}"`,
     wall: (name: string) => `Tap a wall to hang "${name}"`,

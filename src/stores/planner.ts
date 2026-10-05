@@ -1,6 +1,6 @@
 import { computed, shallowRef, watch } from 'vue'
 import { acceptHMRUpdate, defineStore } from 'pinia'
-import type { SelectionInfo } from '@/venue/VenueEditor'
+import type { SelectionInfo, WalkState } from '@/venue/VenueEditor'
 import type { FurnitureType } from '@/venue/furniture'
 import {
   clampSlots,
@@ -45,6 +45,8 @@ export const usePlannerStore = defineStore('planner', () => {
   /** The kind the next tap on the stage places (phones pick it in the palette), if any */
   const armed = shallowRef<FurnitureType | null>(null)
   const fixedSeats = shallowRef(0)
+  /** Walking through the venue (reported by the editor), or null */
+  const walk = shallowRef<WalkState | null>(null)
   /** Whether the editor has a step to undo / redo (reported by it) */
   const canUndo = shallowRef(false)
   const canRedo = shallowRef(false)
@@ -161,6 +163,7 @@ export const usePlannerStore = defineStore('planner', () => {
     selection,
     armed,
     fixedSeats,
+    walk,
     canUndo,
     canRedo,
     priceMode,

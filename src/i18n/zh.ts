@@ -562,6 +562,23 @@ const zh = {
     cantFollow: '檢視中的人無法被跟隨',
   },
 
+  /** Walking through the venue, as a placed 人員 (the 👁 over their head) or as a stand-in */
+  walk: {
+    start: '走進場地',
+    startHint: '以第一或第三人稱在場地內走動',
+    button: '帶入這個人員走動',
+    as: (name: string) => `以 ${name} 走動`,
+    /** A 人員 without a tag */
+    someone: '人員',
+    virtual: '虛擬走動',
+    first: '第一人稱',
+    third: '第三人稱',
+    leave: '離開',
+    hint: 'WASD 或方向鍵移動 · Shift 跑步 · 拖曳轉頭 · V 切換視角 · Esc 離開',
+    touchHint: '用搖桿移動 · 拖曳畫面轉頭',
+    stick: '移動搖桿',
+  },
+
   /** Phones: a kind picked in the palette, waiting for a tap on the stage to place it */
   place: {
     floor: (name: string) => `點一下地板，放置「${name}」`,

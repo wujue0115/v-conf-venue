@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, shallowRef, useId, useTemplateRef, watch } from 'vue'
 import { useCameraViews } from '@/composables/useCameraViews'
+import { useVenueEditor } from '@/composables/useVenueEditor'
 import { t } from '@/i18n'
 
 /**
@@ -12,6 +13,12 @@ const { views, active, flyTo } = useCameraViews()
 const open = shallowRef(false)
 const root = useTemplateRef('root')
 const listId = useId()
+
+const editor = useVenueEditor()
+function walk() {
+  editor.value?.walkAs(null)
+  open.value = false
+}
 
 function pick(i: number) {
   flyTo(views[i]!, i)
@@ -68,6 +75,11 @@ onBeforeUnmount(unlisten)
           @click="pick(i)"
         >
           {{ t().views[v.key] }}
+        </button>
+      </li>
+      <li role="presentation">
+        <button class="item" type="button" role="option" :aria-selected="false" @click="walk">
+          {{ t().walk.start }}
         </button>
       </li>
     </ul>

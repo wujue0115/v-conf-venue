@@ -26,6 +26,7 @@ import { rebaseStep } from './history'
 import { drawLabels, type LabelFace, type LabelMark, type TagMark } from './imageLabels'
 import { LID_OPEN, clampLid, setLaptopOpen } from './laptop'
 import { clampPeople, cleanInfo, cleanTag, isHexColor, type LayoutItem } from './layout'
+import { personGeometry } from './person'
 import { B, FM, YEL } from './materials'
 import {
   POSTER_MIN,
@@ -100,6 +101,8 @@ export interface EditorCallbacks {
   onPointer?: (point: Vec3 | null) => void
   /** The kind the next tap on the stage places changed (null: none armed); see armPlace */
   onArmed?: (type: FurnitureType | null) => void
+  /** A walk through the venue started, changed view, or ended (null); see walkAs */
+  onWalk?: (walk: WalkState | null) => void
 }
 
 /** Someone else's pointer, somewhere in the venue */
@@ -123,6 +126,50 @@ export interface LiveMove {
   y: number
   z: number
   r: number
+}
+
+/** One figure of a placed 人員 item (a crowd has several): the item's id, and which figure */
+export interface Figure {
+  id: string
+  fig: number
+}
+
+/** A walk through the venue, as the controls over the stage show it */
+export interface WalkState {
+  /** The 人員 walked as: their tag ('' without one); null for a stand-in */
+  name: string | null
+  /** Seen from behind them rather than through their eyes */
+  third: boolean
+}
+
+interface Walk {
+  /** The 人員 item moved along with the walker; null: a stand-in only this screen sees */
+  id: string | null
+  /** The figure walked as, if any (a stand-in may start from one, which then stays hidden) */
+  from: Figure | null
+  /** A stand-in's feet; a 人員's are its item's position */
+  pos: THREE.Vector3
+  /** Where the feet started, to take the view back along with them */
+  start: THREE.Vector3
+  /** Which way the view faces (radians about y, 0 along +z) and how far up it tilts */
+  yaw: number
+  pitch: number
+  third: boolean
+  /** The view before the walk, to go back to */
+  back: { p: THREE.Vector3; t: THREE.Vector3; fov: number }
+  /** The pointer turning the view */
+  look: { id: number; x: number; y: number } | null
+  /** The touch stick: x right, y forward, each -1 to 1 */
+  stick: THREE.Vector2
+  /** Moved since the last stop (a 人員's move is committed when they stop) */
+  moving: boolean
+  /** The figure hidden from view: the one looked out of, or the one a stand-in left */
+  hidden: THREE.Object3D | null
+  /** A stand-in's body, seen in third person */
+  ghost: THREE.Mesh | null
+  /** The last view sent to anyone following */
+  sent: string
+  name: string | null
 }
 
 /** Someone else has these items selected: they can't be picked here */
@@ -229,6 +276,33 @@ const facesViewer = (t: FurnitureType) => t === 'person' || t === 'laptop'
 const TABLE_REACH = 1
 /** How close (metres, on the floor plan) a person must be dropped to a seat to sit on it */
 const SIT_REACH = 0.35
+/** A figure's eyes: above the feet standing (or the seat sitting), and in front of the head's centre */
+const EYE_Y = 1.62
+const SEATED_EYE_Y = 0.86
+const EYE_FORWARD = 0.13
+/** Walking and running pace, metres a second */
+const WALK_SPEED = 1.4
+const RUN_SPEED = 3.2
+/** A walker's half-width: how close they come to what's in their way */
+const WALKER_RADIUS = 0.25
+/** The highest step a walker takes up without stairs */
+const STEP_UP = 0.4
+/** Heights above the feet where something in the way stops a walker */
+const BUMP_HEIGHTS = [0.35, 1, 1.55]
+/** Directions either side of the way they walk that are checked too, for their width */
+const BUMP_ANGLES = [0, 0.6, -0.6]
+/** Only what's this close (metres) is checked for being in a walker's way */
+const BUMP_NEAR = 4
+/** The view while walking is wider than the planner's, nearer the eye's own */
+const WALK_FOV = 70
+/** Third person: how far behind and above the eyes the view follows */
+const THIRD_BACK = 3.2
+const THIRD_UP = 0.5
+/** Radians the view turns for each pixel dragged */
+const LOOK_SPEED = 0.005
+/** How long (ms) the 👁 stays after the mouse leaves its 人員, to be reached */
+const EYE_LINGER = 400
+let ghostMat: THREE.Material | null = null
 
 /** A member of a multiple selection being moved, from where it started */
 interface GroupMember {
@@ -406,6 +480,16 @@ export class VenueEditor {
   private pointerLast: PointerEvent | null = null
   /** Someone's view the camera is following (see follow) */
   private following: { p: THREE.Vector3; t: THREE.Vector3 } | null = null
+  /** Walking through the venue (see walkAs) */
+  private walk: Walk | null = null
+  private readonly walkRay = new THREE.Raycaster()
+  /** The building's meshes that stand in a walker's way, with their bounds; found on first use */
+  private fixedBlockers: { m: THREE.Object3D; s: THREE.Sphere | null }[] | null = null
+  /** The 👁 over a 人員's head, and the figure it's over: under the mouse, else the one tapped */
+  private eyeBtn: HTMLButtonElement | null = null
+  private eyeHover: Figure | null = null
+  private eyeTapped: Figure | null = null
+  private eyeHide: ReturnType<typeof setTimeout> | undefined
   /** Items someone else is dragging, and where to (see applyLive) */
   private readonly glides = new Map<THREE.Object3D, { to: THREE.Vector3; r: number }>()
   /** Items other people have selected, by id (see setLocks) */
@@ -517,6 +601,7 @@ export class VenueEditor {
 
   dispose() {
     this.cancelPress()
+    clearTimeout(this.eyeHide)
     this.cursorLayer?.remove()
     this.renderer.setAnimationLoop(null)
     this.resizeObserver.disconnect()
@@ -677,9 +762,11 @@ export class VenueEditor {
     this.cancelPress()
     this.drag = null
     this.resizing = null
-    this.controls.enabled = true
+    // walking as a 人員 moves them: view-only, that stops
+    if (this.walk?.id) this.endWalk()
+    this.controls.enabled = !this.walk
     this.grid.visible = false
-    this.canvas.style.cursor = ''
+    if (!this.walk) this.canvas.style.cursor = ''
     this.select(null)
   }
 
@@ -697,6 +784,7 @@ export class VenueEditor {
 
   setWallsCut(on: boolean) {
     this.archi.wallsG.scale.y = on ? 0.28 : 1
+    this.fixedBlockers = null
   }
 
   /** Light or dark around the building: the background and the grid (the page's theme) */
@@ -720,6 +808,11 @@ export class VenueEditor {
     t.els.forEach((e) => e.remove())
     t.els.clear()
     t.layer = el
+    if (kind === 'item') {
+      this.eyeBtn?.remove()
+      this.eyeBtn = el && this.eyeButton()
+      if (this.eyeBtn) el!.append(this.eyeBtn)
+    }
   }
 
   /** Hide the tags of every placed item of these kinds (the tags themselves are kept). */
@@ -811,6 +904,7 @@ export class VenueEditor {
   focusItem(index: number) {
     const o = this.placed.children[index]
     if (!o) return
+    this.endWalk(false)
     const target = o.position.clone()
     const back = this.camera.position.clone().sub(this.controls.target)
     const dist = THREE.MathUtils.clamp(back.length(), 5, 14)
@@ -928,6 +1022,7 @@ export class VenueEditor {
    * stops it, and onFollowEnd says so.
    */
   follow(cam: CameraState | null) {
+    if (cam) this.endWalk(false)
     this.following = cam ? { p: new THREE.Vector3(...cam.p), t: new THREE.Vector3(...cam.t) } : null
     if (cam) this.fly = null
   }
@@ -939,6 +1034,7 @@ export class VenueEditor {
   }
 
   flyTo(view: CameraView) {
+    this.endWalk(false)
     this.stopFollowing()
     const to = view.position
       ? { position: new THREE.Vector3(...view.position), target: new THREE.Vector3(...view.target) }
@@ -950,6 +1046,419 @@ export class VenueEditor {
       p1: to.position,
       g1: to.target,
     }
+  }
+
+  // ---------------- Walking ----------------
+
+  /**
+   * Walk through the venue as this 人員 figure: it moves along when this screen may edit and
+   * nobody else has it selected, else a stand-in sets off from where it stands. Without a
+   * figure, a stand-in sets off from the middle of the view. Keys or the touch stick walk,
+   * dragging turns the view; see endWalk.
+   */
+  walkAs(f: Figure | null) {
+    const at = f && this.figureOf(f)
+    if (f && !at) return
+    const back = this.walk?.back ?? {
+      p: this.camera.position.clone(),
+      t: this.controls.target.clone(),
+      fov: this.camera.fov,
+    }
+    this.endWalk(false)
+    this.stopFollowing()
+    this.fly = null
+    this.cancelPress()
+    this.armPlace(null)
+    this.select(null)
+    this.eyeHover = null
+    let pos: THREE.Vector3
+    let yaw: number
+    if (at) {
+      at.o.updateMatrixWorld()
+      pos = at.o.localToWorld(new THREE.Vector3(at.fig.position.x, 0, at.fig.position.z))
+      yaw = at.o.rotation.y
+    } else {
+      const g = this.controls.target
+      pos = new THREE.Vector3(g.x, this.floorY(g.x, g.z), g.z)
+      const d = this.camera.getWorldDirection(new THREE.Vector3())
+      yaw = Math.atan2(d.x, d.z)
+    }
+    const mine = !!at && this.editable && !this.lockOf(at.o)
+    // a stand-in stands, even where the one it stands in for sat
+    if (!mine) pos.y = this.floorY(pos.x, pos.z)
+    let ghost: THREE.Mesh | null = null
+    if (!mine) {
+      ghostMat ??= new THREE.MeshStandardMaterial({
+        color: '#5b7cfa',
+        roughness: 0.55,
+        transparent: true,
+        opacity: 0.6,
+      })
+      ghost = new THREE.Mesh(personGeometry(), ghostMat)
+      ghost.visible = false
+      this.scene.add(ghost)
+    }
+    this.walk = {
+      id: mine ? f!.id : null,
+      from: f,
+      pos,
+      start: (mine ? at!.o.position : pos).clone(),
+      yaw,
+      pitch: -0.08,
+      third: false,
+      back,
+      look: null,
+      stick: new THREE.Vector2(),
+      moving: false,
+      hidden: null,
+      ghost,
+      sent: '',
+      name: at ? ((at.o.userData.tag as string | undefined) ?? '') : null,
+    }
+    this.controls.enabled = false
+    this.canvas.style.cursor = 'grab'
+    this.camera.fov = WALK_FOV
+    this.camera.updateProjectionMatrix()
+    this.reportWalk()
+  }
+
+  /** Stop walking; the view goes back to where it was before, moved along with the walker */
+  endWalk(flyBack = true) {
+    const w = this.walk
+    if (!w) return
+    const o = w.id ? this.itemById(w.id) : null
+    if (w.moving && o) this.commit()
+    if (w.hidden) w.hidden.visible = true
+    if (w.ghost) this.scene.remove(w.ghost)
+    this.walk = null
+    this.controls.enabled = true
+    this.canvas.style.cursor = ''
+    this.camera.fov = w.back.fov
+    this.camera.updateProjectionMatrix()
+    if (flyBack) {
+      const moved = (o?.position ?? w.pos).clone().sub(w.start).setY(0)
+      this.fly = {
+        t0: performance.now(),
+        p0: this.camera.position.clone(),
+        g0: this.controls.target.clone(),
+        p1: w.back.p.clone().add(moved),
+        g1: w.back.t.clone().add(moved),
+      }
+    }
+    this.cb.onWalk?.(null)
+  }
+
+  /** Walk on seeing through the eyes (first person) or from behind (third person) */
+  setWalkView(third: boolean) {
+    if (!this.walk || this.walk.third === third) return
+    this.walk.third = third
+    this.reportWalk()
+  }
+
+  /** The touch stick: x to the right, y forward, each from -1 to 1 (0, 0 once let go) */
+  setWalkStick(x: number, y: number) {
+    this.walk?.stick.set(x, y)
+  }
+
+  private reportWalk() {
+    const w = this.walk
+    if (w) this.cb.onWalk?.({ name: w.name, third: w.third })
+  }
+
+  private itemById(id: string) {
+    return this.placed.children.find((o) => o.userData.id === id) ?? null
+  }
+
+  /** A 人員 figure's item and mesh, while it's there */
+  private figureOf(f: Figure) {
+    const o = this.itemById(f.id)
+    if (!o || !isPerson(o)) return null
+    const fig = o.children[f.fig] ?? o.children[0]
+    return fig ? { o, fig } : null
+  }
+
+  /** The 人員 figure under the pointer, if what it's over first is one */
+  private pickFigure(e: PointerEvent): Figure | null {
+    this.setRay(e)
+    for (const h of this.ray.intersectObjects(this.placed.children, true)) {
+      let o = h.object
+      let fig = o
+      while (o.parent && o.parent !== this.placed) {
+        fig = o
+        o = o.parent
+      }
+      if (!o.visible) continue
+      if (!isPerson(o)) return null
+      return { id: o.userData.id as string, fig: Math.max(0, o.children.indexOf(fig)) }
+    }
+    return null
+  }
+
+  /** Walk on by what's held down (keys, the stick), then put the view where the walker looks */
+  private stepWalk(dt: number) {
+    const w = this.walk!
+    const o = w.id ? this.itemById(w.id) : null
+    // the 人員 is gone (deleted, or someone else's undo)
+    if (w.id && !o) return this.endWalk(false)
+    const h = this.held
+    let ahead = w.stick.y
+    let side = w.stick.x
+    if (h.has('w') || h.has('arrowup')) ahead += 1
+    if (h.has('s') || h.has('arrowdown')) ahead -= 1
+    if (h.has('d') || h.has('arrowright')) side += 1
+    if (h.has('a') || h.has('arrowleft')) side -= 1
+    const fwd = new THREE.Vector3(Math.sin(w.yaw), 0, Math.cos(w.yaw))
+    const move = fwd
+      .clone()
+      .multiplyScalar(ahead)
+      .addScaledVector(new THREE.Vector3(-fwd.z, 0, fwd.x), side)
+    if (move.lengthSq() > 1) move.normalize()
+    const lock = o && this.lockOf(o)
+    if (lock && w.moving) {
+      // someone else picked the 人員 up mid-walk: what was walked so far is kept
+      w.moving = false
+      this.commit()
+    }
+    if (move.lengthSq() > 1e-4 && !lock) {
+      move.multiplyScalar((h.has('shift') ? RUN_SPEED : WALK_SPEED) * dt)
+      // a crowd keeps all its figures clear
+      const reach =
+        WALKER_RADIUS +
+        (o ? Math.max(0, ...o.children.map((c) => Math.hypot(c.position.x, c.position.z))) : 0)
+      const feet = o ? o.position : w.pos
+      const to = this.walkTo(feet, move, reach, o)
+      if (to) {
+        if (o) {
+          if (!w.moving) {
+            this.pushUndo()
+            this.standUp(o)
+          }
+          o.position.copy(to)
+          o.rotation.y = w.yaw
+          this.live([o])
+        } else {
+          w.pos.copy(to)
+          w.ghost!.rotation.y = w.yaw
+        }
+        w.moving = true
+      }
+    } else if (w.moving) {
+      w.moving = false
+      if (o) this.commit()
+    }
+    this.viewFromWalker(o)
+  }
+
+  /** Put the camera at the walker's eyes, or behind them; hide what would stand in the way */
+  private viewFromWalker(o: THREE.Object3D | null) {
+    const w = this.walk!
+    const at = w.from && this.figureOf(w.from)
+    let eye: THREE.Vector3
+    if (o && at) {
+      const sit = !!o.userData.sit
+      o.updateMatrixWorld()
+      eye = w.third
+        ? o.position.clone().setY(o.position.y + (sit ? SEATED_EYE_Y : EYE_Y))
+        : o.localToWorld(
+            new THREE.Vector3(
+              at.fig.position.x,
+              sit ? SEATED_EYE_Y : EYE_Y,
+              at.fig.position.z + EYE_FORWARD,
+            ),
+          )
+    } else eye = w.pos.clone().setY(w.pos.y + EYE_Y)
+    // out of a 人員's eyes their own head is in the way; a stand-in leaves the one it was
+    const hide = at && (!o || !w.third) ? at.fig : null
+    if (w.hidden !== hide) {
+      if (w.hidden) w.hidden.visible = true
+      if (hide) hide.visible = false
+      w.hidden = hide
+    }
+    if (w.ghost) {
+      w.ghost.visible = w.third
+      w.ghost.position.copy(w.pos)
+    }
+    const cp = Math.cos(w.pitch)
+    const dir = new THREE.Vector3(Math.sin(w.yaw) * cp, Math.sin(w.pitch), Math.cos(w.yaw) * cp)
+    const { camera, controls } = this
+    if (w.third) {
+      controls.target.copy(eye)
+      camera.position
+        .copy(eye)
+        .addScaledVector(dir, -THIRD_BACK)
+        .setY(camera.position.y + THIRD_UP)
+      const floor = (o?.position.y ?? w.pos.y) + 0.3
+      if (camera.position.y < floor) camera.position.y = floor
+    } else {
+      camera.position.copy(eye)
+      // the point looked at sits as far off as the planner's view comes, for anyone following
+      controls.target.copy(eye).addScaledVector(dir, 3)
+    }
+    camera.lookAt(controls.target)
+    const s = this.cameraState()
+    const key = `${s.p}|${s.t}`
+    if (key !== w.sent) {
+      w.sent = key
+      this.cb.onCamera?.(s)
+    }
+  }
+
+  /**
+   * Where a walker whose feet are at `feet` ends up stepping by `move`, kept `reach` clear of
+   * walls and furniture (but `self`): straight on, else sliding along what's in the way, else
+   * nowhere (null). Stairs and slopes are walked up; a step higher than STEP_UP is not.
+   */
+  private walkTo(
+    feet: THREE.Vector3,
+    move: THREE.Vector3,
+    reach: number,
+    self: THREE.Object3D | null,
+  ) {
+    const near = this.blockersNear(feet, self)
+    for (const m of [move, new THREE.Vector3(move.x, 0, 0), new THREE.Vector3(0, 0, move.z)]) {
+      const len = m.length()
+      if (len < 1e-6) continue
+      if (this.bumps(feet, m.clone().divideScalar(len), len + reach, near)) continue
+      const to = feet.clone().add(m)
+      const y = this.floorY(to.x, to.z)
+      if (y - feet.y > STEP_UP) continue
+      to.y = y
+      return to
+    }
+    return null
+  }
+
+  /** Whether something stands within `far` of the feet that way, at any of the bump heights */
+  private bumps(feet: THREE.Vector3, dir: THREE.Vector3, far: number, near: THREE.Object3D[]) {
+    const r = this.walkRay
+    r.far = far
+    const from = new THREE.Vector3()
+    const way = new THREE.Vector3()
+    for (const y of BUMP_HEIGHTS)
+      for (const a of BUMP_ANGLES) {
+        r.set(from.set(feet.x, feet.y + y, feet.z), way.copy(dir).applyAxisAngle(UP, a))
+        if (r.intersectObjects(near, true).some((h) => h.object.visible)) return true
+      }
+    return false
+  }
+
+  /** What's near enough the feet to be in the way: the building's walls, rails and fixed seats, and placed items */
+  private blockersNear(feet: THREE.Vector3, self: THREE.Object3D | null) {
+    if (!this.fixedBlockers) {
+      const walkable = new Set<THREE.Object3D>([...this.archi.walk, this.archi.ground])
+      const list: { m: THREE.Object3D; s: THREE.Sphere | null }[] = []
+      for (const g of [this.archi.wallsG, this.archi.arch]) {
+        g.updateMatrixWorld()
+        g.traverse((m) => {
+          const mesh = m as THREE.Mesh
+          if (!mesh.isMesh || walkable.has(mesh)) return
+          // a row of fixed seats is one mesh spread over the hall: always checked (it checks
+          // its own bounds first)
+          if ((mesh as THREE.InstancedMesh).isInstancedMesh) return list.push({ m: mesh, s: null })
+          mesh.geometry.computeBoundingSphere()
+          list.push({
+            m: mesh,
+            s: mesh.geometry.boundingSphere!.clone().applyMatrix4(mesh.matrixWorld),
+          })
+        })
+      }
+      this.fixedBlockers = list
+    }
+    const near: THREE.Object3D[] = []
+    for (const { m, s } of this.fixedBlockers)
+      if (!s || s.center.distanceTo(feet) - s.radius < BUMP_NEAR) near.push(m)
+    for (const o of this.placed.children)
+      if (
+        o !== self &&
+        o.visible &&
+        !isZone(o) &&
+        !onWall(o) &&
+        !onTable(o) &&
+        o.position.distanceTo(feet) < BUMP_NEAR + 3
+      )
+        near.push(o)
+    return near
+  }
+
+  // ---------------- The 👁 over a 人員 ----------------
+
+  /** The figure the 👁 is over: the one under the mouse, else the 人員 selected or tapped */
+  private eyeTarget(): Figure | null {
+    if (this.walk || this.drag || this.resizing || this.marquee || this.placing || this.armed)
+      return null
+    if (this.eyeHover) return this.eyeHover
+    const s = this.selected
+    if (s && !this.group.size && isPerson(s)) {
+      const id = s.userData.id as string
+      return this.eyeTapped?.id === id ? this.eyeTapped : { id, fig: 0 }
+    }
+    return this.editable ? null : this.eyeTapped
+  }
+
+  /** The mouse moved: over a 人員 the 👁 shows; away from it (and the 👁), it goes soon after */
+  private hoverEye(e: PointerEvent) {
+    const f = e.target === this.canvas ? this.pickFigure(e) : null
+    if (f || this.eyeBtn?.contains(e.target as Node)) {
+      clearTimeout(this.eyeHide)
+      this.eyeHide = undefined
+      if (f) this.eyeHover = f
+      return
+    }
+    if (this.eyeHover && this.eyeHide === undefined)
+      this.eyeHide = setTimeout(() => {
+        this.eyeHide = undefined
+        this.eyeHover = null
+      }, EYE_LINGER)
+  }
+
+  private eyeButton() {
+    const b = document.createElement('button')
+    b.type = 'button'
+    b.className = 'teye'
+    b.hidden = true
+    b.dataset.stageUi = ''
+    b.innerHTML =
+      '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>'
+    b.addEventListener('click', () => {
+      const f = this.eyeTarget()
+      if (f) this.walkAs(f)
+    })
+    return b
+  }
+
+  /** Pin the 👁 over its figure's head, above the 人員's tag when it shows one */
+  private layoutEye() {
+    const btn = this.eyeBtn
+    if (!btn) return
+    const f = this.eyeTarget()
+    const at = f && this.figureOf(f)
+    if (!at || !at.o.visible) {
+      btn.hidden = true
+      return
+    }
+    const { o, fig } = at
+    o.updateMatrixWorld()
+    const v = o
+      .localToWorld(
+        this.v.set(fig.position.x, o.userData.sit ? SEATED_TAG_Y : PERSON_TAG_Y, fig.position.z),
+      )
+      .project(this.camera)
+    if (v.z > 1 || Math.abs(v.x) > 1.2 || Math.abs(v.y) > 1.2) {
+      btn.hidden = true
+      return
+    }
+    btn.hidden = false
+    // follows the language, which can change while it's up
+    const label = t().walk.button
+    if (btn.title !== label) {
+      btn.title = label
+      btn.setAttribute('aria-label', label)
+    }
+    const row = this.tags.item.els.get(o)
+    const lift = row && row.style.display !== 'none' ? row.offsetHeight + 4 : 0
+    const x = ((v.x + 1) / 2) * this.stageEl.clientWidth - btn.offsetWidth / 2
+    const y = ((1 - v.y) / 2) * this.stageEl.clientHeight - btn.offsetHeight - lift - 2
+    btn.style.transform = `translate(${x.toFixed(1)}px,${y.toFixed(1)}px)`
   }
 
   /**
@@ -2972,8 +3481,18 @@ export class VenueEditor {
         if (e.target !== canvas || e.button !== 0) return
         this.infoOpen = null
         canvas.focus()
+        if (this.walk) {
+          // walking: a drag turns the view
+          e.stopPropagation()
+          e.preventDefault()
+          this.walk.look = { id: e.pointerId, x: e.clientX, y: e.clientY }
+          canvas.style.cursor = 'grabbing'
+          return
+        }
         this.downPt = { x: e.clientX, y: e.clientY }
         if (!this.editable) return
+        // which of a crowd's figures the 👁 goes over, once it's selected
+        this.eyeTapped = this.pickFigure(e)
         if (this.armed) {
           // placing: a tap puts it down (pointerup); a drag or pinch stays the camera's
           this.armDown = { id: e.pointerId, x: e.clientX, y: e.clientY }
@@ -3057,6 +3576,17 @@ export class VenueEditor {
       true,
     )
     this.listen(window, 'pointermove', (e) => {
+      const look = this.walk?.look
+      if (look && e.pointerId === look.id) {
+        // the view is dragged round, as if taking hold of the venue
+        const w = this.walk!
+        w.yaw += (e.clientX - look.x) * LOOK_SPEED
+        w.pitch = THREE.MathUtils.clamp(w.pitch + (e.clientY - look.y) * LOOK_SPEED, -1.3, 1.3)
+        look.x = e.clientX
+        look.y = e.clientY
+        return
+      }
+      if (this.walk) return
       const pr = this.press
       if (pr && e.pointerId === pr.id) {
         pr.last = e
@@ -3137,6 +3667,7 @@ export class VenueEditor {
         this.live([d.o, ...(d.riders ?? []).map((r) => r.o)])
         return
       }
+      if (e.pointerType !== 'touch' && e.buttons === 0 && !this.placing) this.hoverEye(e)
       if (this.placing || !this.editable) return
       if (e.target === canvas && e.buttons === 0) {
         const hd = this.pickHandle(e)
@@ -3152,6 +3683,13 @@ export class VenueEditor {
       }
     })
     this.listen(window, 'pointerup', (e) => {
+      if (this.walk) {
+        if (this.walk.look?.id === e.pointerId) {
+          this.walk.look = null
+          canvas.style.cursor = 'grab'
+        }
+        return
+      }
       const pr = this.press
       if (pr && e.pointerId === pr.id) {
         // lifted before the hold, without moving: a tap, which selects it (with its group)
@@ -3201,6 +3739,8 @@ export class VenueEditor {
       }
       const d = this.downPt
       if (d && e.target === canvas && Math.hypot(e.clientX - d.x, e.clientY - d.y) < 4) {
+        // view-only, nothing gets selected: a tap on a 人員 puts the 👁 over them
+        if (!this.editable) this.eyeTapped = this.pickFigure(e)
         const belt = this.editable && this.pickBelt(e)
         const beltLock =
           belt && (belt.userData.ends as THREE.Object3D[]).map((o) => this.lockOf(o)).find(Boolean)
@@ -3214,6 +3754,7 @@ export class VenueEditor {
     // the browser took the touch over: no tap, no hold
     this.listen(window, 'pointercancel', (e) => {
       if (this.press?.id === e.pointerId) this.cancelPress()
+      if (this.walk?.look?.id === e.pointerId) this.walk.look = null
       if (this.armDown?.id === e.pointerId) this.armDown = null
     })
   }
@@ -3223,6 +3764,10 @@ export class VenueEditor {
     if (target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA') return
     // keys pressed in a dialog (e.g. Esc / Delete) belong to it, not to the scene
     if (target?.closest?.('dialog')) return
+    if (this.walk && !(e.metaKey || e.ctrlKey)) {
+      if (e.key === 'Escape') return this.endWalk()
+      if (e.key.toLowerCase() === 'v') return this.setWalkView(!this.walk.third)
+    }
     // Esc closes an open note first, in either mode
     if (e.key === 'Escape' && this.infoOpen) {
       this.infoOpen = null
@@ -3355,7 +3900,8 @@ export class VenueEditor {
   /** WASD / arrow-key camera walking */
   private walkCam(dt: number) {
     const { held, camera, controls } = this
-    if (!held.size) return
+    // walking, the keys move the walker instead
+    if (!held.size || this.walk) return
     const f = new THREE.Vector3()
     camera.getWorldDirection(f)
     f.y = 0
@@ -3404,7 +3950,9 @@ export class VenueEditor {
       camera.position.lerp(f.p, k)
       controls.target.lerp(f.t, k)
     }
-    controls.update()
+    if (this.walk) this.stepWalk(dt)
+    // walking puts the camera itself; the orbit would pull it back to its distance and angles
+    if (!this.walk) controls.update()
     this.glideLive(dt)
     if (this.selected) {
       this.selBox.setFromObject(this.selected)
@@ -3421,6 +3969,7 @@ export class VenueEditor {
     if (this.labelsVisible) this.layoutLabels()
     this.layoutTags('item')
     this.layoutTags('zone')
+    this.layoutEye()
   };
 
   /**
@@ -3442,6 +3991,9 @@ export class VenueEditor {
       const info = this.hiddenInfo.has(type) ? undefined : (o.userData.info as string | undefined)
       const showTag = !!tag && !this.hiddenTags.has(type)
       if (!o.visible || tagKindOf(o) !== kind || (!showTag && !info)) continue
+      // walking as them: their tag shows only over the 人員 seen walking from behind
+      const w = this.walk
+      if (w && w.from?.id === o.userData.id && !(w.id && w.third)) continue
       // a person's or zone's tag wears its colour, anything else's its own tag colour
       const c = ownTagColor(o)
         ? ((o.userData.tagColor as string | undefined) ?? TAG_COLOR)

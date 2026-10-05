@@ -160,6 +160,39 @@ onBeforeUnmount(() => KINDS.forEach((k) => editor.value?.setTagLayer(k, null)))
   outline: 2px solid var(--yel, #edb32a);
   outline-offset: 2px;
 }
+/* the 👁 over a 人員's head: walk as them */
+.tags :deep(.teye) {
+  pointer-events: auto;
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1.5px solid var(--control-line);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 2px 8px var(--shadow);
+  cursor: pointer;
+  will-change: transform;
+}
+.tags :deep(.teye svg) {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+.tags :deep(.teye:hover) {
+  background: var(--hover);
+}
+.tags :deep(.teye:focus-visible) {
+  outline: 2px solid var(--yel, #edb32a);
+  outline-offset: 2px;
+}
 /* the note opens above the row, centred on the ⓘ (the editor sets its left) */
 .tags :deep(.tbox) {
   pointer-events: auto;
