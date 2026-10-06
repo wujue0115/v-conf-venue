@@ -430,7 +430,9 @@ export function buildArchitecture(scene: THREE.Scene): Architecture {
     if (hh > 2) seg(x1, z1, x2, z2, 0.1, 0.06, M.dark, parent, y0 + hh * 0.5)
   }
 
-  // walls, opened up where a door stands in them, with a lintel over each doorway
+  // walls, opened up where a door stands in them, with a lintel over each doorway (added once
+  // the floors are in, below: a doorway is DOOR_H tall from the floor it's on)
+  const lintels: [Pt, Pt][] = []
   for (const w of WALLS) {
     const [x1, z1, x2, z2] = w
     const L = Math.hypot(x2 - x1, z2 - z1)
@@ -440,7 +442,7 @@ export function buildArchitecture(scene: THREE.Scene): Architecture {
     let from = 0
     for (const [a, b, lintel] of doorGaps(w)) {
       if (a - pad > from) wall(...at(from), ...at(a - pad))
-      if (lintel) seg(...at(a + pad), ...at(b - pad), WALL_T, H - DOOR_H, M.wall, wallsG, DOOR_H)
+      if (lintel) lintels.push([at(a + pad), at(b - pad)])
       from = b + pad
     }
     if (from < 1) wall(...at(from), ...at(1))
@@ -791,7 +793,8 @@ export function buildArchitecture(scene: THREE.Scene): Architecture {
   // where A2's rear doors open.
   const A2_BACK = (A2_ROWS - 1) * A2_RISE // A2's highest tier
   const MID = 0.8
-  tiers(12.2, 22.1, 20.6, 23.1, 4, MID / 4)
+  // the top step runs on to the platform's edge, with no gap between them
+  tiers(12.2, 22.1, 20.6, 23.2, 4, MID / 4)
   walk.push(
     prism(
       [
@@ -895,6 +898,24 @@ export function buildArchitecture(scene: THREE.Scene): Architecture {
 
   const seats = buildA2Seating(arch, walk)
   const fixedSeats = seats.length
+
+  // the lintels, over the higher of the floors either side of each doorway (A2's back rooms
+  // stand on its top tier, well above the rest)
+  arch.updateMatrixWorld(true)
+  const down = new THREE.Raycaster()
+  const floorAt = (x: number, z: number) => {
+    down.set(new THREE.Vector3(x, 40, z), new THREE.Vector3(0, -1, 0))
+    return down.intersectObjects(walk, false)[0]?.point.y ?? 0
+  }
+  for (const [[x1, z1], [x2, z2]] of lintels) {
+    const L = Math.hypot(x2 - x1, z2 - z1)
+    // a step either side of the wall, square to it
+    const nx = (-(z2 - z1) / L) * 0.4
+    const nz = ((x2 - x1) / L) * 0.4
+    const [mx, mz] = [(x1 + x2) / 2, (z1 + z2) / 2]
+    const y0 = Math.max(0, floorAt(mx + nx, mz + nz), floorAt(mx - nx, mz - nz)) + DOOR_H
+    if (y0 < H) seg(x1, z1, x2, z2, WALL_T, H - y0, M.wall, wallsG, y0)
+  }
 
   ZONES.forEach(([c, p]) => {
     const o = prism(p, 0.01, mat(c, { name: 'zone' }), zonesG, 0.002, null)
