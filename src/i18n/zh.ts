@@ -487,6 +487,15 @@ const zh = {
     snap: '對齊格線',
     snapHint: '移動時對齊 25 公分格線',
     snapOff: '切換到編輯模式才能調整',
+    walk: '導覽模式',
+    throughWalls: '穿過牆壁',
+    throughWallsHint: '走動時不會被牆、玻璃和欄杆擋住',
+    throughItems: '穿過物件',
+    throughItemsHint: '走動時不會被家具、人員和固定座位擋住',
+    bob: '走路晃動',
+    bobHint: '第一人稱走動時，畫面隨腳步上下晃動',
+    look: '視角靈敏度',
+    lookHint: '移動滑鼠或拖曳轉頭的速度',
     items: '物件顯示',
     allItems: '全部物件',
     tags: '標籤顯示',
@@ -564,19 +573,25 @@ const zh = {
 
   /** Walking through the venue, as a placed 人員 (the 👁 over their head) or as a stand-in */
   walk: {
-    start: '走進場地',
+    start: '導覽',
     startHint: '以第一或第三人稱在場地內走動',
     button: '帶入這個人員走動',
     as: (name: string) => `以 ${name} 走動`,
     /** A 人員 without a tag */
     someone: '人員',
-    virtual: '虛擬走動',
+    virtual: '導覽模式',
     first: '第一人稱',
     third: '第三人稱',
     leave: '離開',
-    hint: 'WASD 或方向鍵移動 · Shift 跑步 · 拖曳轉頭 · V 切換視角 · Esc 離開',
+    /** The mouse is locked to the view */
+    hint: 'WASD 或方向鍵移動 · Shift 跑步 · 空白鍵跳躍 · 移動滑鼠轉頭 · V 切換視角 · Esc 放開滑鼠',
+    /** The mouse is free again (after Esc) */
+    freeHint: '點畫面用滑鼠轉頭 · WASD 移動 · 空白鍵跳躍 · Esc 離開',
     touchHint: '用搖桿移動 · 拖曳畫面轉頭',
     stick: '移動搖桿',
+    sit: '坐下',
+    stand: '站起來',
+    jump: '跳躍',
   },
 
   /** Phones: a kind picked in the palette, waiting for a tap on the stage to place it */

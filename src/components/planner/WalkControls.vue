@@ -5,8 +5,9 @@ import { t } from '@/i18n'
 import { usePlannerStore } from '@/stores/planner'
 
 /**
- * While walking through the venue: who as, first or third person, a way to leave, and on
- * touch screens a stick to walk with (dragging the stage turns the view)
+ * While walking through the venue: who as, first or third person, a way to leave, a mark in the
+ * middle while the mouse turns the view, and on touch screens a stick to walk with (dragging
+ * the stage turns the view)
  */
 
 const store = usePlannerStore()
@@ -77,7 +78,37 @@ function stickUp(e: PointerEvent) {
       </div>
       <button type="button" class="leave" @click="editor?.endWalk()">{{ t().walk.leave }}</button>
     </div>
-    <p class="hint">{{ touch ? t().walk.touchHint : t().walk.hint }}</p>
+    <!-- beside a free seat, or sitting: F does the same -->
+    <button
+      v-if="store.walk.canSit || store.walk.seated"
+      type="button"
+      class="sit"
+      :class="{ touch }"
+      data-stage-ui
+      @click="editor?.toggleSit()"
+    >
+      {{ store.walk.seated ? t().walk.stand : t().walk.sit }}
+      <kbd v-if="!touch">F</kbd>
+    </button>
+    <!-- touch screens: Space's jump, across from the stick (on press, not on release) -->
+    <button
+      v-if="touch && !store.walk.seated"
+      type="button"
+      class="jump"
+      data-stage-ui
+      :aria-label="t().walk.jump"
+      @pointerdown.prevent="editor?.jump()"
+    >
+      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+        <path d="M12 19V6M6 11l6-6 6 6" />
+      </svg>
+      <span>{{ t().walk.jump }}</span>
+    </button>
+    <p class="hint" :class="{ touch }">
+      {{ touch ? t().walk.touchHint : store.walk.mouseLook ? t().walk.hint : t().walk.freeHint }}
+    </p>
+    <!-- where the locked mouse looks -->
+    <span v-if="store.walk.mouseLook" class="aim" aria-hidden="true"></span>
     <div
       v-if="touch"
       class="stick"
@@ -168,6 +199,102 @@ function stickUp(e: PointerEvent) {
   color: var(--muted);
   font-size: 12px;
   text-align: center;
+  pointer-events: none;
+}
+.sit {
+  position: absolute;
+  left: 50%;
+  bottom: calc(52px + env(safe-area-inset-bottom, 0px));
+  z-index: 3;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--yel);
+  color: var(--on-yel);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  box-shadow: 0 4px 14px var(--shadow);
+  cursor: pointer;
+}
+/* touch screens: in reach of the right thumb, clear of the stick on the left */
+.sit.touch {
+  left: auto;
+  right: 22px;
+  bottom: calc(160px + env(safe-area-inset-bottom, 0px));
+  height: 48px;
+  transform: none;
+}
+/* level with the stick's middle, for the right thumb */
+.jump {
+  position: absolute;
+  right: 30px;
+  bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  width: 72px;
+  height: 72px;
+  border: 1.5px solid var(--control-line);
+  border-radius: 50%;
+  background: var(--surface-glass);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  box-shadow: 0 4px 14px var(--shadow);
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.jump:active {
+  background: var(--hover);
+  transform: scale(0.95);
+}
+.jump svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.sit kbd {
+  padding: 1px 6px;
+  border: 1px solid currentColor;
+  border-radius: 5px;
+  font: 600 11px/1.4 var(--mono);
+  opacity: 0.75;
+}
+.sit:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+/* touch screens: under the chip, clear of the stick and the buttons at the bottom */
+.hint.touch {
+  top: calc(var(--top-clear, 66px) + 46px);
+  bottom: auto;
+  white-space: nowrap;
+}
+.aim {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 2;
+  width: 14px;
+  height: 14px;
+  transform: translate(-50%, -50%);
+  background:
+    linear-gradient(#fff, #fff) center / 2px 100% no-repeat,
+    linear-gradient(#fff, #fff) center / 100% 2px no-repeat;
+  filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.8));
   pointer-events: none;
 }
 .stick {

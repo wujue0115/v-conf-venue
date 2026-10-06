@@ -19,6 +19,12 @@ import { t } from '@/i18n'
 
 const SIDEBAR_KEY = 'vueconf26-sidebar-collapsed'
 const MODE_KEY = 'vueconf26-mode'
+const LOOK_KEY = 'vueconf26-look-sensitivity'
+const WALK_KEY = 'vueconf26-walk'
+/** How fast the view turns while walking: 1 to 10, 5 as it comes */
+export const LOOK_MIN = 1
+export const LOOK_MAX = 10
+export const LOOK_DEFAULT = 5
 
 /** 'view' only looks around; 'edit' can place and change objects */
 export type PlannerMode = 'view' | 'edit'
@@ -113,6 +119,19 @@ export const usePlannerStore = defineStore('planner', () => {
   function setInfoTypesVisible(types: readonly FurnitureType[], on: boolean) {
     hiddenInfoTypes.value = toggled(hiddenInfoTypes.value, types, on)
   }
+  const savedLook = readJSON(LOOK_KEY)
+  /** 設定's 視角靈敏度: how fast the mouse (or a drag) turns the view while walking */
+  const lookSensitivity = shallowRef(
+    typeof savedLook === 'number' && savedLook >= LOOK_MIN && savedLook <= LOOK_MAX
+      ? savedLook
+      : LOOK_DEFAULT,
+  )
+  const savedWalk = readJSON(WALK_KEY) as { walls?: unknown; items?: unknown; bob?: unknown } | null
+  /** 設定: walking through the venue passes through walls / items rather than stopping */
+  const walkThroughWalls = shallowRef(savedWalk?.walls === true)
+  const walkThroughItems = shallowRef(savedWalk?.items === true)
+  /** 設定: the view bobs with each step, in first person */
+  const walkBob = shallowRef(savedWalk?.bob !== false)
   const savedSidebar = readJSON(SIDEBAR_KEY)
   // First visit on a phone: start collapsed so the venue is visible
   const sidebarCollapsed = shallowRef(
@@ -148,6 +167,10 @@ export const usePlannerStore = defineStore('planner', () => {
     if (!projectId.value) savePricing(m, s)
   })
   watch(sidebarCollapsed, (v) => writeJSON(SIDEBAR_KEY, v))
+  watch(lookSensitivity, (v) => writeJSON(LOOK_KEY, v))
+  watch([walkThroughWalls, walkThroughItems, walkBob], ([walls, items, bob]) =>
+    writeJSON(WALK_KEY, { walls, items, bob }),
+  )
   watch(mode, (v) => {
     writeJSON(MODE_KEY, v)
     // every switch of mode starts with 多選 off, so a tap selects just one item again
@@ -164,6 +187,10 @@ export const usePlannerStore = defineStore('planner', () => {
     armed,
     fixedSeats,
     walk,
+    lookSensitivity,
+    walkThroughWalls,
+    walkThroughItems,
+    walkBob,
     canUndo,
     canRedo,
     priceMode,

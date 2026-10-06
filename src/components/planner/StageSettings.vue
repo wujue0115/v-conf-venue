@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, useTemplateRef, watch } from 'vue'
 import VisibilityTree from './VisibilityTree.vue'
 import { t } from '@/i18n'
-import { usePlannerStore } from '@/stores/planner'
+import { LOOK_MAX, LOOK_MIN, usePlannerStore } from '@/stores/planner'
 
 const store = usePlannerStore()
 /** Showing (on phones it's opened from ☰, see MainMenu) */
@@ -16,7 +16,7 @@ const open = computed({
 })
 const root = useTemplateRef('root')
 
-type Toggle = 'wallsCut' | 'shadows' | 'snap'
+type Toggle = 'wallsCut' | 'shadows' | 'snap' | 'walkThroughWalls' | 'walkThroughItems' | 'walkBob'
 const SWITCHES = computed(() => {
   const m = t().settings
   return [
@@ -37,6 +37,16 @@ const SWITCHES = computed(() => {
           disabled: !store.editing,
         },
       ],
+    },
+    {
+      title: m.walk,
+      rows: [
+        { key: 'walkThroughWalls' as Toggle, label: m.throughWalls, hint: m.throughWallsHint },
+        { key: 'walkThroughItems' as Toggle, label: m.throughItems, hint: m.throughItemsHint },
+        { key: 'walkBob' as Toggle, label: m.bob, hint: m.bobHint },
+      ],
+      // and the look sensitivity slider under them
+      look: true,
     },
   ]
 })
@@ -108,6 +118,22 @@ onBeforeUnmount(unlisten)
           >
             <span class="knob"></span>
           </button>
+        </label>
+        <label v-if="'look' in sec" class="row slider">
+          <span class="txt">
+            <b>{{ t().settings.look }}</b>
+            <i>{{ t().settings.lookHint }}</i>
+          </span>
+          <span class="range">
+            <input
+              v-model.number="store.lookSensitivity"
+              type="range"
+              :min="LOOK_MIN"
+              :max="LOOK_MAX"
+              step="1"
+            />
+            <output>{{ store.lookSensitivity }}</output>
+          </span>
         </label>
       </section>
 
@@ -227,6 +253,31 @@ h4 {
 }
 .row.off {
   cursor: default;
+}
+/* a slider takes its own line under the label */
+.row.slider {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  cursor: default;
+}
+.range {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.range input {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--yel);
+  cursor: pointer;
+}
+.range output {
+  width: 2ch;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: var(--muted);
 }
 .row.off .txt {
   opacity: 0.45;

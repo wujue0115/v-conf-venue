@@ -1,49 +1,80 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import DockMenu from './DockMenu.vue'
+import ModeIcon from './ModeIcon.vue'
 import { t } from '@/i18n'
+import { useVenueEditor } from '@/composables/useVenueEditor'
 import { usePlannerStore, type PlannerMode } from '@/stores/planner'
 
 /**
- * 檢視 / 編輯 and 多選: in the top bar, or the bottom bar on phones. 多選 is always shown
- * (greyed in View mode) so the bar doesn't shift when the mode changes.
+ * 檢視 / 編輯 / 導覽, and 多選: in the top bar, or the bottom bar on phones (`menu`: the
+ * three as one menu there). 多選 is always shown (greyed in View mode) so the bar doesn't
+ * shift when the mode changes.
  */
+defineProps<{ menu?: boolean }>()
 
 const store = usePlannerStore()
+const editor = useVenueEditor()
 const MODES = computed(() =>
   (['view', 'edit'] as PlannerMode[]).map((mode) => ({ mode, ...t().modes[mode] })),
 )
+/** Which of the three is on: 導覽 while walking, else the mode */
+const current = computed(() => (store.walk ? 'tour' : store.editing ? 'edit' : 'view'))
+/** Picking 檢視 or 編輯 ends a walk; 導覽 starts one (from the middle of the view) */
+function pick(mode: PlannerMode) {
+  editor.value?.endWalk()
+  store.mode = mode
+}
+function tour() {
+  if (!store.walk) editor.value?.walkAs(null)
+}
+const MENU = computed(() => [
+  ...MODES.value.map((m) => ({
+    key: m.mode as PlannerMode | 'tour',
+    label: m.label,
+    title: m.title,
+    disabled: store.readOnly && m.mode === 'edit',
+  })),
+  { key: 'tour' as const, label: t().walk.start, title: t().walk.startHint },
+])
+function choose(key: PlannerMode | 'tour') {
+  if (key === 'tour') tour()
+  else pick(key)
+}
 </script>
 
 <template>
   <div class="mode-switch">
-    <div
-      class="grp mode"
-      :class="{ edit: store.editing }"
-      role="radiogroup"
-      :aria-label="t().modes.label"
-    >
+    <DockMenu v-if="menu" :label="t().modes.label" :items="MENU" :current="current" @pick="choose">
+      <template #icon="{ key }"><ModeIcon :mode="key" /></template>
+    </DockMenu>
+    <div v-else class="grp mode" :class="current" role="radiogroup" :aria-label="t().modes.label">
       <span class="thumb" aria-hidden="true"></span>
       <button
         v-for="m in MODES"
         :key="m.mode"
         class="btn"
-        :class="{ cur: (store.editing ? 'edit' : 'view') === m.mode }"
+        :class="{ cur: current === m.mode }"
         role="radio"
-        :aria-checked="(store.editing ? 'edit' : 'view') === m.mode"
+        :aria-checked="current === m.mode"
         :aria-label="m.label"
         :title="store.readOnly ? t().palette.readOnly : `${m.label} · ${m.title}`"
         :disabled="store.readOnly"
-        @click="store.mode = m.mode"
+        @click="pick(m.mode)"
       >
-        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true">
-          <template v-if="m.mode === 'view'">
-            <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z" />
-            <circle cx="12" cy="12" r="3" />
-          </template>
-          <template v-else>
-            <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
-          </template>
-        </svg>
+        <ModeIcon class="ico" :mode="m.mode" />
+      </button>
+      <!-- 導覽: not a mode of its own, a walk on top of either -->
+      <button
+        class="btn"
+        :class="{ cur: current === 'tour' }"
+        role="radio"
+        :aria-checked="current === 'tour'"
+        :aria-label="t().walk.start"
+        :title="`${t().walk.start} · ${t().walk.startHint}`"
+        @click="tour"
+      >
+        <ModeIcon class="ico" mode="tour" />
       </button>
     </div>
     <div class="grp">
@@ -76,19 +107,19 @@ const MODES = computed(() =>
 .mode .btn:disabled {
   cursor: not-allowed;
 }
-/* Mode switch: one yellow thumb slides between two equal halves */
+/* Mode switch: one yellow thumb slides between three equal thirds */
 .mode {
   position: relative;
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr 1fr 1fr;
 }
 .thumb {
   position: absolute;
   top: 3px;
   bottom: 3px;
   left: 3px;
-  /* one column: (inner width − the 2px gap) / 2 */
-  width: calc((100% - 8px) / 2);
+  /* one column: (inner width − the two 2px gaps) / 3 */
+  width: calc((100% - 10px) / 3);
   border-radius: 7px;
   background: var(--yel);
   color: var(--on-yel);
@@ -96,6 +127,9 @@ const MODES = computed(() =>
 }
 .mode.edit .thumb {
   transform: translateX(calc(100% + 2px));
+}
+.mode.tour .thumb {
+  transform: translateX(calc(200% + 4px));
 }
 .mode .btn {
   position: relative;

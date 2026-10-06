@@ -218,3 +218,123 @@ export function seatedGeometry() {
   seated ??= surfaceNets(seatedSdf, [-0.36, -0.5, -0.24], [0.36, 1.0, 0.56], 0.02)
   return seated
 }
+
+/*
+ * The figure walking: the standing figure with its legs swung from the hips (each the other
+ * way) and its arms from the shoulders against them, still one smooth body. Each pose is its
+ * own mesh, built on first use; a walk shows the one nearest its swing.
+ */
+
+/** The furthest the legs swing from straight down, radians at the hip */
+export const MAX_STRIDE = 0.5
+/** Poses either side of standing straight */
+const STRIDE_STEPS = 8
+
+/** Turn (0, dy, dz) about x by `a`: y' = dy·cos − dz·sin, z' = dy·sin + dz·cos */
+const turnX = (dy: number, dz: number, a: number): [number, number] => [
+  dy * Math.cos(a) - dz * Math.sin(a),
+  dy * Math.sin(a) + dz * Math.cos(a),
+]
+
+/** The standing figure mid-stride: the right leg swung `a` (backward when positive) */
+function strideSdf(a: number) {
+  const legs = [1, -1].map((s) => {
+    const [dy, dz] = turnX(0.07 - 0.86, 0, s * a)
+    return [s * 0.095, 0.86 + dy, dz] as V3
+  })
+  const arms = [1, -1].map((s) => {
+    const [dy, dz] = turnX(0.93 - 1.35, 0.02, -s * a * 0.7)
+    return [s * 0.27, 1.35 + dy, dz] as V3
+  })
+  return (x: number, y: number, z: number) => {
+    const fz = z / 0.72
+    const torso = capsule(x, y, fz, 0, 0.9, 0, 0, 1.28, 0, 0.165) * 0.72
+    const shoulders = capsule(x, y, fz, -0.15, 1.36, 0, 0.15, 1.36, 0, 0.075) * 0.72
+    let d = smin(torso, shoulders, 0.08)
+    d = smin(d, capsule(x, y, z, 0, 1.38, 0, 0, 1.52, 0, 0.05), 0.05)
+    d = smin(d, Math.sqrt(x * x + (y - 1.605) ** 2 + z * z) - 0.115, 0.04)
+    for (let i = 0; i < 2; i++) {
+      const s = i ? -1 : 1
+      const [fx, fy, fz2] = legs[i]!
+      const [hx, hy, hz] = arms[i]!
+      d = smin(d, capsule(x, y, z, fx, fy, fz2, s * 0.095, 0.86, 0, 0.07), 0.03)
+      d = smin(d, capsule(x, y, z, s * 0.215, 1.35, 0, hx, hy, hz, 0.055), 0.025)
+    }
+    return d
+  }
+}
+
+const strides: (THREE.BufferGeometry | undefined)[] = []
+
+/** The same pose swung the other way: left and right swap, as in a mirror */
+function mirrored(g: THREE.BufferGeometry) {
+  const m = g.clone()
+  m.scale(-1, 1, 1)
+  // a mirror turns the faces inside out: wind each triangle the other way
+  const idx = m.getIndex()!
+  for (let i = 0; i < idx.count; i += 3) {
+    const b = idx.getX(i + 1)
+    idx.setX(i + 1, idx.getX(i + 2))
+    idx.setX(i + 2, b)
+  }
+  return m
+}
+
+function buildStride(i: number) {
+  const twin = strides[STRIDE_STEPS * 2 - i]
+  if (twin) return (strides[i] = mirrored(twin))
+  const geo = surfaceNets(
+    strideSdf(((i - STRIDE_STEPS) / STRIDE_STEPS) * MAX_STRIDE),
+    [-0.36, -0.02, -0.5],
+    [0.36, 1.76, 0.5],
+    0.02,
+  )
+  // both feet on the floor: the hips come down as the legs spread
+  geo.computeBoundingBox()
+  geo.translate(0, -geo.boundingBox!.min.y, 0)
+  strides[i] = geo
+  return geo
+}
+
+/**
+ * The walking figure swung `swing` radians (see MAX_STRIDE): the nearest pose built so far,
+ * standing straight before any is
+ */
+export function strideGeometry(swing: number) {
+  const want = Math.round((THREE.MathUtils.clamp(swing / MAX_STRIDE, -1, 1) + 1) * STRIDE_STEPS)
+  for (let d = 0; d <= STRIDE_STEPS * 2; d++)
+    for (const i of [want - d, want + d]) {
+      const g = strides[i]
+      if (g) return g
+    }
+  return buildStride(STRIDE_STEPS)
+}
+
+/** Build one more walking pose, if any is left: from standing straight outward */
+function buildNextStride() {
+  for (let d = 0; d <= STRIDE_STEPS; d++)
+    for (const i of [STRIDE_STEPS + d, STRIDE_STEPS - d])
+      if (!strides[i]) {
+        buildStride(i)
+        return true
+      }
+  return false
+}
+
+let warming = false
+/**
+ * Build the walking poses one at a time while the browser is idle (each takes tens of
+ * milliseconds; meanwhile a walk shows the nearest one built)
+ */
+export function warmStrides() {
+  if (warming) return
+  warming = true
+  const later = (f: () => void) =>
+    'requestIdleCallback' in globalThis
+      ? requestIdleCallback(f, { timeout: 200 })
+      : setTimeout(f, 16)
+  const next = () => {
+    if (buildNextStride()) later(next)
+  }
+  later(next)
+}

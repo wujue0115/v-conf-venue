@@ -77,6 +77,15 @@ watch([editor, () => store.wallsCut], ([ed, on]) => ed?.setWallsCut(on), { immed
 watch([editor, () => store.showLabels], ([ed, on]) => ed?.setLabelsVisible(on), { immediate: true })
 watch([editor, () => store.shadows], ([ed, on]) => ed?.setShadows(on), { immediate: true })
 watch([editor, dark], ([ed, on]) => ed?.setDark(on), { immediate: true })
+watch(
+  [editor, () => store.walkThroughWalls, () => store.walkThroughItems],
+  ([ed, walls, items]) => ed?.setWalkThrough({ walls, items }),
+  { immediate: true },
+)
+watch([editor, () => store.walkBob], ([ed, on]) => ed?.setWalkBob(on), { immediate: true })
+watch([editor, () => store.lookSensitivity], ([ed, v]) => ed?.setLookSensitivity(v), {
+  immediate: true,
+})
 watch([editor, () => store.hiddenTypes], ([ed, types]) => ed?.setHiddenTypes(types), {
   immediate: true,
 })

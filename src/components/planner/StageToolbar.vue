@@ -11,8 +11,6 @@ import { useCameraViews } from '@/composables/useCameraViews'
 import { usePhone } from '@/composables/usePhone'
 import { useProjectStore } from '@/stores/project'
 import { useAccessStore } from '@/stores/access'
-import { usePlannerStore } from '@/stores/planner'
-import { useVenueEditor } from '@/composables/useVenueEditor'
 import { t } from '@/i18n'
 
 const project = useProjectStore()
@@ -20,8 +18,6 @@ const access = useAccessStore()
 const shareDialog = useTemplateRef('shareDialog')
 const phone = usePhone()
 const { views, active, flyTo } = useCameraViews()
-const planner = usePlannerStore()
-const editor = useVenueEditor()
 </script>
 
 <template>
@@ -44,17 +40,6 @@ const editor = useVenueEditor()
           @click="flyTo(v, i)"
         >
           {{ t().views[v.key] }}
-        </button>
-      </div>
-      <div class="grp">
-        <button
-          class="btn"
-          :class="{ on: !!planner.walk }"
-          type="button"
-          :title="t().walk.startHint"
-          @click="planner.walk ? editor?.endWalk() : editor?.walkAs(null)"
-        >
-          {{ t().walk.start }}
         </button>
       </div>
     </div>
