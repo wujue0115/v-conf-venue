@@ -22,7 +22,15 @@ const title = computed(() => {
 
 /** How far the knob may leave the stick's centre, in pixels: that far is full speed */
 const REACH = 55
+/**
+ * Pushed on up past forward, onto the 跑步 mark above the stick (this many pixels from its
+ * middle, and no more than RUN_ANGLE radians off straight up), the walk becomes a run
+ */
+const RUN_FROM = 100
+const RUN_ANGLE = 0.6
 const knob = shallowRef({ x: 0, y: 0 })
+/** The mark above the stick: hidden, showing (pushed forward, a run within reach), or running */
+const run = shallowRef<'off' | 'near' | 'on'>('off')
 let stickId: number | null = null
 let centre = { x: 0, y: 0 }
 
@@ -39,18 +47,24 @@ function stickMove(e: PointerEvent) {
   let x = e.clientX - centre.x
   let y = e.clientY - centre.y
   const d = Math.hypot(x, y)
+  // how far off straight up the finger is
+  const off = Math.abs(Math.atan2(x, -y))
+  run.value = off > RUN_ANGLE ? 'off' : d >= RUN_FROM ? 'on' : -y >= REACH * 0.7 ? 'near' : 'off'
   if (d > REACH) {
     x *= REACH / d
     y *= REACH / d
   }
   knob.value = { x, y }
   editor.value?.setWalkStick(x / REACH, -y / REACH)
+  editor.value?.setWalkRun(run.value === 'on')
 }
 function stickUp(e: PointerEvent) {
   if (e.pointerId !== stickId) return
   stickId = null
   knob.value = { x: 0, y: 0 }
+  run.value = 'off'
   editor.value?.setWalkStick(0, 0)
+  editor.value?.setWalkRun(false)
 }
 </script>
 
@@ -121,6 +135,13 @@ function stickUp(e: PointerEvent) {
       @pointercancel="stickUp"
     >
       <span class="knob" :style="{ transform: `translate(${knob.x}px, ${knob.y}px)` }"></span>
+      <!-- above the stick once it's pushed forward: slide on up onto it to run -->
+      <span v-if="run !== 'off'" class="run" :class="{ on: run === 'on' }" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="18" height="18">
+          <path d="M6 13l6-6 6 6M6 19l6-6 6 6" />
+        </svg>
+        {{ t().walk.run }}
+      </span>
     </div>
   </template>
 </template>
@@ -226,15 +247,15 @@ function stickUp(e: PointerEvent) {
 .sit.touch {
   left: auto;
   right: 22px;
-  bottom: calc(180px + env(safe-area-inset-bottom, 0px));
+  bottom: calc(140px + env(safe-area-inset-bottom, 0px));
   height: 48px;
   transform: none;
 }
-/* level with the stick's middle, for the right thumb */
+/* its bottom level with the stick's, for the right thumb */
 .jump {
   position: absolute;
   right: 30px;
-  bottom: calc(91px + env(safe-area-inset-bottom, 0px));
+  bottom: calc(52px + env(safe-area-inset-bottom, 0px));
   z-index: 3;
   display: flex;
   flex-direction: column;
@@ -311,6 +332,44 @@ function stickUp(e: PointerEvent) {
   background: var(--surface-glass);
   box-shadow: 0 4px 14px var(--shadow);
   touch-action: none;
+}
+.run {
+  position: absolute;
+  left: 50%;
+  /* clear of the knob pushed to the rim */
+  bottom: calc(100% + 22px);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 36px;
+  padding: 0 14px 0 10px;
+  border: 1.5px solid var(--control-line);
+  border-radius: 999px;
+  background: var(--surface-glass);
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  box-shadow: 0 4px 14px var(--shadow);
+  transform: translateX(-50%);
+  pointer-events: none;
+  transition:
+    background 0.12s,
+    color 0.12s,
+    transform 0.12s;
+}
+.run svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.run.on {
+  border-color: transparent;
+  background: var(--yel);
+  color: var(--on-yel);
+  transform: translateX(-50%) scale(1.08);
 }
 .knob {
   width: 60px;

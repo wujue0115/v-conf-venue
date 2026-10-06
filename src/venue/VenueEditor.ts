@@ -179,6 +179,8 @@ interface Walk {
   look: { id: number; x: number; y: number } | null
   /** The touch stick: x right, y forward, each -1 to 1 */
   stick: THREE.Vector2
+  /** The touch stick pushed on past forward: running, as Shift does */
+  run: boolean
   /** Moved since the last stop (a 人員's move is committed when they stop) */
   moving: boolean
   /** The figure a stand-in set off from, hidden meanwhile */
@@ -1191,6 +1193,7 @@ export class VenueEditor {
       back,
       look: null,
       stick: new THREE.Vector2(),
+      run: false,
       moving: false,
       hidden: null,
       ghost,
@@ -1281,6 +1284,11 @@ export class VenueEditor {
   /** The touch stick: x to the right, y forward, each from -1 to 1 (0, 0 once let go) */
   setWalkStick(x: number, y: number) {
     this.walk?.stick.set(x, y)
+  }
+
+  /** The touch stick's run: on while it's pushed on past forward (as Shift is held) */
+  setWalkRun(on: boolean) {
+    if (this.walk) this.walk.run = on
   }
 
   private reportWalk() {
@@ -1430,7 +1438,7 @@ export class VenueEditor {
     // on the ground the pace eases quickly to what's held; in the air it carries on, steered a little
     const want = lock
       ? new THREE.Vector3()
-      : move.multiplyScalar(h.has('shift') ? RUN_SPEED : WALK_SPEED)
+      : move.multiplyScalar(h.has('shift') || w.run ? RUN_SPEED : WALK_SPEED)
     const grounded = w.vy === 0
     w.vel.lerp(want, 1 - Math.exp(-dt * (grounded ? GROUND_EASE : AIR_CONTROL)))
     if (grounded && !want.lengthSq() && w.vel.lengthSq() < 0.01) w.vel.set(0, 0, 0)

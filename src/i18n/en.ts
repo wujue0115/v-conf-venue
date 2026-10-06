@@ -567,11 +567,12 @@ const en: Messages = {
     leave: 'Leave',
     hint: 'WASD or arrows to move · Shift to run · Space to jump · Move the mouse to look · V to switch view · Esc to free the mouse',
     freeHint: 'Click the view to look with the mouse · WASD to move · Space to jump · Esc to leave',
-    touchHint: 'Move with the stick · Drag to look',
+    touchHint: 'Stick to move · Push past the top to run · Drag to look',
     stick: 'Movement stick',
     sit: 'Sit down',
     stand: 'Stand up',
     jump: 'Jump',
+    run: 'Run',
   },
 
   place: {

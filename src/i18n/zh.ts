@@ -587,11 +587,13 @@ const zh = {
     hint: 'WASD 或方向鍵移動 · Shift 跑步 · 空白鍵跳躍 · 移動滑鼠轉頭 · V 切換視角 · Esc 放開滑鼠',
     /** The mouse is free again (after Esc) */
     freeHint: '點畫面用滑鼠轉頭 · WASD 移動 · 空白鍵跳躍 · Esc 離開',
-    touchHint: '用搖桿移動 · 拖曳畫面轉頭',
+    touchHint: '搖桿移動 · 推到上方跑步 · 拖曳轉頭',
     stick: '移動搖桿',
     sit: '坐下',
     stand: '站起來',
     jump: '跳躍',
+    /** Over the touch stick: slide on up onto it to run */
+    run: '跑步',
   },
 
   /** Phones: a kind picked in the palette, waiting for a tap on the stage to place it */
