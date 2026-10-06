@@ -292,6 +292,21 @@ describe('laptops', () => {
     expect([a?.open, b?.open, c?.open, d?.open]).toEqual([0, 135, 110, undefined])
   })
 
+  it('keep a TV screen within its stand, and only on TVs', () => {
+    const [a, b, c, d] = parseLayout([
+      { t: 'tvCart', x: 0, z: 0, r: 0, lift: 1.65 },
+      { t: 'tvCart', x: 0, z: 0, r: 0, lift: 5 },
+      { t: 'tvCart', x: 0, z: 0, r: 0, lift: 'high' },
+      { t: 'laptop', x: 0, z: 0, r: 0, lift: 1.5 },
+    ])
+    expect([a?.lift, b?.lift, c?.lift, d?.lift]).toEqual([1.65, 1.9, 1.4, undefined])
+  })
+
+  it('give a TV saved before its colour choice a white frame', () => {
+    const [a] = parseLayout([{ t: 'tvCart', x: 0, z: 0, r: 0, v: 's65-land' }])
+    expect(a?.v).toBe('s65-land-white')
+  })
+
   it('reach further back the wider the lid opens', () => {
     const shut = footprintOf('laptop', 's14-silver', 0)
     const upright = footprintOf('laptop', 's14-silver', 90)
@@ -404,6 +419,7 @@ describe('export', () => {
       { t: 'zone', x: 5, y: 0, z: 5, r: 0, w: 3, d: 2, color: '#9575cd', tag: 'A 區' },
       { t: 'stanchion', x: 7, y: 0, z: 7, r: 0, cut: [1.571] },
       { t: 'shapeSofa', x: 9, y: 0, z: 9, r: 0, v: 'green' },
+      { t: 'tvCart', x: 11, y: 0, z: 11, r: 0, v: 's75-port-black', lift: 1.6, img },
     ]
     expect(parseLayout(JSON.parse(exportLayout(items)))).toEqual(items)
   })

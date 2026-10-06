@@ -25,6 +25,7 @@ import {
 import { rebaseStep } from './history'
 import { drawLabels, type LabelFace, type LabelMark, type TagMark } from './imageLabels'
 import { LID_OPEN, clampLid, setLaptopOpen } from './laptop'
+import { TV_LIFT, clampLift, setTvLift } from './tv'
 import { clampPeople, cleanInfo, cleanTag, isHexColor, type LayoutItem } from './layout'
 import { MAX_STRIDE, seatedGeometry, strideGeometry, warmStrides } from './person'
 import { B, FM, YEL } from './materials'
@@ -82,6 +83,8 @@ export interface SelectionInfo {
   zone?: { w: number; d: number; color: string }
   /** Laptops: the lid's opening in degrees */
   laptop?: { open: number }
+  /** Mobile TVs: the screen's centre above the floor, metres */
+  tv?: { lift: number }
 }
 
 export interface EditorCallbacks {
@@ -2382,6 +2385,25 @@ export class VenueEditor {
     if (!live) this.commit()
   }
 
+  /**
+   * Raise or lower the selected TV's screen so its centre stands `m` metres up. While a slider
+   * is dragged (`live`) it follows with one undo step taken at the start, as the lid does.
+   */
+  setTvHeight(m: number, live = false) {
+    const s = this.selected
+    if (!s || s.userData.type !== 'tvCart') return
+    m = clampLift(m)
+    const was = (s.userData.lift as number | undefined) ?? TV_LIFT
+    if (!this.lidLive) {
+      if (m === was && !live) return
+      this.pushUndo()
+    }
+    this.lidLive = live
+    setTvLift(s, m)
+    this.updSel()
+    if (!live) this.commit()
+  }
+
   /** Re-link every belt removed at the selected stanchion. */
   restoreBelts() {
     const s = this.selected
@@ -2721,6 +2743,7 @@ export class VenueEditor {
     color,
     sit,
     open,
+    lift,
   }: LayoutItem) {
     if (!isFurnitureType(t)) return null
     const o = buildFurniture(t, v, w && h ? { w, h } : undefined)
@@ -2743,6 +2766,7 @@ export class VenueEditor {
     if (t === 'person' && (n || color || sit)) applyPeople(o, n, color, sit)
     if (t === 'zone' && w && d) applyZone(o, { w, d, color })
     if (t === 'laptop' && open !== undefined) setLaptopOpen(o, open)
+    if (t === 'tvCart' && lift !== undefined) setTvLift(o, lift)
     o.visible = !this.hidden.has(t)
     this.placed.add(o)
     return o
@@ -2782,6 +2806,7 @@ export class VenueEditor {
       ...(ud.color ? { color: ud.color as string } : {}),
       ...(ud.sit ? { sit: true } : {}),
       ...(ud.open !== undefined ? { open: ud.open as number } : {}),
+      ...(ud.lift !== undefined ? { lift: ud.lift as number } : {}),
       ...(isZone(o) ? { w: ud.w as number, d: ud.d as number } : {}),
       ...(ud.img && hasFace(o) ? { img: ud.img as string } : {}),
       ...(resizable(o)
@@ -3644,6 +3669,9 @@ export class VenueEditor {
         : {}),
       ...(s.userData.type === 'laptop'
         ? { laptop: { open: (s.userData.open as number | undefined) ?? LID_OPEN } }
+        : {}),
+      ...(s.userData.type === 'tvCart'
+        ? { tv: { lift: (s.userData.lift as number | undefined) ?? TV_LIFT } }
         : {}),
     })
   }

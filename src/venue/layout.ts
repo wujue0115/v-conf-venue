@@ -1,4 +1,5 @@
 import { clampLid } from './laptop'
+import { clampLift } from './tv'
 import { clampPosterSize, isImageDataUrl } from './poster'
 import { readJSON, writeJSON } from './storage'
 import { clampZone } from './zone'
@@ -59,6 +60,8 @@ export interface LayoutItem {
   d?: number
   /** Laptops only: lid opening in degrees, 0 (shut) to LID_MAX (absent means LID_OPEN) */
   open?: number
+  /** Mobile TVs only: the screen's centre above the floor, metres (absent means TV_LIFT) */
+  lift?: number
   /** Stanchions only: bearings (radians) of auto-linked belts the user removed at this post */
   cut?: number[]
 }
@@ -226,6 +229,7 @@ export function parseLayout(data: unknown): LayoutItem[] {
         ...(groupColor ? { groupColor } : {}),
         ...(groupInfo ? { groupInfo } : {}),
         ...(t === 'laptop' && i.open !== undefined ? { open: clampLid(i.open) } : {}),
+        ...(t === 'tvCart' && i.lift !== undefined ? { lift: clampLift(i.lift) } : {}),
         ...(t === 'zone' ? { w: clampZone(i.w, 2), d: clampZone(i.d, 2) } : {}),
       },
     ]

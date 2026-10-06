@@ -3,6 +3,7 @@ import { B, Cy, EF, FM, mat, mesh } from './materials'
 import { personGeometry, seatedGeometry } from './person'
 import { POSTER_H, POSTER_W, buildFace, buildPoster } from './poster'
 import { LAPTOP_AXES, buildLaptop, laptopFootprint } from './laptop'
+import { TV_AXES, buildTvCart } from './tv'
 import { TRAY_L, TRAY_W, buildSnack } from './snack'
 import { buildZone } from './zone'
 
@@ -510,7 +511,7 @@ export interface FurnitureVariant {
 }
 
 /** What a row of variant options is called (its words come from i18n) */
-export type VariantLabel = 'colour' | 'flavour' | 'size'
+export type VariantLabel = 'colour' | 'flavour' | 'size' | 'orientation'
 
 /** One kind of choice (size, colour…) in the selection panel; the first option is the default */
 export interface VariantAxis {
@@ -720,6 +721,14 @@ export const FURNITURE = {
     resizable: [ROLLUP_W, ROLLUP_H],
     arr: [1.1, 1],
   },
+  // hired from AV firms, not the venue: its screen can show an uploaded image
+  tvCart: {
+    size: '',
+    build: buildTvCart,
+    variantAxes: TV_AXES,
+    image: true,
+    arr: [1.4, 1.2],
+  },
 } satisfies Record<string, FurnitureDef>
 
 export type FurnitureType = keyof typeof FURNITURE
@@ -732,7 +741,15 @@ export const isFurnitureType = (t: unknown): t is FurnitureType =>
 export const priceOf = (type: FurnitureType) => (FURNITURE[type] as FurnitureDef).price ?? null
 
 /** 其他物件 by use: people and space, then signage, then what goes on tables */
-const OTHER_ORDER: FurnitureType[] = ['person', 'zone', 'poster', 'rollup', 'snack', 'laptop']
+const OTHER_ORDER: FurnitureType[] = [
+  'person',
+  'zone',
+  'poster',
+  'rollup',
+  'tvCart',
+  'snack',
+  'laptop',
+]
 const otherRank = (t: FurnitureType) => {
   const i = OTHER_ORDER.indexOf(t)
   return i < 0 ? OTHER_ORDER.length : i

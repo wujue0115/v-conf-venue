@@ -18,6 +18,7 @@ import {
   variantAxesOf,
 } from '@/venue/furniture'
 import { LID_MAX } from '@/venue/laptop'
+import { TV_LIFT_MAX, TV_LIFT_MIN } from '@/venue/tv'
 import { POSTER_PRESETS, readPosterImage, type PosterFit } from '@/venue/poster'
 import { INFO_MAX, TAG_MAX, formatNT } from '@/venue/layout'
 import { nameOf, t, variantLabel, variantName } from '@/i18n'
@@ -377,6 +378,23 @@ const generate = () =>
           >
             {{ p.name }}
           </button>
+        </div>
+      </template>
+
+      <template v-if="sel.tv">
+        <span class="lbl">{{ t().sel.tvHeight }}</span>
+        <div class="ctl lid">
+          <input
+            type="range"
+            :min="TV_LIFT_MIN"
+            :max="TV_LIFT_MAX"
+            step="0.05"
+            :value="sel.tv.lift"
+            :aria-label="t().sel.tvHeightLabel"
+            @input="editor?.setTvHeight(+($event.target as HTMLInputElement).value, true)"
+            @change="editor?.setTvHeight(+($event.target as HTMLInputElement).value)"
+          />
+          <span class="deg">{{ Math.round(sel.tv.lift * 100) }} cm</span>
         </div>
       </template>
 

@@ -268,6 +268,7 @@ const zh = {
     laptop: '筆記型電腦',
     zone: '區域',
     rollup: '易拉展',
+    tvCart: '可移動電視',
   } as Record<FurnitureType, string>,
   /** Sizes that are words rather than dimensions */
   sizes: {
@@ -276,8 +277,9 @@ const zh = {
     zone: '可調整尺寸',
     rollup: '可調整尺寸',
     laptop: '13–16 吋',
+    tvCart: '55–86 吋',
   } as Partial<Record<FurnitureType, string>>,
-  variantLabels: { colour: '顏色', flavour: '口味', size: '尺寸' },
+  variantLabels: { colour: '顏色', flavour: '口味', size: '尺寸', orientation: '方向' },
   variants: {
     stoolHigh: { grey: '灰', brown: '咖啡' },
     shapeSofa: { orange: '橘', green: '綠' },
@@ -293,6 +295,16 @@ const zh = {
       midnight: '午夜色',
       starlight: '星光色',
       sky: '天藍色',
+    },
+    tvCart: {
+      s55: '55 吋',
+      s65: '65 吋',
+      s75: '75 吋',
+      s86: '86 吋',
+      land: '橫放',
+      port: '直放',
+      white: '白色',
+      black: '黑色',
     },
   } as Partial<Record<FurnitureType, Record<string, string>>>,
   groups: { venue: '場地物件', own: '其他物件' },
@@ -398,6 +410,9 @@ const zh = {
     lidAngle: '螢幕開合角度',
     lidShut: '闔上',
     lidFull: '全開',
+    /** A mobile TV's screen, by the height of its centre */
+    tvHeight: '高度',
+    tvHeightLabel: '螢幕中心離地高度',
     size: '尺寸',
     widthHeightCm: '寬 × 高（公分）',
     widthCm: '寬 cm',
