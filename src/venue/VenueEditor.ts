@@ -330,8 +330,8 @@ const EYE_Y = 1.62
 const SEATED_EYE_Y = 0.86
 const EYE_FORWARD = 0.13
 /** Walking and running pace, metres a second */
-const WALK_SPEED = 2.1
-const RUN_SPEED = 4.8
+const WALK_SPEED = 2.52
+const RUN_SPEED = 5.76
 /** A walker's half-width: how close they come to what's in their way */
 const WALKER_RADIUS = 0.25
 /** The highest step a walker takes up without stairs */
@@ -3964,11 +3964,11 @@ export class VenueEditor {
       }
       const look = this.walk?.look
       if (look && e.pointerId === look.id) {
-        // the view is dragged round, as if taking hold of the venue
+        // the view turns the way the finger goes, as the locked mouse turns it
         const w = this.walk!
         const k = LOOK_SPEED * this.lookScale
-        w.yaw += (e.clientX - look.x) * k
-        w.pitch = THREE.MathUtils.clamp(w.pitch + (e.clientY - look.y) * k, -1.3, 1.3)
+        w.yaw -= (e.clientX - look.x) * k
+        w.pitch = THREE.MathUtils.clamp(w.pitch - (e.clientY - look.y) * k, -1.3, 1.3)
         look.x = e.clientX
         look.y = e.clientY
         return

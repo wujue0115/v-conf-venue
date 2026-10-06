@@ -21,7 +21,7 @@ const title = computed(() => {
 })
 
 /** How far the knob may leave the stick's centre, in pixels: that far is full speed */
-const REACH = 40
+const REACH = 55
 const knob = shallowRef({ x: 0, y: 0 })
 let stickId: number | null = null
 let centre = { x: 0, y: 0 }
@@ -226,7 +226,7 @@ function stickUp(e: PointerEvent) {
 .sit.touch {
   left: auto;
   right: 22px;
-  bottom: calc(160px + env(safe-area-inset-bottom, 0px));
+  bottom: calc(180px + env(safe-area-inset-bottom, 0px));
   height: 48px;
   transform: none;
 }
@@ -234,7 +234,7 @@ function stickUp(e: PointerEvent) {
 .jump {
   position: absolute;
   right: 30px;
-  bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+  bottom: calc(91px + env(safe-area-inset-bottom, 0px));
   z-index: 3;
   display: flex;
   flex-direction: column;
@@ -304,8 +304,8 @@ function stickUp(e: PointerEvent) {
   z-index: 3;
   display: grid;
   place-items: center;
-  width: 112px;
-  height: 112px;
+  width: 150px;
+  height: 150px;
   border: 1.5px solid var(--control-line);
   border-radius: 50%;
   background: var(--surface-glass);
@@ -313,8 +313,8 @@ function stickUp(e: PointerEvent) {
   touch-action: none;
 }
 .knob {
-  width: 44px;
-  height: 44px;
+  width: 60px;
+  height: 60px;
   border-radius: 50%;
   background: var(--ink);
   opacity: 0.75;
