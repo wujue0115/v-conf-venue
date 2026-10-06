@@ -740,15 +740,15 @@ export const isFurnitureType = (t: unknown): t is FurnitureType =>
 /** Rental price, or null for items that are not rented from the venue */
 export const priceOf = (type: FurnitureType) => (FURNITURE[type] as FurnitureDef).price ?? null
 
-/** 其他物件 by use: people and space, then signage, then what goes on tables */
+/** 其他物件 by use: people and space, then signage, then what goes on tables, then the mobile TV */
 const OTHER_ORDER: FurnitureType[] = [
   'person',
   'zone',
   'poster',
   'rollup',
-  'tvCart',
   'snack',
   'laptop',
+  'tvCart',
 ]
 const otherRank = (t: FurnitureType) => {
   const i = OTHER_ORDER.indexOf(t)
