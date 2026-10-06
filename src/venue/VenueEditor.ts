@@ -28,7 +28,7 @@ import { LID_OPEN, clampLid, setLaptopOpen } from './laptop'
 import { TV_LIFT, clampLift, setTvLift } from './tv'
 import { clampPeople, cleanInfo, cleanTag, isHexColor, type LayoutItem } from './layout'
 import { MAX_STRIDE, seatedGeometry, strideGeometry, warmStrides } from './person'
-import { B, FM, YEL } from './materials'
+import { B, FM, YEL, mat } from './materials'
 import {
   POSTER_MIN,
   applyPoster,
@@ -106,6 +106,26 @@ export interface EditorCallbacks {
   onArmed?: (type: FurnitureType | null) => void
   /** A walk through the venue started, changed view, or ended (null); see walkAs */
   onWalk?: (walk: WalkState | null) => void
+  /** Where this walker is, whenever that changes (null once the walk ends), for the others */
+  onWalker?: (walker: WalkerState | null) => void
+}
+
+/**
+ * Where a walker is, for the others on the project: their feet, which way their body faces,
+ * and whether they sit; `id` when they walk as a placed 人員 (it moves for everyone already)
+ */
+export interface WalkerState {
+  p: Vec3
+  r: number
+  sit: boolean
+  id?: string
+}
+
+/** Someone else walking through the venue */
+export interface RemoteWalker extends WalkerState {
+  key: string
+  name: string
+  color: string
 }
 
 /** Someone else's pointer, somewhere in the venue */
@@ -209,6 +229,8 @@ interface Walk {
   dip: number
   /** Seconds since a 人員 last turned on the spot, while that turn is still to be saved (else −1) */
   turning: number
+  /** What the others were last told of where this walker is (see reportWalker) */
+  told: string
   /** The last view sent to anyone following */
   sent: string
   name: string | null
@@ -380,7 +402,6 @@ const LOOK_SPEED = 0.005
 const MOUSE_LOOK_SPEED = 0.0022
 /** How long (ms) the 👁 stays after the mouse leaves its 人員, to be reached */
 const EYE_LINGER = 400
-let ghostMat: THREE.Material | null = null
 
 /** A member of a multiple selection being moved, from where it started */
 interface GroupMember {
@@ -575,6 +596,27 @@ export class VenueEditor {
   private eyeHide: ReturnType<typeof setTimeout> | undefined
   /** How much faster (or slower) than as it comes the view turns while walking */
   private lookScale = 1
+  /** This person's colour, for their stand-in (see setWalkerColor) */
+  private walkerColor: string | null = null
+  private readonly ghostMats = new Map<string, THREE.Material>()
+  /** The others walking (see setWalkers), by their tab */
+  private readonly walkers = new Map<
+    string,
+    {
+      body: THREE.Mesh
+      label: HTMLElement
+      /** Where they're shown, and where they last were */
+      at: THREE.Vector3
+      to: THREE.Vector3
+      turn: number
+      toTurn: number
+      sit: boolean
+      id?: string
+      phase: number
+      amp: number
+    }
+  >()
+  private readonly walkerMats = new Map<string, THREE.Material>()
   /** When the mouse was last freed from the view (its Esc mustn't end the walk too) */
   private lockLeftAt = 0
   /** Items someone else is dragging, and where to (see applyLive) */
@@ -690,6 +732,7 @@ export class VenueEditor {
     this.cancelPress()
     clearTimeout(this.eyeHide)
     this.cursorLayer?.remove()
+    for (const r of this.walkers.values()) r.label.remove()
     this.renderer.setAnimationLoop(null)
     this.resizeObserver.disconnect()
     this.cleanups.forEach((f) => f())
@@ -1055,6 +1098,20 @@ export class VenueEditor {
    * Show other people's pointers where they are in the venue, each an arrow in their colour with
    * their name; they glide there rather than jump.
    */
+  /** The layer over the stage that others' pointers and names are pinned in */
+  private ensureCursorLayer() {
+    if (this.cursorLayer) return
+    const layer = (this.cursorLayer = document.createElement('div'))
+    Object.assign(layer.style, {
+      position: 'absolute',
+      inset: '0',
+      pointerEvents: 'none',
+      overflow: 'hidden',
+      zIndex: '1',
+    })
+    this.stageEl.append(layer)
+  }
+
   setCursors(list: readonly RemoteCursor[]) {
     const keep = new Set(list.map((c) => c.key))
     for (const [k, c] of this.cursors)
@@ -1062,17 +1119,7 @@ export class VenueEditor {
         c.el.remove()
         this.cursors.delete(k)
       }
-    if (list.length && !this.cursorLayer) {
-      const layer = (this.cursorLayer = document.createElement('div'))
-      Object.assign(layer.style, {
-        position: 'absolute',
-        inset: '0',
-        pointerEvents: 'none',
-        overflow: 'hidden',
-        zIndex: '1',
-      })
-      this.stageEl.append(layer)
-    }
+    if (list.length) this.ensureCursorLayer()
     for (const c of list) {
       let e = this.cursors.get(c.key)
       if (!e) {
@@ -1175,13 +1222,7 @@ export class VenueEditor {
     if (!mine) pos.y = this.walkFloorY(pos.x, pos.z)
     let ghost: THREE.Mesh | null = null
     if (!mine) {
-      ghostMat ??= new THREE.MeshStandardMaterial({
-        color: '#5b7cfa',
-        roughness: 0.55,
-        transparent: true,
-        opacity: 0.6,
-      })
-      ghost = new THREE.Mesh(seatedGeometry(), ghostMat)
+      ghost = new THREE.Mesh(seatedGeometry(), this.ghostPaint())
       ghost.visible = false
       this.scene.add(ghost)
     }
@@ -1210,6 +1251,7 @@ export class VenueEditor {
       crouch: 0,
       dip: 0,
       turning: -1,
+      told: '',
       sent: '',
       name: at ? ((at.o.userData.tag as string | undefined) ?? '') : null,
       seat: null,
@@ -1270,6 +1312,158 @@ export class VenueEditor {
       }
     }
     this.cb.onWalk?.(null)
+    this.cb.onWalker?.(null)
+  }
+
+  /** This person's colour (as on their face online), for their own stand-in; null: the default */
+  setWalkerColor(color: string | null) {
+    this.walkerColor = color
+  }
+
+  /** A stand-in's see-through body, in this person's colour */
+  private ghostPaint() {
+    const c = this.walkerColor ?? '#5b7cfa'
+    let m = this.ghostMats.get(c)
+    if (!m) {
+      m = new THREE.MeshStandardMaterial({
+        color: c,
+        roughness: 0.55,
+        transparent: true,
+        opacity: 0.6,
+      })
+      this.ghostMats.set(c, m)
+    }
+    return m
+  }
+
+  /** Tell the others where this walker is, when that changed (to the centimetre and degree) */
+  private reportWalker(o: THREE.Object3D | null) {
+    const w = this.walk!
+    const feet = o ? o.position : w.pos
+    const s: WalkerState = {
+      p: [+feet.x.toFixed(2), +feet.y.toFixed(2), +feet.z.toFixed(2)],
+      r: +(o ? o.rotation.y : facing(w.turn)).toFixed(2),
+      sit: this.walkerSeated(w),
+      ...(w.id ? { id: w.id } : {}),
+    }
+    const key = JSON.stringify(s)
+    if (key === w.told) return
+    w.told = key
+    this.cb.onWalker?.(s)
+  }
+
+  // ---------------- Others walking ----------------
+
+  /** The others walking through the venue (owners and editors on a shared project) */
+  setWalkers(list: readonly RemoteWalker[]) {
+    const keep = new Set(list.map((r) => r.key))
+    for (const [k, r] of this.walkers)
+      if (!keep.has(k)) {
+        this.scene.remove(r.body)
+        r.label.remove()
+        this.walkers.delete(k)
+      }
+    if (list.length) {
+      this.ensureCursorLayer()
+      warmStrides()
+    }
+    for (const r of list) {
+      let e = this.walkers.get(r.key)
+      const to = new THREE.Vector3(...r.p)
+      if (!e) {
+        const body = new THREE.Mesh(strideGeometry(0), this.walkerPaint(r.color))
+        body.castShadow = true
+        this.scene.add(body)
+        const label = document.createElement('div')
+        Object.assign(label.style, {
+          position: 'absolute',
+          left: '0',
+          top: '0',
+          padding: '2px 8px',
+          borderRadius: '9px',
+          color: '#fff',
+          font: '600 11px/1.4 system-ui, sans-serif',
+          whiteSpace: 'nowrap',
+          boxShadow: '0 1px 3px rgba(0,0,0,.25)',
+          willChange: 'transform',
+        })
+        this.cursorLayer!.append(label)
+        e = {
+          body,
+          label,
+          at: to.clone(),
+          to,
+          turn: r.r,
+          toTurn: r.r,
+          sit: r.sit,
+          id: r.id,
+          phase: 0,
+          amp: 0,
+        }
+        this.walkers.set(r.key, e)
+      }
+      e.to.copy(to)
+      e.toTurn = r.r
+      e.sit = r.sit
+      e.id = r.id
+      e.body.material = this.walkerPaint(r.color)
+      e.label.style.background = r.color
+      if (e.label.textContent !== r.name) e.label.textContent = r.name
+    }
+  }
+
+  private walkerPaint(color: string) {
+    let m = this.walkerMats.get(color)
+    if (!m) {
+      m = mat(color, { roughness: 0.55, name: 'walker' })
+      this.walkerMats.set(color, m)
+    }
+    return m
+  }
+
+  /**
+   * Glide each of the others walking toward where they last were, legs swinging as they go,
+   * and pin their name over their head. One walking as a placed 人員 is that 人員 (it moves
+   * for everyone): only the name, over it.
+   */
+  private layoutWalkers(dt: number) {
+    if (!this.walkers.size) return
+    const k = 1 - Math.exp(-dt * 10)
+    const w = this.stageEl.clientWidth
+    const h = this.stageEl.clientHeight
+    for (const r of this.walkers.values()) {
+      const was = r.at.clone()
+      r.at.lerp(r.to, k)
+      const went = Math.hypot(r.at.x - was.x, r.at.z - was.z)
+      if (went < 0.5) r.phase += (went / STEP_LENGTH) * Math.PI
+      const speed = dt > 0 ? went / dt : 0
+      r.amp += ((speed > 0.3 ? 1 : 0) - r.amp) * (1 - Math.exp(-dt * 8))
+      // the shorter way round
+      r.turn += facing(r.toTurn - r.turn) * k
+      const item = r.id ? this.itemById(r.id) : null
+      r.body.visible = !item
+      let head: THREE.Vector3
+      if (item) {
+        head = item.position
+          .clone()
+          .setY(item.position.y + (item.userData.sit ? SEATED_TAG_Y : PERSON_TAG_Y) + 0.4)
+      } else {
+        r.body.geometry = r.sit
+          ? seatedGeometry()
+          : strideGeometry(MAX_STRIDE * r.amp * Math.sin(r.phase))
+        r.body.position.copy(r.at)
+        r.body.rotation.y = r.turn
+        head = r.at.clone().setY(r.at.y + (r.sit ? SEATED_TAG_Y : PERSON_TAG_Y))
+      }
+      const v = head.project(this.camera)
+      const shown = v.z < 1 && Math.abs(v.x) <= 1.1 && Math.abs(v.y) <= 1.1
+      r.label.style.display = shown ? '' : 'none'
+      if (shown) {
+        const x = ((v.x + 1) / 2) * w - r.label.offsetWidth / 2
+        const y = ((1 - v.y) / 2) * h - r.label.offsetHeight
+        r.label.style.transform = `translate(${x.toFixed(1)}px,${y.toFixed(1)}px)`
+      }
+    }
   }
 
   /** How fast the view turns while walking: 1 (slowest) to 10, 5 as it comes */
@@ -1533,6 +1727,7 @@ export class VenueEditor {
     if (`${!seated && !!w.seatNear}|${seated}` !== w.shown) this.reportWalk()
     this.poseWalker(o, dt)
     this.viewFromWalker(o)
+    this.reportWalker(o)
   }
 
   /**
@@ -1583,7 +1778,7 @@ export class VenueEditor {
       at.fig.visible = false
       w.hidden = at.fig
     }
-    if (!w.rigs.length) w.rigs.push(rig(ghostMat!))
+    if (!w.rigs.length) w.rigs.push(rig(this.ghostPaint()))
     const r = w.rigs[0]!
     r.visible = w.third && !w.seat
     r.geometry = stride
@@ -4399,6 +4594,7 @@ export class VenueEditor {
     this.updGroupFrames()
     this.renderer.render(this.scene, camera)
     this.layoutCursors(dt)
+    this.layoutWalkers(dt)
     if (this.labelsVisible) this.layoutLabels()
     this.layoutTags('item')
     this.layoutTags('zone')

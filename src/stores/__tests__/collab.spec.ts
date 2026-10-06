@@ -75,6 +75,7 @@ describe('the project’s channel', () => {
       cursor: vi.fn<ProjectChannel['cursor']>(),
       select: vi.fn<ProjectChannel['select']>(),
       camera: vi.fn<ProjectChannel['camera']>(),
+      walk: vi.fn<ProjectChannel['walk']>(),
       objects: vi.fn<ProjectChannel['objects']>(() => true),
       leave: vi.fn<ProjectChannel['leave']>(),
     }
@@ -122,6 +123,7 @@ describe('the project’s channel', () => {
       cursor: vi.fn<ProjectChannel['cursor']>(),
       select: vi.fn<ProjectChannel['select']>(),
       camera: vi.fn<ProjectChannel['camera']>(),
+      walk: vi.fn<ProjectChannel['walk']>(),
       objects: vi.fn<ProjectChannel['objects']>(() => true),
       leave: vi.fn<ProjectChannel['leave']>(),
     }
@@ -268,6 +270,8 @@ describe('the project’s channel', () => {
         setCursors: vi.fn(),
         follow: vi.fn(),
         cameraState: vi.fn(),
+        setWalkers: vi.fn(),
+        setWalkerColor: vi.fn(),
       } as never)
       api.loadItems.mockReset().mockResolvedValue([])
       api.loadUpdatedAt.mockReset().mockResolvedValue(T1)
@@ -293,7 +297,12 @@ describe('the project’s channel', () => {
       const { save } = await watching()
       save({ changed: ['A', 'B'] }, T2)
       api.loadUpdatedAt.mockResolvedValue(T2)
-      api.loadVersions.mockResolvedValue(new Map([['A', T2], ['B', T2]]))
+      api.loadVersions.mockResolvedValue(
+        new Map([
+          ['A', T2],
+          ['B', T2],
+        ]),
+      )
       await vi.advanceTimersByTimeAsync(60_000 + 200)
       expect(api.loadVersions).toHaveBeenCalledTimes(2)
       // the project unchanged since: not even the versions are read
@@ -316,6 +325,52 @@ describe('the project’s channel', () => {
       on!.peers([])
       await vi.advanceTimersByTimeAsync(5 * 60_000)
       expect(api.loadUpdatedAt).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  describe('walking through the venue', () => {
+    afterEach(() => void vi.useRealTimers())
+    const at = (x: number) => ({ p: [x, 0, 1] as [number, number, number], r: 0, sit: false })
+
+    it('sends where this tab walks a few times a second, and its stop at once', async () => {
+      vi.useFakeTimers()
+      const { collab, channel } = await joined()
+      collab.walker(at(1))
+      expect(channel.walk).not.toHaveBeenCalled()
+      collab.peers = [alice]
+      collab.walker(at(2))
+      collab.walker(at(3))
+      vi.advanceTimersByTime(150)
+      expect(channel.walk).toHaveBeenCalledTimes(1)
+      expect(channel.walk).toHaveBeenLastCalledWith(at(3))
+      collab.walker(null)
+      expect(channel.walk).toHaveBeenLastCalledWith(null)
+    })
+
+    it('shows an editor walking, in their colour with their name, but not a viewer', async () => {
+      const { collab, on } = await joined()
+      const shown: unknown[][] = []
+      collab.attach({
+        applyRemote: () => {},
+        applyLive: () => {},
+        setLocks: () => {},
+        setCursors: () => {},
+        follow: () => {},
+        cameraState: () => ({ p: [0, 0, 0], t: [0, 0, 0] }),
+        setWalkers: (w) => shown.push([...w]),
+        setWalkerColor: () => {},
+      })
+      const bob: Peer = { ...alice, key: 'k2', user: 'bob', name: 'Bob', role: 'editor' }
+      collab.peers = [alice, bob]
+      on?.walk('k1', at(1))
+      on?.walk('k2', at(2))
+      await nextTick()
+      expect(shown[shown.length - 1]).toEqual([
+        { ...at(2), key: 'k2', name: 'Bob', color: colorOf('bob') },
+      ])
+      on?.walk('k2', null)
+      await nextTick()
+      expect(shown[shown.length - 1]).toEqual([])
     })
   })
 

@@ -16,7 +16,14 @@ import { usePlannerStore } from '@/stores/planner'
 import { useProjectStore } from '@/stores/project'
 import type { LayoutItem } from '@/venue/layout'
 import type { Vec3 } from '@/venue/places'
-import type { CameraState, LiveMove, Lock, RemoteCursor } from '@/venue/VenueEditor'
+import type {
+  CameraState,
+  LiveMove,
+  Lock,
+  RemoteCursor,
+  RemoteWalker,
+  WalkerState,
+} from '@/venue/VenueEditor'
 
 /** What the editor on the stage does for the channel (VenueStage attaches it) */
 export interface EditorLink {
@@ -27,6 +34,9 @@ export interface EditorLink {
   /** Glide after someone's view (null: stop) */
   follow(cam: CameraState | null): void
   cameraState(): CameraState
+  setWalkers(walkers: readonly RemoteWalker[]): void
+  /** This person's colour, for their own stand-in when they walk (null: signed out) */
+  setWalkerColor(color: string | null): void
 }
 
 /**
@@ -38,6 +48,8 @@ const MOVE_EVERY = 200
 const POINTER_STEP = 0.05
 /** How often this tab's view goes out while someone follows it */
 const CAMERA_EVERY = 250
+/** How often where this tab is walking goes out (the others glide between) */
+const WALK_EVERY = 150
 /** A burst of selection changes (box-selecting, clicking along) goes out as one */
 const SELECT_DELAY = 100
 /** Changed ids are gathered this long before fetching them, so a burst is one fetch */
@@ -148,6 +160,8 @@ export const useCollabStore = defineStore('collab', () => {
     editor = link
     link.setLocks(locks.value)
     link.setCursors(cursors.value)
+    link.setWalkers(walkers.value)
+    link.setWalkerColor(myColor.value)
   }
   function detach(link: EditorLink) {
     if (editor === link) editor = null
@@ -177,6 +191,10 @@ export const useCollabStore = defineStore('collab', () => {
     clearInterval(checkTimer)
     checkTimer = undefined
     points.value = new Map()
+    walking.value = new Map()
+    clearTimeout(walkTimer)
+    walkTimer = undefined
+    walkSent = null
     selections.value = new Map()
     following.value = null
     editor?.follow(null)
@@ -194,6 +212,7 @@ export const useCollabStore = defineStore('collab', () => {
     const keep = <V>(m: ReadonlyMap<string, V>) =>
       [...m.keys()].every((k) => here.has(k)) ? m : new Map([...m].filter(([k]) => here.has(k)))
     points.value = keep(points.value)
+    walking.value = keep(walking.value)
     selections.value = keep(selections.value)
     // someone new: they don't know what this tab has selected yet
     if (next.some((p) => !before.has(p.key))) {
@@ -204,6 +223,8 @@ export const useCollabStore = defineStore('collab', () => {
       if (!baselined) void check()
       // and where this tab's pointer is, at its next move
       pointerSent = null
+      // and where it's walking, if it is
+      if (walkNow) walkSoon()
     }
   }
 
@@ -334,6 +355,62 @@ export const useCollabStore = defineStore('collab', () => {
     pointerHeld = null
     pointerSent = p
     channel.cursor(p)
+  }
+
+  // ─── Walking through the venue ─────────────────────────────────────────────
+
+  /** Where each tab walking through the venue is */
+  const walking = shallowRef<ReadonlyMap<string, WalkerState>>(new Map())
+  /** Theirs, shown in their colour with their name; only people who can edit share it */
+  const walkers = computed(() => {
+    const out: RemoteWalker[] = []
+    for (const p of peers.value) {
+      const w = walking.value.get(p.key)
+      if (w && (p.role === 'owner' || p.role === 'editor'))
+        out.push({ ...w, key: p.key, name: p.name || t().collab.someone, color: colorOf(p.user) })
+    }
+    return out
+  })
+  watch(walkers, (w) => editor?.setWalkers(w))
+  const myColor = computed(() => (auth.user ? colorOf(auth.user.id) : null))
+  watch(myColor, (c) => editor?.setWalkerColor(c))
+
+  function onWalk(k: string, w: WalkerState | null) {
+    const next = new Map(walking.value)
+    if (w) next.set(k, w)
+    else next.delete(k)
+    walking.value = next
+  }
+  /** Where this tab is walking now (null: not), and what of it went out last */
+  let walkNow: WalkerState | null = null
+  let walkSent: WalkerState | null = null
+  let walkTimer: ReturnType<typeof setTimeout> | undefined
+  function sendWalk() {
+    walkTimer = undefined
+    if (!channel || !project.canEdit || !others.value) return
+    if (walkNow === walkSent) return
+    walkSent = walkNow
+    channel.walk(walkNow)
+  }
+  function walkSoon() {
+    walkSent = null
+    walkTimer ??= setTimeout(sendWalk, WALK_EVERY)
+  }
+  /**
+   * Where this tab is walking (the editor reports each change; null once it stops). Like the
+   * pointer, only people who can edit share it, and only with someone else there to see it.
+   */
+  function walker(w: WalkerState | null) {
+    walkNow = w
+    if (!channel || !project.canEdit || !auth.user || !others.value) return
+    // stopping goes out at once; moving, a few times a second
+    if (!w) {
+      clearTimeout(walkTimer)
+      walkTimer = undefined
+      sendWalk()
+      return
+    }
+    walkTimer ??= setTimeout(sendWalk, WALK_EVERY)
   }
 
   // ─── Drags, sent a few times a second ──────────────────────────────────────
@@ -588,6 +665,7 @@ export const useCollabStore = defineStore('collab', () => {
           cursor: onCursor,
           select: onSelect,
           camera: onCamera,
+          walk: onWalk,
           objects: onObjects,
           project: () => void project.refreshMeta(),
           access: onAccess,
@@ -634,6 +712,7 @@ export const useCollabStore = defineStore('collab', () => {
     move,
     pointer,
     camera,
+    walker,
     follow,
     followEnded,
   }

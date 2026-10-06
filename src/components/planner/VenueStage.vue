@@ -43,6 +43,7 @@ onMounted(() => {
     onPointer: (p) => collab.pointer(p),
     onArmed: (type) => (store.armed = type),
     onWalk: (w) => (store.walk = w),
+    onWalker: (w) => collab.walker(w),
   })
   store.fixedSeats = ed.fixedSeats
   ed.load(store.items)
@@ -55,6 +56,8 @@ onMounted(() => {
     setCursors: (c) => ed.setCursors(c),
     follow: (cam) => ed.follow(cam),
     cameraState: () => ed.cameraState(),
+    setWalkers: (w) => ed.setWalkers(w),
+    setWalkerColor: (c) => ed.setWalkerColor(c),
   }
   collab.attach(link)
 })

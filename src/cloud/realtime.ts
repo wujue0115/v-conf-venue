@@ -2,7 +2,7 @@ import type { RealtimeChannel } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
 import type { Role } from './projects'
 import type { Vec3 } from '@/venue/places'
-import type { CameraState, LiveMove } from '@/venue/VenueEditor'
+import type { CameraState, LiveMove, WalkerState } from '@/venue/VenueEditor'
 
 /*
  * A project's realtime channel, `project:<id>` (private: row level security on
@@ -12,7 +12,8 @@ import type { CameraState, LiveMove } from '@/venue/VenueEditor'
  *   changes goes here, and updates are held back to stay under that (PRESENCE_BUDGET);
  * - broadcast, from people who can edit: 'move' (items being dragged, with the pointer dragging
  *   them), 'cursor' (their pointer), 'select' (what they have selected, which locks it for the
- *   others), 'camera' (their view, while someone follows them), 'objects' (ids they saved or
+ *   others), 'camera' (their view, while someone follows them), 'walk' (where they are while
+ *   walking through the venue, shown as a figure in their colour), 'objects' (ids they saved or
  *   deleted: only the ids, as rows can hold large poster images);
  * - from the database: 'project' (name, settings or sharing), 'access' (someone's access),
  *   'deleted' (the project).
@@ -44,6 +45,8 @@ export interface ChannelEvents {
   cursor: (key: string, point: Vec3 | null) => void
   select: (key: string, sel: Selection) => void
   camera: (key: string, cam: CameraState) => void
+  /** A tab walking through the venue; null once it stopped */
+  walk: (key: string, walker: WalkerState | null) => void
   objects: (change: ObjectsChange) => void
   project: () => void
   access: () => void
@@ -68,6 +71,7 @@ export interface ProjectChannel {
   cursor(point: Vec3 | null): void
   select(sel: Selection): void
   camera(cam: CameraState): void
+  walk(walker: WalkerState | null): void
   /** Whether it went out (not while the connection is down) */
   objects(change: ObjectsChange): boolean
   leave(): void
@@ -177,6 +181,10 @@ export function joinProject(
       const { k, c } = payload as { k: string; c: CameraState }
       on.camera(k, c)
     })
+    .on('broadcast', { event: 'walk' }, ({ payload }) => {
+      const { k, w } = payload as { k: string; w: WalkerState | null }
+      on.walk(k, w)
+    })
     .on('broadcast', { event: 'objects' }, ({ payload }) => on.objects(payload as ObjectsChange))
     .on('broadcast', { event: 'project' }, () => on.project())
     .on('broadcast', { event: 'access' }, () => on.access())
@@ -213,6 +221,7 @@ export function joinProject(
     cursor: (p) => void send('cursor', { k: key, p }),
     select: (s) => void send('select', { k: key, s }),
     camera: (c) => void send('camera', { k: key, c }),
+    walk: (w) => void send('walk', { k: key, w }),
     objects: (c) => send('objects', c),
     leave() {
       left = true
