@@ -5,8 +5,9 @@ import { POSTER_H, POSTER_W, buildFace, buildPoster } from './poster'
 import { LAPTOP_AXES, buildLaptop, laptopFootprint } from './laptop'
 import { TV_AXES, buildTvCart } from './tv'
 import { OUTLET_AXES, buildFloorOutlet, buildOutlet } from './outlet'
+import { buildPathNode, setPathNodeColor } from './path'
 import { TRAY_L, TRAY_W, buildSnack } from './snack'
-import { buildZone } from './zone'
+import { applyZone, buildZone } from './zone'
 
 /**
  * Builds a piece into `g`; `v` is the colour variant id when the type has variants, `size` the
@@ -715,6 +716,12 @@ export const FURNITURE = {
     build: buildZone,
     arr: [2.25, 2.25],
   },
+  // a point of a 動線, linked to others in the selection panel
+  pathNode: {
+    size: '',
+    build: buildPathNode,
+    arr: [1.5, 1.5],
+  },
   rollup: {
     size: '',
     build: rollup,
@@ -755,12 +762,13 @@ export const isFurnitureType = (t: unknown): t is FurnitureType =>
 export const priceOf = (type: FurnitureType) => (FURNITURE[type] as FurnitureDef).price ?? null
 
 /**
- * 其他物件 by use: people and space, then signage, then what goes on tables, then the mobile TV,
+ * 其他物件 by use: people, space and the paths they walk, then signage, then what goes on tables, then the mobile TV,
  * then the outlets
  */
 const OTHER_ORDER: FurnitureType[] = [
   'person',
   'zone',
+  'pathNode',
   'poster',
   'rollup',
   'snack',
@@ -847,38 +855,57 @@ export function buildFurniture(type: FurnitureType, v?: string, size?: { w: numb
   return g
 }
 
+/** What thumbnails are rendered with: made the first time one is wanted, then kept */
+let studio: {
+  r: THREE.WebGLRenderer
+  scene: THREE.Scene
+  cam: THREE.PerspectiveCamera
+} | null = null
+const VIEW = new THREE.Vector3(0.75, 0.6, 1.1).normalize()
+
+/** A small isometric preview of `o`, framed to fit, as a data URL */
+function shoot(o: THREE.Object3D) {
+  if (!studio) {
+    const r = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true })
+    r.setSize(240, 180)
+    r.setPixelRatio(1)
+    const scene = new THREE.Scene()
+    scene.add(new THREE.HemisphereLight('#fff', '#cfc6b3', 2))
+    const dl = new THREE.DirectionalLight('#fff', 1.6)
+    dl.position.set(-2, 4, 3)
+    scene.add(dl)
+    studio = { r, scene, cam: new THREE.PerspectiveCamera(28, 4 / 3, 0.01, 100) }
+  }
+  const { r, scene, cam } = studio
+  scene.add(o)
+  const bb = new THREE.Box3().setFromObject(o)
+  const c = bb.getCenter(new THREE.Vector3())
+  const rad = bb.getSize(new THREE.Vector3()).length() / 2
+  cam.position
+    .copy(c)
+    .add(VIEW.clone().multiplyScalar((rad / Math.sin(THREE.MathUtils.degToRad(14))) * 0.9))
+  cam.lookAt(c)
+  r.render(scene, cam)
+  scene.remove(o)
+  return r.domElement.toDataURL()
+}
+
 /** Render a small isometric preview of every furniture type and colour, keyed by {@link thumbKey}. */
 export function renderThumbnails(): Record<string, string> {
   const out: Record<string, string> = {}
-  const tr = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true })
-  tr.setSize(240, 180)
-  tr.setPixelRatio(1)
-  const ts = new THREE.Scene()
-  ts.add(new THREE.HemisphereLight('#fff', '#cfc6b3', 2))
-  const dl = new THREE.DirectionalLight('#fff', 1.6)
-  dl.position.set(-2, 4, 3)
-  ts.add(dl)
-  const tc = new THREE.PerspectiveCamera(28, 4 / 3, 0.01, 100)
-  const dir = new THREE.Vector3(0.75, 0.6, 1.1).normalize()
   const shots = FURNITURE_TYPES.flatMap((type): [FurnitureType, string | undefined][] => {
     const vs = variantsOf(type)
     return vs.length ? vs.map((v) => [type, v.id]) : [[type, undefined]]
   })
-  for (const [type, v] of shots) {
-    const o = buildFurniture(type, v)
-    ts.add(o)
-    const bb = new THREE.Box3().setFromObject(o)
-    const c = bb.getCenter(new THREE.Vector3())
-    const r = bb.getSize(new THREE.Vector3()).length() / 2
-    tc.position
-      .copy(c)
-      .add(dir.clone().multiplyScalar((r / Math.sin(THREE.MathUtils.degToRad(14))) * 0.9))
-    tc.lookAt(c)
-    tr.render(ts, tc)
-    out[thumbKey(type, v)] = tr.domElement.toDataURL()
-    ts.remove(o)
-  }
-  tr.dispose()
-  tr.forceContextLoss()
+  for (const [type, v] of shots) out[thumbKey(type, v)] = shoot(buildFurniture(type, v))
   return out
+}
+
+/** A preview of a kind in a colour of its own: people's, a zone's or a 動線點's */
+export function renderPaintedThumbnail(type: FurnitureType, v: string | undefined, color: string) {
+  const o = buildFurniture(type, v)
+  if (type === 'person') applyPeople(o, 1, color)
+  else if (type === 'zone') applyZone(o, { w: 2, d: 2, color })
+  else if (type === 'pathNode') setPathNodeColor(o, color)
+  return shoot(o)
 }

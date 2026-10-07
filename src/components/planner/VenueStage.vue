@@ -42,6 +42,7 @@ onMounted(() => {
     onFollowEnd: () => collab.followEnded(),
     onPointer: (p) => collab.pointer(p),
     onArmed: (type) => (store.armed = type),
+    onPathDraw: (on) => (store.pathDrawing = on),
     onWalk: (w) => (store.walk = w),
     onWalker: (w) => collab.walker(w),
   })
@@ -67,6 +68,7 @@ onBeforeUnmount(() => {
   editor.value?.dispose()
   editor.value = null
   store.armed = null
+  store.pathDrawing = false
   store.walk = null
 })
 

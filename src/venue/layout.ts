@@ -64,6 +64,13 @@ export interface LayoutItem {
   lift?: number
   /** Stanchions only: bearings (radians) of auto-linked belts the user removed at this post */
   cut?: number[]
+  /** 動線點 only: the ids of the points linked from this one (see path.ts) */
+  links?: string[]
+  /**
+   * 動線點 only: those of its `links` whose 人員 walk along them on their own (the rest are
+   * dragged by hand). `true`, as saved before links had one each, means all of them.
+   */
+  auto?: string[]
 }
 
 /** 0 = 自助搬運 (self-carry), 1 = 含搬運 (with carrying service) */
@@ -173,6 +180,9 @@ const LEGACY: Record<string, { t: FurnitureType; v: string }> = {
 export const isUuid = (s: unknown): s is string =>
   typeof s === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s)
 
+/** The most links one 動線點 keeps */
+const MAX_LINKS = 32
+
 export function parseLayout(data: unknown): LayoutItem[] {
   const list = Array.isArray(data) ? data : (data as { items?: unknown } | null)?.items
   if (!Array.isArray(list)) throw new Error('Invalid layout')
@@ -195,9 +205,24 @@ export function parseLayout(data: unknown): LayoutItem[] {
     const sit = t === 'person' && i.sit === true
     const n = t === 'person' && !sit ? clampPeople(i.n) : 1
     const coloured = t === 'person' || t === 'zone'
-    const color = coloured && isHexColor(i.color) ? i.color.toLowerCase() : ''
+    // a 動線點's colour is its path's; its tag has its own
+    const color = (coloured || t === 'pathNode') && isHexColor(i.color) ? i.color.toLowerCase() : ''
     const tagColor = !coloured && tag && isHexColor(i.tagColor) ? i.tagColor.toLowerCase() : ''
     const id = isUuid(i.id) && !ids.has(i.id.toLowerCase()) ? i.id.toLowerCase() : ''
+    const links =
+      t === 'pathNode' && Array.isArray(i.links)
+        ? [...new Set((i.links as unknown[]).filter(isUuid).map((l) => l.toLowerCase()))]
+            .filter((l) => l !== id)
+            .slice(0, MAX_LINKS)
+        : []
+    const auto =
+      i.auto === true
+        ? links
+        : Array.isArray(i.auto)
+          ? links.filter((l) =>
+              (i.auto as unknown[]).some((a) => isUuid(a) && a.toLowerCase() === l),
+            )
+          : []
     if (id) ids.add(id)
     return [
       {
@@ -231,6 +256,8 @@ export function parseLayout(data: unknown): LayoutItem[] {
         ...(t === 'laptop' && i.open !== undefined ? { open: clampLid(i.open) } : {}),
         ...(t === 'tvCart' && i.lift !== undefined ? { lift: clampLift(i.lift) } : {}),
         ...(t === 'zone' ? { w: clampZone(i.w, 2), d: clampZone(i.d, 2) } : {}),
+        ...(links.length ? { links } : {}),
+        ...(auto.length ? { auto } : {}),
       },
     ]
   })

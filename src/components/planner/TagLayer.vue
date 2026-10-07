@@ -193,6 +193,67 @@ onBeforeUnmount(() => KINDS.forEach((k) => editor.value?.setTagLayer(k, null)))
   outline: 2px solid var(--yel, #edb32a);
   outline-offset: 2px;
 }
+/* over a red belt or a 動線's link (the mouse on it, or a tap): the link's 自動 / 手動, and
+   remove it */
+.tags :deep(.tlinkbar) {
+  pointer-events: auto;
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px;
+  border: 1.5px solid var(--control-line);
+  border-radius: 16px;
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 2px 8px var(--shadow);
+  will-change: transform;
+}
+.tags :deep(.tlinkbar[hidden]),
+.tags :deep(.tlinkbar .modes[hidden]) {
+  display: none;
+}
+.tags :deep(.tlinkbar .modes) {
+  display: flex;
+  gap: 2px;
+}
+.tags :deep(.tlinkbar button) {
+  height: 24px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 12px;
+  background: none;
+  color: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.tags :deep(.tlinkbar .modes button.on) {
+  background: var(--yel);
+  color: var(--on-yel);
+}
+.tags :deep(.tlinkbar .cut) {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  padding: 0;
+}
+.tags :deep(.tlinkbar .cut svg) {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.tags :deep(.tlinkbar button:not(.on):hover) {
+  background: var(--hover);
+}
+.tags :deep(.tlinkbar button:focus-visible) {
+  outline: 2px solid var(--yel, #edb32a);
+  outline-offset: 1px;
+}
 /* the note opens above the row, centred on the ⓘ (the editor sets its left) */
 .tags :deep(.tbox) {
   pointer-events: auto;

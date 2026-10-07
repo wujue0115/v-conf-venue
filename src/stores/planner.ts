@@ -50,6 +50,8 @@ export const usePlannerStore = defineStore('planner', () => {
   const selection = shallowRef<SelectionInfo | null>(null)
   /** The kind the next tap on the stage places (phones pick it in the palette), if any */
   const armed = shallowRef<FurnitureType | null>(null)
+  /** Drawing a 動線, one 動線點 after another (reported by the editor) */
+  const pathDrawing = shallowRef(false)
   const fixedSeats = shallowRef(0)
   /** Walking through the venue (reported by the editor), or null */
   const walk = shallowRef<WalkState | null>(null)
@@ -185,6 +187,7 @@ export const usePlannerStore = defineStore('planner', () => {
     items,
     selection,
     armed,
+    pathDrawing,
     fixedSeats,
     walk,
     lookSensitivity,

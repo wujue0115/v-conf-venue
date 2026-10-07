@@ -3,10 +3,14 @@ import { acceptHMRUpdate, defineStore } from 'pinia'
 import { PERSON_COLOR, TAG_COLOR } from '@/venue/furniture'
 import { isHexColor } from '@/venue/layout'
 import { readJSON, writeJSON } from '@/venue/storage'
+import { PATH_COLOR } from '@/venue/path'
 import { ZONE_COLOR } from '@/venue/zone'
 
-/** The quick-pick colour rows: people's colour, zones' colour, and tags' (items' and groups') */
-export type PaletteKind = 'person' | 'zone' | 'tag'
+/**
+ * The quick-pick colour rows: people's colour, zones' colour, tags' (items' and groups') and
+ * 動線' colour
+ */
+export type PaletteKind = 'person' | 'zone' | 'tag' | 'path'
 
 /**
  * Where each row starts. People get a light skin tone and soft tints so figures don't
@@ -16,6 +20,7 @@ export const DEFAULT_PALETTES: Record<PaletteKind, readonly string[]> = {
   person: [PERSON_COLOR, '#42b883', '#8fb3d9', '#f2cf73', '#ec9a93', '#8a8f99'],
   zone: [ZONE_COLOR, '#4a90d9', '#edb32a', '#e57373', '#9575cd', '#8a8f99'],
   tag: [TAG_COLOR, '#42b883', '#4a90d9', '#edb32a', '#e57373', '#9575cd'],
+  path: [PATH_COLOR, '#4a90d9', '#edb32a', '#e57373', '#9575cd', '#8a8f99'],
 }
 
 const KEY = 'vueconf26-palettes'
@@ -30,7 +35,7 @@ export function cleanPalette(list: unknown, fallback: readonly string[]): string
   return out.length ? out : [...fallback]
 }
 
-const KINDS: readonly PaletteKind[] = ['person', 'zone', 'tag']
+const KINDS: readonly PaletteKind[] = ['person', 'zone', 'tag', 'path']
 
 /** The colour rows in an exported layout file (`palettes`), each kept only if usable */
 export function readPalettes(file: unknown): Partial<Record<PaletteKind, string[]>> {
@@ -55,6 +60,7 @@ export const usePalettesStore = defineStore('palettes', () => {
     person: cleanPalette(saved?.person, DEFAULT_PALETTES.person),
     zone: cleanPalette(saved?.zone, DEFAULT_PALETTES.zone),
     tag: cleanPalette(saved?.tag, DEFAULT_PALETTES.tag),
+    path: cleanPalette(saved?.path, DEFAULT_PALETTES.path),
   })
   watch(palettes, (v) => writeJSON(KEY, v))
 

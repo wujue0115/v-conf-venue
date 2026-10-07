@@ -27,7 +27,7 @@ import { drawLabels, type LabelFace, type LabelMark, type TagMark } from './imag
 import { LID_OPEN, clampLid, setLaptopOpen } from './laptop'
 import { TV_LIFT, clampLift, setTvLift } from './tv'
 import { clampPeople, cleanInfo, cleanTag, isHexColor, type LayoutItem } from './layout'
-import { MAX_STRIDE, seatedGeometry, strideGeometry, warmStrides } from './person'
+import { MAX_STRIDE, personGeometry, seatedGeometry, strideGeometry, warmStrides } from './person'
 import { B, FM, YEL, mat } from './materials'
 import {
   POSTER_MIN,
@@ -38,6 +38,23 @@ import {
   setFaceImage,
   type PosterFit,
 } from './poster'
+import {
+  disposeLink,
+  ghostNode,
+  linkKey,
+  linkMesh,
+  linkerArrow,
+  nearestOnPath,
+  paintGhostNode,
+  paintLinker,
+  pathColorOf,
+  pathGraph,
+  pathRing,
+  ringMat,
+  setPathNodeColor,
+  stepArrows,
+  type PathGraph,
+} from './path'
 import type { CameraView, Vec3 } from './places'
 import { bearing, linkPosts, withoutCutToward, type Post } from './stanchions'
 import { ZONE_COLOR, ZONE_MIN, applyZone, clampZone, onZoneGrid } from './zone'
@@ -85,6 +102,16 @@ export interface SelectionInfo {
   laptop?: { open: number }
   /** Mobile TVs: the screen's centre above the floor, metres */
   tv?: { lift: number }
+  /**
+   * 動線點: whether the 人員 on the links from it walk along them on their own (or are dragged
+   * by hand), how many links it has, and the path's colour
+   */
+  path?: {
+    /** How the links from it go: undefined when there are none */
+    mode?: 'auto' | 'manual' | 'mixed'
+    links: number
+    color: string
+  }
 }
 
 export interface EditorCallbacks {
@@ -104,6 +131,8 @@ export interface EditorCallbacks {
   onPointer?: (point: Vec3 | null) => void
   /** The kind the next tap on the stage places changed (null: none armed); see armPlace */
   onArmed?: (type: FurnitureType | null) => void
+  /** Drawing a 動線 (see startLinking) started or ended */
+  onPathDraw?: (drawing: boolean) => void
   /** A walk through the venue started, changed view, or ended (null); see walkAs */
   onWalk?: (walk: WalkState | null) => void
   /** Where this walker is, whenever that changes (null once the walk ends), for the others */
@@ -181,6 +210,25 @@ interface Blockers {
 interface Seat {
   p: THREE.Vector3
   turn: number
+}
+
+/** A 人員 walking along a path on their own: the link they're on, from which point to which */
+interface PathWalk {
+  from: string
+  to: string
+  /** Their stride, as for a walk through the venue (see poseWalker) */
+  phase: number
+  amp: number
+  /** At the end of the path, where they stop */
+  done: boolean
+}
+
+/** Where a 人員 walking along a path set off from: what is saved, while they walk */
+interface PathHome {
+  x: number
+  y: number
+  z: number
+  r: number
 }
 
 interface Walk {
@@ -304,6 +352,27 @@ const BELT_GEO = B(1, 0.05, 0.006)
 const X_AXIS = new THREE.Vector3(1, 0, 0)
 
 const isPost = (o: THREE.Object3D) => o.userData.type === 'stanchion'
+const isPathNode = (o: THREE.Object3D) => o.userData.type === 'pathNode'
+/** A 人員 this near (m) a 動線's link is on it */
+const PATH_ON = 0.4
+/** Dragged along a path by hand, a 人員 leaves it once the pointer is this far (m) off it */
+const PATH_LEAVE = 1.2
+/** How fast (m/s) 人員 walk along a path on their own */
+const PATH_SPEED = 0.6
+/** Items this near (m) a selected 動線點 are kept clear of by its arrow, with no mouse to point it */
+const LINKER_ROOM = 1.5
+/** How far (m) round a 人員 others keep, walking along a path: one figure, or a crowd */
+const bodyOf = (o: THREE.Object3D) => (((o.userData.n as number | undefined) ?? 1) > 1 ? 0.7 : 0.28)
+/** Set (or clear) the links from a 動線點 to these points walking on their own */
+function setAuto(o: THREE.Object3D, to: readonly string[], on: boolean) {
+  const now = new Set((o.userData.auto as string[] | undefined) ?? [])
+  for (const id of to) {
+    if (on) now.add(id)
+    else now.delete(id)
+  }
+  if (now.size) o.userData.auto = [...now]
+  else delete o.userData.auto
+}
 const isPerson = (o: THREE.Object3D) => o.userData.type === 'person'
 const isZone = (o: THREE.Object3D) => o.userData.type === 'zone'
 /** Whether dark text reads better than white on this #rrggbb colour (WCAG relative luminance) */
@@ -447,6 +516,41 @@ export class VenueEditor {
   private readonly placed = new THREE.Group()
   /** Belts between stanchions, rebuilt from their positions (not part of the layout) */
   private readonly belts = new THREE.Group()
+  /** 動線 links between 動線點, rebuilt from the points (see updatePaths) */
+  private readonly paths = new THREE.Group()
+  /** The 動線 as they were at the last change, and their points by id */
+  private graph: PathGraph = pathGraph([])
+  private pathPoints = new Map<string, THREE.Object3D>()
+  /** 人員 walking along a path on their own */
+  private readonly pathWalks = new Map<THREE.Object3D, PathWalk>()
+  /** Drawing a 動線: the 動線點 it goes on from (see startLinking) */
+  private linking: THREE.Object3D | null = null
+  /** While drawing: a see-through 動線點 under the pointer, and the link to it */
+  private ghost: THREE.Object3D | null = null
+  private ghostLink: THREE.Object3D | null = null
+  /** Where the right button went down, to tell a click (ending a drawing) from a pan */
+  private rightDown: { x: number; y: number } | null = null
+  /**
+   * The 移除連接 button over a link: for the one under the mouse (it lingers a moment after,
+   * to be reached), or the one tapped; the link named by its two points' ids
+   */
+  private unlinkBtn: HTMLElement | null = null
+  /** The arrow on the floor by the selected 動線點, dragged to another to link them */
+  private readonly linker = linkerArrow()
+  /** Where it points: at the pointer on the floor, else the way it last did */
+  private aim: THREE.Vector3 | null = null
+  private linkerDir: THREE.Vector3 | null = null
+  /** The pointer is on it (or dragging it): it shows solid */
+  private linkerHot = false
+  /** The emptiest way out from the selected 動線點, worked out as things last were */
+  private emptiest: { key: string; dir: THREE.Vector3 } | null = null
+  /** How many changes have been committed: what was worked out from the layout is kept till then */
+  private changes = 0
+  private linkHover: string | null = null
+  private linkHide: ReturnType<typeof setTimeout> | undefined
+  /** A ring on the floor round each 人員 standing on a path */
+  private readonly marks = new THREE.Group()
+  private readonly markOf = new Map<THREE.Object3D, THREE.Mesh>()
   /** Kinds of item hidden from view (see setHiddenTypes) */
   private hidden = new Set<FurnitureType>()
   /** Corner handles for resizing the selected poster */
@@ -546,6 +650,8 @@ export class VenueEditor {
     moved: boolean
     /** people sitting on a dragged seat, carried along with it */
     riders?: Rider[]
+    /** A 人員 on a path dragged by hand: the path they're dragged along */
+    path?: string
     /** Dragging a multiple selection: every member (but posters) from where it started */
     group?: GroupMember[]
     /**
@@ -680,7 +786,7 @@ export class VenueEditor {
 
     this.archi = buildArchitecture(scene)
     this.fixedSeats = this.archi.fixedSeats
-    scene.add(this.placed, this.belts, this.handles)
+    scene.add(this.placed, this.belts, this.paths, this.marks, this.linker, this.handles)
     this.archi.wallsG.traverse((o) => {
       if ((o as THREE.Mesh).isMesh) this.wallMeshes.push(o as THREE.Mesh)
     })
@@ -730,6 +836,7 @@ export class VenueEditor {
   dispose() {
     this.cancelPress()
     clearTimeout(this.eyeHide)
+    clearTimeout(this.linkHide)
     this.cursorLayer?.remove()
     for (const r of this.walkers.values()) r.label.remove()
     this.renderer.setAnimationLoop(null)
@@ -830,6 +937,7 @@ export class VenueEditor {
     if (!this.glides.size) return
     const k = 1 - Math.exp(-dt * 14)
     let posts = false
+    let points = false
     for (const [o, g] of this.glides) {
       // replaced by their save (or anything else) since, or taken up here
       if (!o.parent || o === this.drag?.o || o === this.resizing?.o) {
@@ -847,8 +955,10 @@ export class VenueEditor {
         o.rotation.y += dr * k
       }
       if (isPost(o)) posts = true
+      if (isPathNode(o)) points = true
     }
     if (posts) this.updateBelts()
+    if (points) this.drawLinks()
   }
 
   /**
@@ -941,6 +1051,9 @@ export class VenueEditor {
       this.eyeBtn?.remove()
       this.eyeBtn = el && this.eyeButton()
       if (this.eyeBtn) el!.append(this.eyeBtn)
+      this.unlinkBtn?.remove()
+      this.unlinkBtn = el && this.unlinkButton()
+      if (this.unlinkBtn) el!.append(this.unlinkBtn)
     }
   }
 
@@ -1081,6 +1194,7 @@ export class VenueEditor {
     for (const o of this.placed.children)
       if (o !== this.placing?.obj) o.visible = !this.hidden.has(o.userData.type as FurnitureType)
     this.belts.visible = !this.hidden.has('stanchion')
+    this.paths.visible = !this.hidden.has('pathNode')
     if (this.selection.some((o) => !o.visible))
       this.setSelection(this.selection.filter((o) => o.visible))
   }
@@ -1218,6 +1332,8 @@ export class VenueEditor {
       yaw = Math.atan2(d.x, d.z)
     }
     const mine = !!at && this.editable && !this.lockOf(at.o)
+    // walked as, they stop walking along a path, there and then
+    if (mine) this.leavePath(at.o)
     // a stand-in stands, even where the one it stands in for sat
     if (!mine) pos.y = this.walkFloorY(pos.x, pos.z)
     let ghost: THREE.Mesh | null = null
@@ -2418,6 +2534,8 @@ export class VenueEditor {
     }
     this.pushUndo()
     const copies: THREE.Object3D[] = []
+    /** The copy of each 動線點 copied, by the original's id */
+    const pointCopies = new Map<string, THREE.Object3D>()
     let skipped = 0
     // floor things first, so table-top copies find the copied tables under them
     for (const o of [...all.filter((o) => !onTable(o)), ...all.filter(onTable)]) {
@@ -2446,6 +2564,18 @@ export class VenueEditor {
       // a seated copy takes the copied seat under it (or stands up if there is none)
       this.settle(c)
       copies.push(c)
+      if (isPathNode(c)) pointCopies.set(item.id!, c)
+    }
+    // links between copied 動線點 are copied too, between the copies
+    for (const [id, c] of pointCopies) {
+      const links = ((this.itemById(id)?.userData.links as string[] | undefined) ?? []).flatMap(
+        (l) => pointCopies.get(l)?.userData.id ?? [],
+      ) as string[]
+      if (links.length) c.userData.links = links
+      const auto = ((this.itemById(id)?.userData.auto as string[] | undefined) ?? []).flatMap(
+        (l) => pointCopies.get(l)?.userData.id ?? [],
+      ) as string[]
+      if (auto.length) c.userData.auto = auto
     }
     this.setSelection(copies)
     this.commit()
@@ -2681,6 +2811,8 @@ export class VenueEditor {
     this.armPlace(null)
     this.select(o)
     this.commit()
+    // a 動線點 put down starts a 動線: each tap after puts the next one down
+    if (isPathNode(o)) this.startLinking()
   }
 
   /** A finger came down on an item it hasn't selected: see `press` */
@@ -2751,6 +2883,7 @@ export class VenueEditor {
         dz: o.position.z - p.z,
         moved: false,
         riders: this.ridersOf(o),
+        path: this.handPath(o),
       }
     }
     this.controls.enabled = false
@@ -2824,6 +2957,7 @@ export class VenueEditor {
         this.placed.add(pl.obj)
         this.select(pl.obj)
         this.commit()
+        if (isPathNode(pl.obj)) this.startLinking()
       } else {
         if (pl.obj) this.placed.remove(pl.obj)
         if (onTableOnly(type)) {
@@ -2865,6 +2999,7 @@ export class VenueEditor {
           this.select(o)
           this.commit()
           this.cb.onToast(t().toast.atCentre(nameOf(type)))
+          if (o && isPathNode(o)) this.startLinking()
         }
       }
     }
@@ -2949,6 +3084,8 @@ export class VenueEditor {
     sit,
     open,
     lift,
+    links,
+    auto,
   }: LayoutItem) {
     if (!isFurnitureType(t)) return null
     const o = buildFurniture(t, v, w && h ? { w, h } : undefined)
@@ -2972,6 +3109,10 @@ export class VenueEditor {
     if (t === 'zone' && w && d) applyZone(o, { w, d, color })
     if (t === 'laptop' && open !== undefined) setLaptopOpen(o, open)
     if (t === 'tvCart' && lift !== undefined) setTvLift(o, lift)
+    // a copy (passed without an id) is linked to nothing
+    if (t === 'pathNode' && id && links?.length) o.userData.links = [...links]
+    if (t === 'pathNode' && id && auto?.length) o.userData.auto = [...auto]
+    if (t === 'pathNode' && color) setPathNodeColor(o, color)
     o.visible = !this.hidden.has(t)
     this.placed.add(o)
     return o
@@ -2990,13 +3131,21 @@ export class VenueEditor {
     // add(): they get their id the first time they're written out, and keep it from then on
     ud.id ??= crypto.randomUUID()
     const cut = ud.cut as number[] | undefined
+    // walking along a path on their own, a 人員 is saved where they set off from
+    const home = (ud.pathHome as PathHome | undefined) ?? {
+      x: o.position.x,
+      y: o.position.y,
+      z: o.position.z,
+      r: o.rotation.y,
+    }
+    const links = ud.links as string[] | undefined
     return {
       id: ud.id as string,
       t: ud.type as FurnitureType,
-      x: +o.position.x.toFixed(3),
-      y: +o.position.y.toFixed(3),
-      z: +o.position.z.toFixed(3),
-      r: +o.rotation.y.toFixed(4),
+      x: +home.x.toFixed(3),
+      y: +home.y.toFixed(3),
+      z: +home.z.toFixed(3),
+      r: +home.r.toFixed(4),
       ...(ud.variant ? { v: ud.variant as string } : {}),
       ...(cut?.length ? { cut: cut.map((c) => +c.toFixed(3)) } : {}),
       ...(ud.tag ? { tag: ud.tag as string } : {}),
@@ -3012,6 +3161,10 @@ export class VenueEditor {
       ...(ud.sit ? { sit: true } : {}),
       ...(ud.open !== undefined ? { open: ud.open as number } : {}),
       ...(ud.lift !== undefined ? { lift: ud.lift as number } : {}),
+      ...(links?.length ? { links: [...links] } : {}),
+      ...(links?.length && (ud.auto as string[] | undefined)?.length
+        ? { auto: (ud.auto as string[]).filter((a) => links.includes(a)) }
+        : {}),
       ...(isZone(o) ? { w: ud.w as number, d: ud.d as number } : {}),
       ...(ud.img && hasFace(o) ? { img: ud.img as string } : {}),
       ...(resizable(o)
@@ -3427,7 +3580,9 @@ export class VenueEditor {
   }
 
   private commit() {
+    this.changes++
     this.updateBelts()
+    this.updatePaths()
     if (this.locks.size) this.syncLockBoxes()
     this.cb.onChange(this.serialize())
   }
@@ -3446,6 +3601,8 @@ export class VenueEditor {
       m.scale.x = d.length()
       m.quaternion.setFromUnitVectors(X_AXIS, d.normalize())
       m.userData.ends = [posts[i], posts[j]]
+      // which belt it is, for its 移除連接 button: belts are drawn afresh every change
+      m.userData.key = `belt:${(posts[i]!.userData.id ??= crypto.randomUUID())}|${(posts[j]!.userData.id ??= crypto.randomUUID())}`
       this.belts.add(m)
     }
   }
@@ -3467,6 +3624,677 @@ export class VenueEditor {
     this.commit()
     this.updSel()
     this.cb.onToast(t().toast.beltCut)
+  }
+
+  // ---------------- 動線 ----------------
+
+  /** Redraw the 動線 from their points, and set the 人員 on them walking (or stop them) */
+  private updatePaths() {
+    const points = this.placed.children.filter(isPathNode)
+    this.pathPoints = new Map(points.map((o) => [(o.userData.id ??= crypto.randomUUID()), o]))
+    this.graph = pathGraph(
+      points.map((o) => ({
+        id: o.userData.id as string,
+        links: o.userData.links as string[] | undefined,
+        auto: o.userData.auto as string[] | undefined,
+      })),
+    )
+    this.drawLinks()
+    // stopped (their link set to be dragged by hand, or gone): they stay where they got to
+    for (const [o, w] of this.pathWalks) if (!this.stillWalking(o, w)) this.leavePath(o)
+    for (const o of this.placed.children)
+      if (isPerson(o) && !this.pathWalks.has(o)) this.startPathWalk(o)
+  }
+
+  /** Lay a strip along the floor for each link, from where its points now are */
+  private drawLinks() {
+    for (const m of this.paths.children) disposeLink(m)
+    this.paths.clear()
+    for (const [ia, ib] of this.graph.links) {
+      const a = this.pathPoints.get(ia)!
+      const b = this.pathPoints.get(ib)!
+      const m = linkMesh(a.position, b.position, pathColorOf(a), {
+        creeping: this.graph.auto.has(linkKey(ia, ib)),
+      })
+      if (!m) continue
+      m.userData.ends = [a, b]
+      m.userData.key = linkKey(ia, ib)
+      this.paths.add(m)
+    }
+  }
+
+  private pickLink(e: PointerEvent) {
+    if (!this.paths.visible) return null
+    this.setRay(e)
+    return this.ray.intersectObjects(this.paths.children, false)[0]?.object ?? null
+  }
+
+  /** Take a link out of its 動線, from whichever of its points keeps it */
+  private unlink(link: THREE.Object3D) {
+    const [a, b] = link.userData.ends as [THREE.Object3D, THREE.Object3D]
+    this.pushUndo()
+    for (const [p, q] of [
+      [a, b],
+      [b, a],
+    ] as const) {
+      const links = ((p.userData.links as string[] | undefined) ?? []).filter(
+        (l) => l !== q.userData.id,
+      )
+      if (links.length) p.userData.links = links
+      else delete p.userData.links
+      setAuto(p, [q.userData.id as string], false)
+    }
+    this.commit()
+    this.updSel()
+    this.cb.onToast(t().path.unlinked)
+  }
+
+  /**
+   * Draw a 動線 on from the selected 動線點 (or stop drawing): each tap on the floor puts the
+   * next 動線點 down there, linked from the last, and a tap on a 動線點 links to it; drawing goes
+   * on from the one put down or linked to. Esc, a right click, 完成, or selecting anything
+   * else ends it.
+   */
+  startLinking() {
+    const s = this.selected
+    if (!s || this.group.size || !isPathNode(s)) return
+    if (this.linking) return this.stopLinking()
+    this.setLinking(s)
+    this.updSel()
+  }
+
+  stopLinking() {
+    if (!this.linking) return
+    this.setLinking(null)
+    this.updSel()
+  }
+
+  private setLinking(o: THREE.Object3D | null) {
+    if (o === this.linking) return
+    this.linking = o
+    if (!o) this.hideGhost()
+    this.cb.onPathDraw?.(!!o)
+  }
+
+  /** Go on drawing from `o`, now selected */
+  private drawOnFrom(o: THREE.Object3D) {
+    // set first, so selecting it doesn't end the drawing
+    this.linking = o
+    this.select(o)
+  }
+
+  /** Drawing: link the last 動線點 to `b`, and draw on from `b` */
+  private linkTo(b: THREE.Object3D) {
+    const a = this.linking!
+    if (b === a) return
+    this.hideGhost()
+    this.join(a, b)
+    // someone else has it selected: it can't be drawn on from here
+    if (this.lockOf(b)) return this.stopLinking()
+    this.drawOnFrom(b)
+  }
+
+  /** Link 動線點 `a` on to `b` (one undo step), unless they are already */
+  private join(a: THREE.Object3D, b: THREE.Object3D) {
+    const ia = a.userData.id as string
+    const ib = (b.userData.id ??= crypto.randomUUID()) as string
+    if (this.graph.adj.get(ia)?.has(ib)) this.cb.onToast(t().path.already)
+    else {
+      this.pushUndo()
+      // the path joined on takes on this one's colour
+      const color = pathColorOf(a)
+      const joined = this.graph.path.get(ib)
+      for (const [id, p] of this.graph.path)
+        if (p === joined) setPathNodeColor(this.pathPoints.get(id)!, color)
+      const walks = this.walksOn(a)
+      a.userData.links = [...((a.userData.links as string[] | undefined) ?? []), ib]
+      setAuto(a, [ib], walks)
+      this.commit()
+    }
+  }
+
+  /** Drawing: put the next 動線點 down where the tap was, linked from the last */
+  private drawNext(e: PointerEvent) {
+    const o = this.addNext(this.linking!, e)
+    if (o) this.drawOnFrom(o)
+  }
+
+  /** Put a 動線點 down on the floor under the pointer, linked on from `a` (one undo step) */
+  private addNext(a: THREE.Object3D, e: PointerEvent) {
+    const p = this.floorHit(e)
+    if (!p) return null
+    this.hideGhost()
+    this.pushUndo()
+    const color = pathColorOf(a)
+    const o = this.add({ t: 'pathNode', x: this.sn(p.x), z: this.sn(p.z), r: 0, color })!
+    const walks = this.walksOn(a)
+    a.userData.links = [...((a.userData.links as string[] | undefined) ?? []), o.userData.id]
+    setAuto(a, [o.userData.id as string], walks)
+    this.commit()
+    return o
+  }
+
+  /** Drawing: the next 動線點 see-through under the pointer (or the 動線點 it would link to) */
+  private drawGhost(e: PointerEvent) {
+    this.ghostFrom(this.linking!, e, true)
+  }
+
+  /**
+   * A see-through link from `a` to the 動線點 under the pointer, or else to the floor there
+   * (with a see-through 動線點 at its end, when one would be put down: `node`)
+   */
+  private ghostFrom(a: THREE.Object3D, e: PointerEvent, node: boolean) {
+    this.hideGhost()
+    const o = this.pickObj(e)
+    const to = o && isPathNode(o) && o !== a ? o : null
+    const p = to ? to.position.clone() : this.floorHit(e)
+    if (!p) return
+    const color = pathColorOf(a)
+    if (!to && node) {
+      p.set(this.sn(p.x), 0, this.sn(p.z)).setY(this.floorY(p.x, p.z))
+      this.ghost ??= ghostNode()
+      paintGhostNode(this.ghost, color)
+      this.ghost.position.copy(p)
+      this.ghost.visible = true
+      this.scene.add(this.ghost)
+    }
+    this.ghostLink = linkMesh(a.position, p, color, { ghost: true })
+    if (this.ghostLink) this.scene.add(this.ghostLink)
+  }
+
+  private hideGhost() {
+    if (this.ghost) this.ghost.visible = false
+    if (!this.ghostLink) return
+    this.scene.remove(this.ghostLink)
+    disposeLink(this.ghostLink)
+    this.ghostLink = null
+  }
+
+  /** The mouse moved: over a link its 移除連接 shows; away from it (and the button), it goes soon after */
+  private hoverLink(e: PointerEvent) {
+    const l = !this.linking && e.target === this.canvas ? this.pickJoin(e) : null
+    if (l || this.unlinkBtn?.contains(e.target as Node)) {
+      clearTimeout(this.linkHide)
+      this.linkHide = undefined
+      if (l) this.linkHover = l.userData.key as string
+      return
+    }
+    if (this.linkHover && this.linkHide === undefined)
+      this.linkHide = setTimeout(() => {
+        this.linkHide = undefined
+        this.linkHover = null
+      }, EYE_LINGER)
+  }
+
+  /** A red belt between stanchions, or else a 動線's link, under the pointer (edit mode only) */
+  private pickJoin(e: PointerEvent) {
+    if (!this.editable) return null
+    return this.pickBelt(e) ?? this.pickLink(e)
+  }
+
+  /** The belt or link whose 移除連接 is up, while it can be removed */
+  private unlinkTarget() {
+    if (!this.linkHover || !this.editable || this.linking || this.walk || this.drag) return null
+    const belt = this.linkHover.startsWith('belt:')
+    const g = belt ? this.belts : this.paths
+    if (!g.visible) return null
+    return g.children.find((m) => m.userData.key === this.linkHover) ?? null
+  }
+
+  /**
+   * The bar over a belt or link: for a 動線's link, 自動 / 手動 (its own, the links on keep
+   * theirs); and 移除連接
+   */
+  private unlinkButton() {
+    const bar = document.createElement('div')
+    bar.className = 'tlinkbar'
+    bar.hidden = true
+    bar.dataset.stageUi = ''
+    bar.innerHTML =
+      '<span class="modes" role="radiogroup"><button type="button" role="radio" data-mode="auto"></button><button type="button" role="radio" data-mode="manual"></button></span>' +
+      // a chain link broken in two
+      '<button type="button" class="cut"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M9.5 6.5 11 5a4 4 0 0 1 5.66 5.66L15 12.3M8.9 11.7 7.3 13.3A4 4 0 0 0 13 19l1.5-1.5M4 4l16 16"/></svg></button>'
+    bar.addEventListener('click', (e) => {
+      const b = (e.target as Element).closest('button')
+      const l = this.unlinkTarget()
+      if (!b || !l) return
+      const [p, q] = l.userData.ends as THREE.Object3D[]
+      const lock = this.lockOf(p!) ?? this.lockOf(q!)
+      if (lock) return this.cb.onToast(t().collab.locked(lock.name))
+      if (b.dataset.mode) return this.setLinkAuto(l, b.dataset.mode === 'auto')
+      this.linkHover = null
+      if (l.parent === this.belts) this.cutBelt(l)
+      else this.unlink(l)
+    })
+    return bar
+  }
+
+  /** Pin the bar just above its belt's or link's middle, showing how the link goes */
+  private layoutUnlink() {
+    const bar = this.unlinkBtn
+    if (!bar) return
+    const l = this.unlinkTarget()
+    const v = l && this.v.copy(l.position).project(this.camera)
+    if (!v || v.z > 1 || Math.abs(v.x) > 1.05 || Math.abs(v.y) > 1.05) {
+      bar.hidden = true
+      return
+    }
+    bar.hidden = false
+    const modes = bar.firstElementChild as HTMLElement
+    const link = l.parent === this.paths
+    modes.hidden = !link
+    const T = t().path
+    // follows the language (and the link's mode), which can change while it's up
+    const auto = link && this.graph.auto.has(l.userData.key as string)
+    for (const b of modes.children as HTMLCollectionOf<HTMLButtonElement>) {
+      const on = (b.dataset.mode === 'auto') === auto
+      const label = b.dataset.mode === 'auto' ? T.auto : T.manual
+      if (b.textContent !== label) {
+        b.textContent = label
+        b.title = b.dataset.mode === 'auto' ? T.autoTitle : T.manualTitle
+      }
+      if (b.classList.contains('on') !== on) {
+        b.classList.toggle('on', on)
+        b.setAttribute('aria-checked', String(on))
+      }
+    }
+    modes.setAttribute('aria-label', T.mode)
+    const cut = bar.lastElementChild as HTMLButtonElement
+    if (cut.title !== T.unlink) {
+      cut.title = T.unlink
+      cut.setAttribute('aria-label', T.unlink)
+    }
+    const x = ((v.x + 1) / 2) * this.stageEl.clientWidth - bar.offsetWidth / 2
+    const y = ((1 - v.y) / 2) * this.stageEl.clientHeight - bar.offsetHeight - 14
+    bar.style.transform = `translate(${x.toFixed(1)}px,${y.toFixed(1)}px)`
+  }
+
+  /** The 動線點 the arrow is by: the one selected, alone, while it can be linked from here */
+  private linkerFor() {
+    const s = this.selected
+    if (!s || this.group.size || !isPathNode(s) || !s.visible || !this.editable) return null
+    if (this.linking || this.walk || this.drag || this.lockOf(s)) return null
+    return s
+  }
+
+  private pickLinker(e: PointerEvent) {
+    if (!this.linker.visible) return false
+    this.setRay(e)
+    return this.ray.intersectObject(this.linker, true).length > 0
+  }
+
+  /**
+   * The arrow was taken. Dragged, a link goes from the selected 動線點 to where it's let go: to
+   * the 動線點 there, or else to a new one put down there (then selected, to go on from).
+   * Tapped, it starts drawing the path on from it (see startLinking).
+   */
+  private startConnect(e: PointerEvent) {
+    const a = this.selected!
+    this.controls.enabled = false
+    this.linkerHot = true
+    let moved = false
+    const move = (ev: PointerEvent) => {
+      if (ev.pointerId !== e.pointerId) return
+      moved ||= Math.hypot(ev.clientX - e.clientX, ev.clientY - e.clientY) > HOLD_SLOP
+      this.aimAt(ev)
+      if (moved && this.overCanvas(ev)) this.ghostFrom(a, ev, true)
+      else this.hideGhost()
+    }
+    const end = (ev: PointerEvent) => {
+      if (ev.pointerId !== e.pointerId) return
+      removeEventListener('pointermove', move)
+      removeEventListener('pointerup', end)
+      removeEventListener('pointercancel', end)
+      this.hideGhost()
+      this.controls.enabled = true
+      this.linkerHot = this.pickLinker(ev)
+      // a finger let go: back to the emptiest way
+      if (ev.pointerType !== 'mouse') this.aim = null
+      if (ev.type !== 'pointerup' || a.parent !== this.placed || this.selected !== a) return
+      if (!moved) return this.startLinking()
+      if (!this.overCanvas(ev)) return
+      const o = this.pickObj(ev)
+      if (o && isPathNode(o)) {
+        if (o !== a) this.join(a, o)
+        this.updSel()
+        return
+      }
+      const b = this.addNext(a, ev)
+      if (b) this.select(b)
+    }
+    addEventListener('pointermove', move)
+    addEventListener('pointerup', end)
+    addEventListener('pointercancel', end)
+  }
+
+  /** Where on the floor the pointer is, for the arrow by the selected 動線點 to point at */
+  private aimAt(e: PointerEvent) {
+    if (!this.linkerFor() || (e.target !== this.canvas && !this.overCanvas(e))) return
+    const p = this.floorHit(e)
+    if (p) (this.aim ??= new THREE.Vector3()).copy(p)
+  }
+
+  /**
+   * The emptiest way out from 動線點 `s` along the floor, for the arrow where there's no mouse
+   * to point it: the way furthest round from its links and from the items near it (else right
+   * on screen, which also settles a tie)
+   */
+  private emptiestFrom(s: THREE.Object3D) {
+    const { x, z } = s.position
+    const away: number[] = []
+    for (const id of this.graph.adj.get(s.userData.id as string) ?? []) {
+      const q = this.pathPoints.get(id)!.position
+      away.push(Math.atan2(q.z - z, q.x - x))
+    }
+    for (const o of this.placed.children) {
+      if (o === s || !o.visible || isZone(o) || onWall(o)) continue
+      const dx = o.position.x - x
+      const dz = o.position.z - z
+      if (dx * dx + dz * dz < LINKER_ROOM * LINKER_ROOM) away.push(Math.atan2(dz, dx))
+    }
+    const right = new THREE.Vector3(1, 0, 0).applyQuaternion(this.camera.quaternion)
+    const prefer = Math.atan2(right.z, right.x)
+    const gap = (a: number, b: number) => Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)))
+    let best = prefer
+    let room = away.length ? -1 : Infinity
+    for (let i = 0; i < 24 && away.length; i++) {
+      const a = prefer + (i * Math.PI) / 12
+      const r = Math.min(...away.map((b) => gap(a, b)))
+      // a little further round only for clearly more room, so it stays put when much the same
+      if (r > room + 0.05 || (r > room - 0.05 && gap(a, prefer) < gap(best, prefer))) {
+        if (r > room) room = r
+        best = a
+      }
+    }
+    return new THREE.Vector3(Math.cos(best), 0, Math.sin(best))
+  }
+
+  /**
+   * Lay the arrow on the floor by the selected 動線點, pointing at the mouse (with the mouse on
+   * the point itself, the way it last did); with no mouse (a finger, till it drags the arrow),
+   * the emptiest way out
+   */
+  private layoutLinker() {
+    const s = this.linkerFor()
+    this.linker.visible = !!s
+    if (!s) return
+    const dir = this.v.set(0, 0, 0)
+    if (this.aim) {
+      dir.set(this.aim.x - s.position.x, 0, this.aim.z - s.position.z)
+      if (dir.lengthSq() < 0.3 * 0.3 && this.linkerDir) dir.copy(this.linkerDir)
+    } else {
+      // worked out again only once the point, or anything, has changed
+      const key = `${s.userData.id as string}|${this.changes}`
+      if (this.emptiest?.key !== key) this.emptiest = { key, dir: this.emptiestFrom(s) }
+      dir.copy(this.emptiest.dir)
+    }
+    if (dir.lengthSq() < 1e-6) dir.set(1, 0, 0)
+    dir.normalize()
+    ;(this.linkerDir ??= new THREE.Vector3()).copy(dir)
+    this.linker.rotation.y = Math.atan2(-dir.z, dir.x)
+    this.linker.position.copy(s.position).addScaledVector(dir, 0.2)
+    this.linker.position.y += 0.016
+    paintLinker(this.linker, pathColorOf(s), this.linkerHot)
+  }
+
+  /** Paint the selected 動線點's whole path `color` */
+  setPathColor(color: string) {
+    const s = this.selected
+    if (!s || !isPathNode(s) || !isHexColor(color)) return
+    const c = color.toLowerCase()
+    const path = this.graph.path.get(s.userData.id as string)
+    if (path === undefined) return
+    const points = [...this.graph.path].flatMap(([id, p]) =>
+      p === path ? [this.pathPoints.get(id)!] : [],
+    )
+    if (points.every((o) => pathColorOf(o) === c)) return
+    this.pushUndo()
+    for (const o of points) setPathNodeColor(o, c)
+    this.commit()
+    this.updSel()
+  }
+
+  /** Keep a ring, in the path's colour, on the floor round each 人員 standing on a path */
+  private updateMarks() {
+    const on = new Map<THREE.Object3D, string>()
+    if (this.graph.links.length)
+      for (const o of this.placed.children) {
+        if (!isPerson(o) || !o.visible) continue
+        const at = this.pathUnder(o)
+        if (at) on.set(o, pathColorOf(this.pathPoints.get(at.a)!))
+      }
+    for (const [o, m] of this.markOf)
+      if (!on.has(o)) {
+        this.marks.remove(m)
+        this.markOf.delete(o)
+      }
+    for (const [o, color] of on) {
+      let m = this.markOf.get(o)
+      if (!m) {
+        m = pathRing()
+        this.marks.add(m)
+        this.markOf.set(o, m)
+      }
+      m.material = ringMat(color)
+      m.position.set(o.position.x, o.position.y + 0.012, o.position.z)
+      // round a crowd, not just the middle of it
+      m.scale.setScalar(((o.userData.n as number | undefined) ?? 1) > 1 ? 2.4 : 1)
+    }
+  }
+
+  /**
+   * Whether the 人員 on the links from the selected 動線點 walk along them on their own, or are
+   * dragged by hand (the links on from the next 動線點 stay as they are)
+   */
+  setPathAuto(on: boolean) {
+    const s = this.selected
+    if (!s || !isPathNode(s)) return
+    const id = s.userData.id as string
+    const out = this.graph.out.get(id) ?? []
+    if (out.every((b) => this.graph.auto.has(linkKey(id, b)) === on)) return
+    this.pushUndo()
+    setAuto(s, out, on)
+    this.commit()
+    this.updSel()
+  }
+
+  /** Whether the 人員 on one link walk along it on their own, or are dragged by hand */
+  private setLinkAuto(link: THREE.Object3D, on: boolean) {
+    const [a, b] = link.userData.ends as [THREE.Object3D, THREE.Object3D]
+    const key = link.userData.key as string
+    if (this.graph.auto.has(key) === on) return
+    this.pushUndo()
+    setAuto(a, [b.userData.id as string], on)
+    this.commit()
+    this.updSel()
+  }
+
+  /** How the links from a 動線點 go: undefined when there are none */
+  private modeOf(o: THREE.Object3D) {
+    const id = o.userData.id as string
+    const out = this.graph.out.get(id) ?? []
+    if (!out.length) return undefined
+    const n = out.filter((b) => this.graph.auto.has(linkKey(id, b))).length
+    return n === out.length ? 'auto' : n ? 'mixed' : 'manual'
+  }
+
+  /** Whether a link drawn on from `a` walks: as the links from it do, else as those into it */
+  private walksOn(a: THREE.Object3D) {
+    const id = a.userData.id as string
+    const out = this.graph.out.get(id) ?? []
+    if (out.length) return out.some((b) => this.graph.auto.has(linkKey(id, b)))
+    return [...(this.graph.adj.get(id) ?? [])].some((p) => this.graph.auto.has(linkKey(p, id)))
+  }
+
+  /** The links on from a 動線點 whose 人員 walk on their own */
+  private onward(id: string) {
+    return (this.graph.out.get(id) ?? []).filter((b) => this.graph.auto.has(linkKey(id, b)))
+  }
+
+  private pointAt = (id: string) => this.pathPoints.get(id)!.position
+
+  /** Whether `o` is being dragged here, alone or with others */
+  private dragging(o: THREE.Object3D) {
+    const d = this.drag
+    return !!d && (d.o === o || !!d.group?.some((m) => m.o === o))
+  }
+
+  /** The link nearest a 人員 standing (not sitting) on one, if any */
+  private pathUnder(o: THREE.Object3D) {
+    if (o.userData.sit) return null
+    const on = nearestOnPath(this.graph, this.pointAt, o.position.x, o.position.z)
+    return on && on.off <= PATH_ON ? on : null
+  }
+
+  /** The path `o` stands on, when the link under them is one dragged along by hand */
+  private handPath(o: THREE.Object3D) {
+    if (!isPerson(o)) return undefined
+    const on = this.pathUnder(o)
+    return on && !this.graph.auto.has(linkKey(on.a, on.b)) ? this.graph.path.get(on.a) : undefined
+  }
+
+  /**
+   * Drag `o` along the links of its path dragged by hand to the spot nearest (x, z), facing the
+   * way it goes; false when that is too far off them, to be dragged off
+   */
+  private alongPath(o: THREE.Object3D, x: number, z: number, path: string) {
+    const g = this.graph
+    const on = nearestOnPath(
+      g,
+      this.pointAt,
+      x,
+      z,
+      (a, b) => g.path.get(a) === path && !g.auto.has(linkKey(a, b)),
+    )
+    if (!on || Math.hypot(x - on.x, z - on.z) > PATH_LEAVE) return false
+    const [dx, dz] = [on.x - o.position.x, on.z - o.position.z]
+    if (Math.hypot(dx, dz) > 0.01) o.rotation.y = Math.atan2(dx, dz)
+    o.position.set(on.x, this.floorY(on.x, on.z), on.z)
+    return true
+  }
+
+  /** A 人員 put down near a path steps onto it */
+  private ontoPath(o: THREE.Object3D) {
+    if (!isPerson(o)) return
+    const on = this.pathUnder(o)
+    if (on) o.position.set(on.x, this.floorY(on.x, on.z), on.z)
+  }
+
+  /** Set a 人員 on a self-walking path off along it, the way its arrows go */
+  private startPathWalk(o: THREE.Object3D) {
+    if (this.walk?.id === o.userData.id || this.dragging(o)) return
+    const on = this.pathUnder(o)
+    if (!on || !this.graph.auto.has(linkKey(on.a, on.b))) return
+    const [from, to] = [on.a, on.b]
+    const p = o.position
+    o.userData.pathHome = { x: p.x, y: p.y, z: p.z, r: o.rotation.y } satisfies PathHome
+    p.set(on.x, this.floorY(on.x, on.z), on.z)
+    this.pathWalks.set(o, { from, to, phase: 0, amp: 0, done: false })
+    warmStrides()
+  }
+
+  /** Whether a 人員 walking along a path still is: still placed, standing, and the link still walks */
+  private stillWalking(o: THREE.Object3D, w: PathWalk) {
+    return (
+      o.parent === this.placed &&
+      !o.userData.sit &&
+      this.walk?.id !== o.userData.id &&
+      this.graph.auto.has(linkKey(w.from, w.to))
+    )
+  }
+
+  /** Stop `o` walking along its path, where they got to: that is now where they're saved */
+  private leavePath(o: THREE.Object3D) {
+    if (!this.pathWalks.delete(o)) return
+    delete o.userData.pathHome
+    if (!o.userData.sit) for (const f of o.children) (f as THREE.Mesh).geometry = personGeometry()
+  }
+
+  /**
+   * Walk the 人員 on self-walking links on along them, the way the arrows go, turning to the
+   * way they go: at a fork they take any self-walking way on; where there is none (the end of
+   * the path, or links on dragged by hand) they stop, till one is set to walk. Nobody walks
+   * through anyone: they wait behind whoever is in the way.
+   */
+  private stepPaths(dt: number) {
+    if (!this.pathWalks.size) return
+    const people = this.placed.children.filter((o) => isPerson(o) && o.visible && !o.userData.sit)
+    for (const [o, w] of this.pathWalks) {
+      // stopped where no link on walked: on again, once one does
+      if (w.done) {
+        const on = this.onward(w.to)
+        if (on.length) {
+          w.done = false
+          w.from = w.to
+          w.to = on[Math.floor(Math.random() * on.length)]!
+        } else if (!w.amp) continue
+      }
+      // held here, or moved by someone else dragging them
+      if (this.dragging(o) || this.glides.has(o)) continue
+      const p = o.position
+      let q = this.pathPoints.get(w.to)?.position
+      if (!q) continue
+      let left = Math.hypot(q.x - p.x, q.z - p.z)
+      let go = w.done ? 0 : Math.min(PATH_SPEED * dt, this.roomAhead(o, people, q))
+      const went = go
+      while (!w.done && go > 0 && go >= left) {
+        p.x = q.x
+        p.z = q.z
+        go -= left
+        const on = this.onward(w.to)
+        if (!on.length) {
+          w.done = true
+          break
+        }
+        w.from = w.to
+        w.to = on[Math.floor(Math.random() * on.length)]!
+        q = this.pathPoints.get(w.to)!.position
+        left = Math.hypot(q.x - p.x, q.z - p.z)
+      }
+      if (!w.done && left > 0) {
+        const want = Math.atan2(q.x - p.x, q.z - p.z)
+        p.x += ((q.x - p.x) / left) * go
+        p.z += ((q.z - p.z) / left) * go
+        const dr = Math.atan2(Math.sin(want - o.rotation.y), Math.cos(want - o.rotation.y))
+        o.rotation.y += dr * (1 - Math.exp(-dt * 8))
+      }
+      p.y = this.floorY(p.x, p.z)
+      // their legs swing as they go, and come together once they stop or wait
+      const moving = went > 1e-4
+      w.phase += (went / STEP_LENGTH) * Math.PI
+      w.amp += ((moving ? 1 : 0) - w.amp) * (1 - Math.exp(-dt * 10))
+      if (!moving && w.amp < 0.02) w.amp = 0
+      const body = w.amp ? strideGeometry(MAX_STRIDE * w.amp * Math.sin(w.phase)) : personGeometry()
+      for (const f of o.children) (f as THREE.Mesh).geometry = body
+    }
+  }
+
+  /**
+   * How far `o` may walk on towards `to` before bumping into someone in the way (standing,
+   * waiting or walking). Two right on top of each other: the one with the lower id waits.
+   */
+  private roomAhead(o: THREE.Object3D, people: readonly THREE.Object3D[], to: THREE.Vector3) {
+    const p = o.position
+    let dx = to.x - p.x
+    let dz = to.z - p.z
+    const len = Math.hypot(dx, dz)
+    if (len < 1e-6) return Infinity
+    dx /= len
+    dz /= len
+    const me = bodyOf(o)
+    const id = o.userData.id as string
+    let room = Infinity
+    for (const b of people) {
+      if (b === o) continue
+      const rx = b.position.x - p.x
+      const rz = b.position.z - p.z
+      const along = rx * dx + rz * dz
+      const reach = me + bodyOf(b)
+      if (Math.abs(rx * dz - rz * dx) >= reach * 0.8) continue
+      if (along < -0.05 || (along <= 0.05 && id > (b.userData.id as string))) continue
+      room = Math.min(room, Math.max(0, along - reach))
+    }
+    return room
   }
 
   /** Pin other people's pointers on screen, gliding towards where they last were */
@@ -3594,6 +4422,8 @@ export class VenueEditor {
 
   private select(o: THREE.Object3D | null) {
     this.lidLive = false
+    // a 動線 is drawn on from the 動線點 selected: anything else selected ends that
+    if (o !== this.linking) this.setLinking(null)
     this.group.clear()
     this.syncGroupBoxes()
     this.selected = o
@@ -3668,6 +4498,7 @@ export class VenueEditor {
       } else if (isPerson(o)) this.settle(o)
     }
     if (members.some((m) => isPost(m.o))) this.updateBelts()
+    if (members.some((m) => isPathNode(m.o))) this.drawLinks()
     this.updSel()
   }
 
@@ -3702,6 +4533,7 @@ export class VenueEditor {
       } else if (isPerson(o)) this.settle(o)
     }
     if (members.some((m) => isPost(m.o))) this.updateBelts()
+    if (members.some((m) => isPathNode(m.o))) this.drawLinks()
     this.updSel()
     this.commit()
   }
@@ -3877,6 +4709,15 @@ export class VenueEditor {
         : {}),
       ...(s.userData.type === 'tvCart'
         ? { tv: { lift: (s.userData.lift as number | undefined) ?? TV_LIFT } }
+        : {}),
+      ...(isPathNode(s)
+        ? {
+            path: {
+              mode: this.modeOf(s),
+              links: this.graph.adj.get(s.userData.id as string)?.size ?? 0,
+              color: pathColorOf(s),
+            },
+          }
         : {}),
     })
   }
@@ -4062,7 +4903,18 @@ export class VenueEditor {
       if (wait <= 0) report()
       else this.pointerLater = setTimeout(report, wait)
     })
+    // a right click (not a pan) ends drawing a 動線
+    this.listen(canvas, 'contextmenu', (e) => {
+      const d = this.rightDown
+      this.rightDown = null
+      if (!this.linking) return
+      e.preventDefault()
+      if (!d || Math.hypot(e.clientX - d.x, e.clientY - d.y) < 5) this.stopLinking()
+    })
     this.listen(canvas, 'pointerleave', () => {
+      this.hideGhost()
+      // (not while it's being dragged)
+      if (this.controls.enabled) this.linkerHot = false
       clearTimeout(this.pointerLater)
       this.pointerLater = undefined
       this.pointerLast = null
@@ -4094,6 +4946,7 @@ export class VenueEditor {
           this.armDown = null
           return
         }
+        if (e.button === 2) this.rightDown = { x: e.clientX, y: e.clientY }
         if (e.target !== canvas || e.button !== 0) return
         this.infoOpen = null
         canvas.focus()
@@ -4115,6 +4968,23 @@ export class VenueEditor {
         if (this.armed) {
           // placing: a tap puts it down (pointerup); a drag or pinch stays the camera's
           this.armDown = { id: e.pointerId, x: e.clientX, y: e.clientY }
+          return
+        }
+        if (this.linking) {
+          // drawing: a 動線點 tapped is linked to; anywhere else a tap puts the next one down
+          // (pointerup), and a drag turns the view
+          const o = this.pickObj(e)
+          if (o && isPathNode(o)) {
+            e.stopPropagation()
+            e.preventDefault()
+            this.linkTo(o)
+          }
+          return
+        }
+        if (this.pickLinker(e)) {
+          e.stopPropagation()
+          e.preventDefault()
+          this.startConnect(e)
           return
         }
         const hd = this.pickHandle(e)
@@ -4245,6 +5115,8 @@ export class VenueEditor {
           this.pushUndo()
           d.moved = true
           this.grid.visible = true
+          // anyone walking along a path stops there, to be moved from where they are
+          for (const m of d.group) this.leavePath(m.o)
         }
         // the grabbed item snaps to the grid; the rest keep their places around it
         const lead = d.group.find((m) => m.o === d.o)!.start
@@ -4286,16 +5158,36 @@ export class VenueEditor {
           this.pushUndo()
           d.moved = true
           this.grid.visible = true
+          this.leavePath(d.o)
+        }
+        if (d.path !== undefined && this.alongPath(d.o, p.x + d.dx, p.z + d.dz, d.path)) {
+          this.updSel()
+          this.live([d.o])
+          return
         }
         this.moveTo(d.o, p.x + d.dx, p.z + d.dz)
         if (d.riders?.length) this.carry(d.o, d.riders)
         this.settle(d.o)
         if (isPost(d.o)) this.updateBelts()
+        if (isPathNode(d.o)) this.drawLinks()
         this.updSel()
         this.live([d.o, ...(d.riders ?? []).map((r) => r.o)])
         return
       }
-      if (e.pointerType !== 'touch' && e.buttons === 0 && !this.placing) this.hoverEye(e)
+      if (e.buttons === 0) {
+        // only a mouse points it; a finger leaves it the emptiest way
+        if (e.pointerType === 'mouse') this.aimAt(e)
+        else this.aim = null
+        this.linkerHot = e.target === canvas && this.pickLinker(e)
+      }
+      if (this.linking && e.pointerType !== 'touch' && e.buttons === 0) {
+        if (e.target === canvas) this.drawGhost(e)
+        else this.hideGhost()
+      }
+      if (e.pointerType !== 'touch' && e.buttons === 0 && !this.placing) {
+        this.hoverEye(e)
+        this.hoverLink(e)
+      }
       if (this.placing || !this.editable) return
       if (e.target === canvas && e.buttons === 0) {
         const hd = this.pickHandle(e)
@@ -4303,11 +5195,9 @@ export class VenueEditor {
           ? hd.userData.sx * hd.userData.sy > 0
             ? 'nesw-resize'
             : 'nwse-resize'
-          : this.pickObj(e)
+          : this.pickObj(e) || this.pickLinker(e)
             ? 'grab'
-            : this.pickBelt(e)
-              ? 'pointer'
-              : ''
+            : ''
       }
     })
     this.listen(window, 'pointerup', (e) => {
@@ -4353,13 +5243,18 @@ export class VenueEditor {
         this.downPt = null
         return
       }
-      if (this.drag) {
-        if (this.drag.moved) this.commit()
+      const dr = this.drag
+      if (dr) {
+        // let go first: what was dragged onto a self-walking path sets off along it (commit)
+        this.drag = null
+        if (dr.moved) {
+          if (!dr.group) this.ontoPath(dr.o)
+          this.commit()
+        }
         // a tap in 多選 takes the item out; a plain click (no drag) on one of several selected
         // items selects just that one
-        else if (this.drag.tap === 'toggle') this.toggleSelected(this.drag.o)
-        else if (this.drag.tap === 'single') this.select(this.drag.o)
-        this.drag = null
+        else if (dr.tap === 'toggle') this.toggleSelected(dr.o)
+        else if (dr.tap === 'single') this.select(dr.o)
         this.controls.enabled = true
         this.grid.visible = false
         canvas.style.cursor = 'grab'
@@ -4367,12 +5262,15 @@ export class VenueEditor {
       }
       const d = this.downPt
       if (d && e.target === canvas && Math.hypot(e.clientX - d.x, e.clientY - d.y) < 4) {
-        const belt = this.editable && this.pickBelt(e)
-        const beltLock =
-          belt && (belt.userData.ends as THREE.Object3D[]).map((o) => this.lockOf(o)).find(Boolean)
-        if (beltLock) this.cb.onToast(t().collab.locked(beltLock.name))
-        else if (belt) this.cutBelt(belt)
-        else this.setSelection(this.zoneClick ? this.withGroup(this.zoneClick) : [])
+        if (this.linking) {
+          this.drawNext(e)
+          this.downPt = null
+          return
+        }
+        // a tap on a belt or a link puts its 移除連接 button up (as the mouse over it does)
+        const link = this.pickJoin(e)
+        this.linkHover = link ? (link.userData.key as string) : null
+        if (!link) this.setSelection(this.zoneClick ? this.withGroup(this.zoneClick) : [])
       }
       this.zoneClick = null
       this.downPt = null
@@ -4411,6 +5309,10 @@ export class VenueEditor {
     }
     if (e.key === 'Escape' && this.armed) {
       this.armPlace(null)
+      return
+    }
+    if (e.key === 'Escape' && this.linking) {
+      this.stopLinking()
       return
     }
     const kk = e.key.toLowerCase()
@@ -4590,6 +5492,9 @@ export class VenueEditor {
     // walking puts the camera itself; the orbit would pull it back to its distance and angles
     if (!this.walk) controls.update()
     this.glideLive(dt)
+    this.stepPaths(dt)
+    stepArrows(dt)
+    this.updateMarks()
     if (this.selected) {
       this.selBox.setFromObject(this.selected)
       if (this.handles.visible) this.updHandles()
@@ -4607,6 +5512,8 @@ export class VenueEditor {
     this.layoutTags('item')
     this.layoutTags('zone')
     this.layoutEye()
+    this.layoutUnlink()
+    this.layoutLinker()
   };
 
   /**

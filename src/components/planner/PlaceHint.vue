@@ -8,7 +8,8 @@ import { isWallItem, onTableOnly } from '@/venue/furniture'
 
 /**
  * Phones, after picking a kind in the palette: where to tap to put it down (the floor, a wall
- * or a table top), with 取消. The camera still moves meanwhile, to find the spot first.
+ * or a table top), with 取消. The camera still moves meanwhile, to find the spot first. And
+ * drawing a 動線: where the next 動線點 goes, with 完成 (phones have no Esc or right click).
  */
 
 const store = usePlannerStore()
@@ -26,7 +27,17 @@ const title = computed(() => {
 </script>
 
 <template>
-  <div v-if="store.armed" class="place-hint" role="status" data-stage-ui>
+  <div v-if="store.pathDrawing" class="place-hint" role="status" data-stage-ui>
+    <img v-if="thumbs.pathNode" :src="thumbs.pathNode" alt="" />
+    <span class="txt">
+      <b>{{ t().path.drawTitle }}</b>
+      <i>{{ t().path.drawHint }}</i>
+    </span>
+    <button class="cancel" type="button" @click="editor?.stopLinking()">
+      {{ t().path.done }}
+    </button>
+  </div>
+  <div v-else-if="store.armed" class="place-hint" role="status" data-stage-ui>
     <img v-if="thumbs[store.armed]" :src="thumbs[store.armed]" alt="" />
     <span class="txt">
       <b>{{ title }}</b>

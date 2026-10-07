@@ -262,6 +262,43 @@ describe('snack trays', () => {
   })
 })
 
+describe('path points', () => {
+  const A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+  const B = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+
+  it('keep links to other points once each, not to themselves, and only on path points', () => {
+    const [a, b] = parseLayout([
+      { id: A, t: 'pathNode', x: 0, z: 0, r: 0, links: [B, B.toUpperCase(), A, 'nope', 3] },
+      { id: B, t: 'person', x: 0, z: 0, r: 0, links: [A], auto: true },
+    ])
+    expect(a?.links).toEqual([B])
+    expect(b?.links).toBeUndefined()
+    expect(b?.auto).toBeUndefined()
+  })
+
+  it('keep their path colour apart from their tag colour', () => {
+    const [a] = parseLayout([
+      { t: 'pathNode', x: 0, z: 0, r: 0, color: '#4A90D9', tag: '入口', tagColor: '#e57373' },
+    ])
+    expect([a?.color, a?.tagColor]).toEqual(['#4a90d9', '#e57373'])
+  })
+
+  it('walk on their own only along the links that say so', () => {
+    const C = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'
+    const [a, b, c] = parseLayout([
+      { t: 'pathNode', x: 0, z: 0, r: 0, links: [A, B], auto: [B, C, 'nope'] },
+      { t: 'pathNode', x: 0, z: 0, r: 0, links: [A, B], auto: 'yes' },
+      { t: 'pathNode', x: 0, z: 0, r: 0, auto: [A] },
+    ])
+    expect([a?.auto, b?.auto, c?.auto]).toEqual([[B], undefined, undefined])
+  })
+
+  it('walk on their own along all their links, saved before links had one each', () => {
+    const [a] = parseLayout([{ t: 'pathNode', x: 0, z: 0, r: 0, links: [A, B], auto: true }])
+    expect(a?.auto).toEqual([A, B])
+  })
+})
+
 describe('laptops', () => {
   it('keep a known size and colour, default the rest, and are not charged', () => {
     const [a, b, c] = parseLayout([
@@ -422,6 +459,16 @@ describe('export', () => {
       { t: 'tvCart', x: 11, y: 0, z: 11, r: 0, v: 's75-port-black', lift: 1.6, img },
       { t: 'outlet', x: 13, y: 0.3, z: 0.1, r: 3.1416, v: 'v220' },
       { t: 'floorOutlet', x: 15, y: 0, z: 15, r: 0 },
+      {
+        id: '11111111-1111-4111-8111-111111111111',
+        t: 'pathNode',
+        x: 17,
+        y: 0,
+        z: 17,
+        r: 0,
+        links: ['22222222-2222-4222-8222-222222222222'],
+        auto: ['22222222-2222-4222-8222-222222222222'],
+      },
     ]
     expect(parseLayout(JSON.parse(exportLayout(items)))).toEqual(items)
   })

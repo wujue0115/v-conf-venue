@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { computed, nextTick, shallowRef, useTemplateRef, watch } from 'vue'
 import ColorChips from './ColorChips.vue'
+import ModeIcon from './ModeIcon.vue'
 import TagCombobox from './TagCombobox.vue'
 import TriCheckbox from './TriCheckbox.vue'
-import { useFurnitureThumbnails } from '@/composables/useFurnitureThumbnails'
+import { paintedThumbnail, useFurnitureThumbnails } from '@/composables/useFurnitureThumbnails'
+import { usePhone } from '@/composables/usePhone'
 import { useVenueEditor } from '@/composables/useVenueEditor'
 import { DEFAULT_PALETTES, usePalettesStore } from '@/stores/palettes'
 import { usePlannerStore } from '@/stores/planner'
@@ -34,6 +36,19 @@ const dx = shallowRef(1)
 const dz = shallowRef(1)
 
 const sel = computed(() => store.selection)
+/**
+ * Phones: the stage stays clear while something is selected, its name with 編輯 at the bottom;
+ * the panel opens from 編輯 (and closes with 收合), and closes again for anything else selected
+ */
+const phone = usePhone()
+const open = shallowRef(false)
+watch(
+  () => sel.value?.ids.join(),
+  (now, before) => {
+    if (now !== before) open.value = false
+  },
+)
+const peek = computed(() => phone.value && !!sel.value && !open.value)
 /** The colour rows people pick from (and can edit): people's, zones' and tags' */
 const palettes = usePalettesStore()
 /**
@@ -128,9 +143,16 @@ function pick(axis: number, id: string) {
   parts[axis] = id
   editor.value?.setVariant(parts.join('-'))
 }
-const thumb = computed(() =>
-  sel.value ? thumbs.value[thumbKey(sel.value.type, sel.value.variant)] : '',
-)
+/** Its preview, in its own colour where it has one (people, zones, 動線點) */
+const thumb = computed(() => {
+  const s = sel.value
+  if (!s) return ''
+  const color = s.people?.color ?? s.zone?.color ?? s.path?.color
+  return (
+    (color && thumbs.value[s.type] && paintedThumbnail(s.type, s.variant, color)) ||
+    thumbs.value[thumbKey(s.type, s.variant)]
+  )
+})
 const price = computed(() => {
   if (!sel.value) return ''
   const p = priceOf(sel.value.type)
@@ -221,8 +243,24 @@ const generate = () =>
 </script>
 
 <template>
+  <template v-if="peek">
+    <!-- drawing a 動線 has the bottom to itself -->
+    <div v-if="sel && !store.pathDrawing" class="peek" data-stage-ui>
+      <img v-if="sel.count === 1 && thumb" :src="thumb" alt="" />
+      <b>{{ sel.count > 1 ? t().sel.multi(sel.count) : nameOf(sel.type) }}</b>
+      <button
+        class="btn edit"
+        type="button"
+        :title="t().sel.edit"
+        :aria-label="t().sel.edit"
+        @click="open = true"
+      >
+        <ModeIcon mode="edit" />
+      </button>
+    </div>
+  </template>
   <!-- several items: they move, nudge and delete together -->
-  <div v-if="sel && sel.count > 1" class="sel" data-stage-ui>
+  <div v-else-if="sel && sel.count > 1" class="sel" data-stage-ui>
     <div class="head">
       <div class="meta">
         <div class="title">
@@ -231,6 +269,9 @@ const generate = () =>
         <div class="pos">{{ t().sel.multiHint }}</div>
       </div>
       <button class="btn" @click="editor?.clearSelection()">{{ t().sel.deselect }}</button>
+      <button v-if="phone" class="btn" type="button" @click="open = false">
+        {{ t().sel.collapse }}
+      </button>
       <button class="btn" :title="t().sel.duplicateTitle" @click="editor?.duplicate()">
         {{ t().sel.duplicate }}
       </button>
@@ -330,6 +371,9 @@ const generate = () =>
         </svg>
         {{ t().walk.start }}
       </button>
+      <button v-if="phone" class="btn" type="button" @click="open = false">
+        {{ t().sel.collapse }}
+      </button>
       <button class="btn danger" :title="t().sel.deleteTitle" @click="editor?.remove()">
         {{ t().sel.delete }}
       </button>
@@ -396,6 +440,44 @@ const generate = () =>
           />
           <span class="deg">{{ Math.round(sel.tv.lift * 100) }} cm</span>
         </div>
+      </template>
+
+      <template v-if="sel.path">
+        <span class="lbl">{{ t().path.label }}</span>
+        <div class="ctl">
+          <span class="hint">{{ t().path.links(sel.path.links) }}</span>
+        </div>
+        <span class="lbl">{{ t().path.colour }}</span>
+        <div class="ctl">
+          <ColorChips
+            :value="sel.path.color"
+            :colors="palettes.palettes.path"
+            @update:colors="palettes.setPalette('path', $event)"
+            :defaults="DEFAULT_PALETTES.path"
+            :label="t().path.colour"
+            @pick="editor?.setPathColor($event)"
+          />
+        </div>
+        <!-- the links on from it (the next 動線點's keep theirs); none on: nothing to set -->
+        <template v-if="sel.path.mode">
+          <span class="lbl">{{ t().path.mode }}</span>
+          <div class="ctl swatches" role="radiogroup" :aria-label="t().path.modeLabel">
+            <button
+              v-for="m in ['auto', 'manual'] as const"
+              :key="m"
+              class="swatch"
+              :class="{ on: sel.path.mode === m }"
+              type="button"
+              role="radio"
+              :aria-checked="sel.path.mode === m"
+              :title="m === 'auto' ? t().path.autoTitle : t().path.manualTitle"
+              @click="editor?.setPathAuto(m === 'auto')"
+            >
+              {{ m === 'auto' ? t().path.auto : t().path.manual }}
+            </button>
+            <span v-if="sel.path.mode === 'mixed'" class="hint">{{ t().path.mixed }}</span>
+          </div>
+        </template>
       </template>
 
       <template v-if="sel.size">
@@ -1061,6 +1143,59 @@ const generate = () =>
 }
 .restore {
   margin-left: auto;
+}
+
+/* Phones, while the panel is closed: what is selected, and 編輯 (above the bottom bar) */
+.peek {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: calc(66px + env(safe-area-inset-bottom, 0px));
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: fit-content;
+  max-width: calc(100% - 20px);
+  margin-inline: auto;
+  padding: 6px 6px 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: 0 8px 24px var(--shadow);
+}
+.peek img {
+  flex: none;
+  width: 36px;
+  height: 27px;
+  object-fit: contain;
+  background: var(--paper);
+  border-radius: 6px;
+}
+.peek b {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 13px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.peek .edit {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+}
+/* the same pencil as the 編輯 mode's */
+.peek .edit svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 /* Phones */
