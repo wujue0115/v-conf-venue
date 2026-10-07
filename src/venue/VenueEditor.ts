@@ -589,10 +589,9 @@ export class VenueEditor {
   private passItems = false
   /** The view bobs with each step, in first person (設定) */
   private walkBob = true
-  /** The 👁 over a 人員, and whom it's for: the one under the mouse, else the one tapped */
+  /** The 👁 over a 人員 (edit mode only), and whom it's for: the one under the mouse */
   private eyeBtn: HTMLButtonElement | null = null
   private eyeHover: Figure | null = null
-  private eyeTapped: Figure | null = null
   private eyeHide: ReturnType<typeof setTimeout> | undefined
   /** How much faster (or slower) than as it comes the view turns while walking */
   private lookScale = 1
@@ -1188,9 +1187,10 @@ export class VenueEditor {
    * Walk through the venue as this 人員 figure: it moves along when this screen may edit and
    * nobody else has it selected, else a stand-in sets off from where it stands. Without a
    * figure, a stand-in sets off from the middle of the view. Keys or the touch stick walk,
-   * dragging turns the view; see endWalk.
+   * dragging turns the view; see endWalk. View-only, nobody is walked as: only 導覽.
    */
   walkAs(f: Figure | null) {
+    if (f && !this.editable) return
     const at = f && this.figureOf(f)
     if (f && !at) return
     const back = this.walk?.back ?? {
@@ -1961,19 +1961,18 @@ export class VenueEditor {
 
   // ---------------- The 👁 over a 人員 ----------------
 
-  /** The figure the 👁 is over: the one under the mouse, else the 人員 selected or tapped */
+  /** The figure the 👁 is over: the one under the mouse, else the 人員 selected; none view-only */
   private eyeTarget(): Figure | null {
-    if (this.walk || this.drag || this.resizing || this.marquee || this.placing || this.armed)
+    if (!this.editable || this.walk || this.drag || this.resizing || this.marquee || this.placing || this.armed)
       return null
     if (this.eyeHover) return this.eyeHover
     const s = this.selected
-    if (s && !this.group.size && isPerson(s)) return this.walkerOf(s)
-    return this.editable ? null : this.eyeTapped
+    return s && !this.group.size && isPerson(s) ? this.walkerOf(s) : null
   }
 
   /** The mouse moved: over a 人員 the 👁 shows; away from it (and the 👁), it goes soon after */
   private hoverEye(e: PointerEvent) {
-    const f = e.target === this.canvas ? this.pickFigure(e) : null
+    const f = this.editable && e.target === this.canvas ? this.pickFigure(e) : null
     if (f || this.eyeBtn?.contains(e.target as Node)) {
       clearTimeout(this.eyeHide)
       this.eyeHide = undefined
@@ -4357,8 +4356,6 @@ export class VenueEditor {
       }
       const d = this.downPt
       if (d && e.target === canvas && Math.hypot(e.clientX - d.x, e.clientY - d.y) < 4) {
-        // view-only, nothing gets selected: a tap on a 人員 puts the 👁 over them
-        if (!this.editable) this.eyeTapped = this.pickFigure(e)
         const belt = this.editable && this.pickBelt(e)
         const beltLock =
           belt && (belt.userData.ends as THREE.Object3D[]).map((o) => this.lockOf(o)).find(Boolean)
