@@ -4,6 +4,7 @@ import { personGeometry, seatedGeometry } from './person'
 import { POSTER_H, POSTER_W, buildFace, buildPoster } from './poster'
 import { LAPTOP_AXES, buildLaptop, laptopFootprint } from './laptop'
 import { TV_AXES, buildTvCart } from './tv'
+import { OUTLET_AXES, buildFloorOutlet, buildOutlet } from './outlet'
 import { TRAY_L, TRAY_W, buildSnack } from './snack'
 import { buildZone } from './zone'
 
@@ -511,7 +512,7 @@ export interface FurnitureVariant {
 }
 
 /** What a row of variant options is called (its words come from i18n) */
-export type VariantLabel = 'colour' | 'flavour' | 'size' | 'orientation'
+export type VariantLabel = 'colour' | 'flavour' | 'size' | 'orientation' | 'kind'
 
 /** One kind of choice (size, colour…) in the selection panel; the first option is the default */
 export interface VariantAxis {
@@ -729,6 +730,19 @@ export const FURNITURE = {
     image: true,
     arr: [1.4, 1.2],
   },
+  // where the venue's outlets are, once seen on site: the venue's plans don't show them
+  outlet: {
+    size: 'W70×H120',
+    build: buildOutlet,
+    variantAxes: OUTLET_AXES,
+    wall: true,
+    arr: [0.2, 1],
+  },
+  floorOutlet: {
+    size: 'W130×D130',
+    build: buildFloorOutlet,
+    arr: [0.5, 0.5],
+  },
 } satisfies Record<string, FurnitureDef>
 
 export type FurnitureType = keyof typeof FURNITURE
@@ -740,7 +754,10 @@ export const isFurnitureType = (t: unknown): t is FurnitureType =>
 /** Rental price, or null for items that are not rented from the venue */
 export const priceOf = (type: FurnitureType) => (FURNITURE[type] as FurnitureDef).price ?? null
 
-/** 其他物件 by use: people and space, then signage, then what goes on tables, then the mobile TV */
+/**
+ * 其他物件 by use: people and space, then signage, then what goes on tables, then the mobile TV,
+ * then the outlets
+ */
 const OTHER_ORDER: FurnitureType[] = [
   'person',
   'zone',
@@ -749,6 +766,8 @@ const OTHER_ORDER: FurnitureType[] = [
   'snack',
   'laptop',
   'tvCart',
+  'outlet',
+  'floorOutlet',
 ]
 const otherRank = (t: FurnitureType) => {
   const i = OTHER_ORDER.indexOf(t)

@@ -1963,7 +1963,15 @@ export class VenueEditor {
 
   /** The figure the 👁 is over: the one under the mouse, else the 人員 selected; none view-only */
   private eyeTarget(): Figure | null {
-    if (!this.editable || this.walk || this.drag || this.resizing || this.marquee || this.placing || this.armed)
+    if (
+      !this.editable ||
+      this.walk ||
+      this.drag ||
+      this.resizing ||
+      this.marquee ||
+      this.placing ||
+      this.armed
+    )
       return null
     if (this.eyeHover) return this.eyeHover
     const s = this.selected
@@ -2186,7 +2194,10 @@ export class VenueEditor {
       o = this.add({ ...item, id: undefined, x: spot.x, y: spot.y, z: spot.z })
     } else if (onWall(s)) {
       // next to it along the wall, same height
-      const off = new THREE.Vector3((item.w ?? 0) + 0.1, 0, 0).applyAxisAngle(UP, s.rotation.y)
+      const off = new THREE.Vector3((s.userData.w as number) + 0.1, 0, 0).applyAxisAngle(
+        UP,
+        s.rotation.y,
+      )
       o = this.add({ ...item, id: undefined, x: s.position.x + off.x, z: s.position.z + off.z })
     } else {
       // a group of people is wider than one: step past its whole width
@@ -3286,7 +3297,7 @@ export class VenueEditor {
     this.keepAboveFloor(o)
   }
 
-  /** Keep a poster's bottom edge off the floor in front of its wall. */
+  /** Keep a wall item's bottom edge off the floor in front of its wall. */
   private keepAboveFloor(o: THREE.Object3D) {
     const n = new THREE.Vector3(0, 0, 1).applyQuaternion(o.quaternion)
     const p = o.position

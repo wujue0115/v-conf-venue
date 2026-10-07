@@ -684,6 +684,16 @@ const generate = () =>
         </div>
       </template>
 
+      <!-- a wall item with no picture (an outlet): its 複製 has no row of its own to go in -->
+      <template v-if="isWallItem(sel.type) && !sel.image">
+        <span class="lbl"></span>
+        <div class="ctl">
+          <button class="btn dup" :title="t().sel.duplicateTitle" @click="editor?.duplicate()">
+            {{ t().sel.duplicate }}
+          </button>
+        </div>
+      </template>
+
       <template v-if="sel.type === 'stanchion'">
         <span class="lbl">{{ t().sel.belt }}</span>
         <div class="ctl belt">

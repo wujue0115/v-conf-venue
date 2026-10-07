@@ -269,6 +269,8 @@ const zh = {
     zone: '區域',
     rollup: '易拉展',
     tvCart: '可移動電視',
+    outlet: '插座',
+    floorOutlet: '地板插座',
   } as Record<FurnitureType, string>,
   /** Sizes that are words rather than dimensions */
   sizes: {
@@ -279,7 +281,13 @@ const zh = {
     laptop: '13–16 吋',
     tvCart: '55–86 吋',
   } as Partial<Record<FurnitureType, string>>,
-  variantLabels: { colour: '顏色', flavour: '口味', size: '尺寸', orientation: '方向' },
+  variantLabels: {
+    colour: '顏色',
+    flavour: '口味',
+    size: '尺寸',
+    orientation: '方向',
+    kind: '規格',
+  },
   variants: {
     stoolHigh: { grey: '灰', brown: '咖啡' },
     shapeSofa: { orange: '橘', green: '綠' },
@@ -296,6 +304,7 @@ const zh = {
       starlight: '星光色',
       sky: '天藍色',
     },
+    outlet: { g110: '110V 接地', n110: '110V 不接地', v220: '220V' },
     tvCart: {
       s55: '55 吋',
       s65: '65 吋',

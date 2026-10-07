@@ -253,6 +253,8 @@ const en: Messages = {
     zone: 'Zone',
     rollup: 'Roll-up banner',
     tvCart: 'Mobile TV',
+    outlet: 'Power outlet',
+    floorOutlet: 'Floor outlet',
   },
   sizes: {
     stanchion: 'Each',
@@ -262,7 +264,13 @@ const en: Messages = {
     laptop: '13–16"',
     tvCart: '55–86"',
   },
-  variantLabels: { colour: 'Colour', flavour: 'Flavour', size: 'Size', orientation: 'Orientation' },
+  variantLabels: {
+    colour: 'Colour',
+    flavour: 'Flavour',
+    size: 'Size',
+    orientation: 'Orientation',
+    kind: 'Type',
+  },
   variants: {
     stoolHigh: { grey: 'Grey', brown: 'Brown' },
     shapeSofa: { orange: 'Orange', green: 'Green' },
@@ -279,6 +287,7 @@ const en: Messages = {
       starlight: 'Starlight',
       sky: 'Sky Blue',
     },
+    outlet: { g110: '110V earthed', n110: '110V unearthed', v220: '220V' },
     tvCart: {
       s55: '55"',
       s65: '65"',
