@@ -21,15 +21,19 @@ const A2_X0 = 25.9
 const A2_ROW = 1.105
 const A2_BOW = 0.02
 const A2_ZC = 37.6
-/** The rake is built in three sections along z, each bowed by the curve at its centre */
-const A2_CUTS: [number, number][] = [
-  [30.3, 34.3],
-  [34.3, 40.9],
-  [40.9, 44.9],
-]
-/** West edge of the back (highest) row's section centred at zc */
-const a2BackEdge = (zc: number) =>
-  A2_X0 - (A2_ROWS - 1) * A2_ROW - A2_ROW / 2 + A2_BOW * (zc - A2_ZC) ** 2 - 0.05
+/** The rake's tiers run on one curve from wall to wall, their ends within the side walls */
+const A2_TIER_Z: [number, number] = [29.75, 45.5]
+/** Where along z each tier's curved edges are drawn through */
+const A2_TIER_STEPS = (() => {
+  const [a, b] = A2_TIER_Z
+  const n = 64
+  return Array.from({ length: n + 1 }, (_, k) => a + ((b - a) * k) / n)
+})()
+/** The front (east) edge of row i's tier at z: the rows bow east toward their ends */
+const a2TierEdge = (i: number, z: number) =>
+  A2_X0 - i * A2_ROW + A2_ROW / 2 + A2_BOW * (z - A2_ZC) ** 2 - 0.05
+/** West edge of the back (highest) row's tier at z */
+const a2BackEdge = (z: number) => a2TierEdge(A2_ROWS, z)
 
 type Seg = [x1: number, z1: number, x2: number, z2: number]
 
@@ -138,16 +142,18 @@ const WALLS: Seg[] = [
   [10.1, 26.2, 8.6, 28.3],
   [8.6, 28.3, 8.6, 29.75],
   // A223 VIP lounge, and the store beside it (door on its east)
-  [19.4, 26.3, 23.6, 26.3],
+  [19.4, 26.3, 23.35, 26.3],
   [19.4, 26.3, 19.4, 29.75],
-  // A223's and A224's east wall on to the corridor, one flat wall from the column south; A224 a
-  // narrow store behind the column, beside the platform
-  [23.6, 23.6, 23.6, 29.75],
-  [22.45, 23.6, 22.45, 26.3],
-  [22.45, 23.6, 23.6, 23.6],
+  // A223's and A224's east wall, one flat wall; A224 a narrow store beside the platform, its
+  // corner come forward to the top of the stair up from A215, where the stair's glass rail ends
+  [23.35, 23.2, 23.35, 29.75],
+  [22.45, 23.2, 22.45, 26.3],
+  [22.45, 23.2, 23.35, 23.2],
   // A2's north lobby rooms: the entrance, the accessible toilet room, a service room
-  [28.4, 25.3, 28.4, 26.62],
-  [28.4, 28.05, 28.4, 29.75],
+  // the entrance's double doors from the landing, 1.7 wide (the walls' ends padded by half
+  // their thickness)
+  [28.4, 25.3, 28.4, 26.205],
+  [28.4, 28.165, 28.4, 29.75],
   [28.4, 25.3, 36.9, 25.3],
   [31.6, 25.3, 31.6, 29.75],
   [35.2, 25.3, 35.2, 28.9],
@@ -213,8 +219,8 @@ const OPENINGS: (Seg | [...Seg, 'full'])[] = [
   [35.15, 19.6, 36.75, 19.6],
   [36.15, 18, 36.15, 18.7],
   // south band: store, VIP lounge, terrace, the accessible toilet room and its toilet
-  [23.6, 24.2, 23.6, 25.1],
-  [23.6, 26.6, 23.6, 27.45],
+  [23.35, 24.2, 23.35, 25.1],
+  [23.35, 26.3, 23.35, 27.2],
   [36.9, 23.85, 36.9, 24.7],
   [31.8, 25.3, 32.75, 25.3],
   [33.05, 26.2, 33.05, 27.1],
@@ -606,7 +612,6 @@ export function buildArchitecture(scene: THREE.Scene): Architecture {
   ;(
     [
       [11.5, 23.2],
-      [22.95, 23.2],
       [17.15, 0],
       [28.75, 0],
       [11.5, 0],
@@ -771,8 +776,9 @@ export function buildArchitecture(scene: THREE.Scene): Architecture {
     x0: 30.45,
     x1: 32.6,
     west: 28.475,
-    north: [19.725, 21.1],
-    south: [21.28, 22.475],
+    // two equal rows across the stairwell, 茶水間's niche taking its south side
+    north: [19.725, 21.01],
+    south: [21.19, 22.475],
     n: 8,
     spine: [29.9, 32.6],
   })
@@ -1009,15 +1015,17 @@ export function buildArchitecture(scene: THREE.Scene): Architecture {
     [17.65, 19.4],
   ])
   // inside A2, everything behind the back row (and the small room off it) sits at that row's
-  // level; its east edge steps with the rake's sections so it meets the seating exactly
-  const backEdge: Pt[] = []
-  for (let i = A2_CUTS.length - 1; i >= 0; i--) {
-    const [p, q] = A2_CUTS[i]!
-    const x = a2BackEdge((p + q) / 2)
-    // the outer sections run on to the hall's north and south walls
-    backEdge.push([x, i === A2_CUTS.length - 1 ? 45.6 : q], [x, i === 0 ? 29.75 : p])
+  // level; its east edge follows the back row's curve so it meets the seating exactly
+  const backEdge = A2_TIER_STEPS.map((z): Pt => [a2BackEdge(z), z]).reverse()
+  walk.push(prism([[8.6, A2_TIER_Z[0]], [8.6, A2_TIER_Z[1]], ...backEdge], A2_BACK, M.rake, arch))
+  // and the rows' tiers in front of it, each one curved step from wall to wall
+  for (let i = 1; i < A2_ROWS; i++) {
+    const front = A2_TIER_STEPS.map((z): Pt => [a2TierEdge(i, z), z])
+    const back = A2_TIER_STEPS.map((z): Pt => [a2TierEdge(i + 1, z), z]).reverse()
+    const tier = prism([...front, ...back], i * A2_RISE, M.rake, arch, 0, EF)
+    tier.castShadow = false
+    walk.push(tier)
   }
-  walk.push(prism([[8.6, 29.75], [8.6, 45.6], ...backEdge], A2_BACK, M.rake, arch))
   walk.push(
     prism(
       [
@@ -1421,7 +1429,6 @@ function buildA2Seating(
     [35, 40.2],
     [41.6, 44.6],
   ]
-  const cuts = A2_CUTS
   type Slot = { x: number; z: number; h: number; r: number; mauve: boolean }
   const slots: Slot[] = []
   /** The seats at the ends of each row's block, by an aisle or a wall: the end panels stand there */
@@ -1429,16 +1436,6 @@ function buildA2Seating(
   for (let i = 0; i < A2_ROWS; i++) {
     const xr = A2_X0 - i * A2_ROW
     const hh = i * A2_RISE
-    if (hh > 0)
-      cuts.forEach(([p, q]) => {
-        const zc = (p + q) / 2
-        walk.push(
-          mesh(B(A2_ROW, hh, q - p), M.rake, arch, xr + K * (zc - ZC) ** 2 - 0.05, hh / 2, zc, {
-            e: EF,
-            cast: false,
-          }),
-        )
-      })
     blocks.forEach(([p, q], b) => {
       const n = Math.floor((q - p) / 0.53) + 1
       // the north block's wall end is its first seat, the south block's its last
