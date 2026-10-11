@@ -80,6 +80,9 @@ watch([editor, () => store.multiSelect], ([ed, on]) => ed?.setMultiSelect(on), {
 })
 watch([editor, () => store.wallsCut], ([ed, on]) => ed?.setWallsCut(on), { immediate: true })
 watch([editor, () => store.showLabels], ([ed, on]) => ed?.setLabelsVisible(on), { immediate: true })
+watch([editor, () => store.wallEdges], ([ed, on]) => ed?.setWallEdges(on ? 'all' : 'outer'), {
+  immediate: true,
+})
 watch([editor, () => store.shadows], ([ed, on]) => ed?.setShadows(on), { immediate: true })
 watch([editor, dark], ([ed, on]) => ed?.setDark(on), { immediate: true })
 watch(

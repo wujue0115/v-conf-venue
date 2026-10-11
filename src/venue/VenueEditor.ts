@@ -29,6 +29,7 @@ import { TV_LIFT, clampLift, setTvLift } from './tv'
 import { clampPeople, cleanInfo, cleanTag, isHexColor, type LayoutItem } from './layout'
 import { MAX_STRIDE, personGeometry, seatedGeometry, strideGeometry, warmStrides } from './person'
 import { B, FM, YEL, mat } from './materials'
+import { setEdgeMode, type EdgeMode } from './outlines'
 import {
   POSTER_MIN,
   applyPoster,
@@ -1058,6 +1059,11 @@ export class VenueEditor {
     const fresh = new THREE.GridHelper(90, 180, c.gridCenter, c.grid)
     this.grid.geometry = fresh.geometry
     fresh.material.dispose()
+  }
+
+  /** Outline the walls' every edge, or only their outline as a whole */
+  setWallEdges(mode: EdgeMode) {
+    setEdgeMode(this.archi.wallsG, mode)
   }
 
   /** Turn the sun's shadows on or off (off is lighter on slow devices) */

@@ -95,6 +95,8 @@ export const usePlannerStore = defineStore('planner', () => {
   const wallsCut = shallowRef(false)
   const showLabels = shallowRef(true)
   const shadows = shallowRef(true)
+  /** The walls' every edge outlined, where they meet and overlap too (off: only their outline) */
+  const wallEdges = shallowRef(false)
   /** Kinds of item hidden from the scene (設定 → 物件顯示); they stay in the layout */
   const hiddenTypes = shallowRef<readonly FurnitureType[]>([])
   /** Kinds of item whose tags are hidden (設定 → 標籤顯示); the tags are kept */
@@ -205,6 +207,7 @@ export const usePlannerStore = defineStore('planner', () => {
     wallsCut,
     showLabels,
     shadows,
+    wallEdges,
     hiddenTypes,
     setTypesVisible,
     hiddenTagTypes,

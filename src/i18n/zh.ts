@@ -511,6 +511,8 @@ const zh = {
     display: '顯示',
     wallsCut: '剖切牆面',
     wallsCutHint: '把牆面切低，看得到房間內部',
+    wallEdges: '完整輪廓線',
+    wallEdgesHint: '連牆面交接、重疊處的線也畫出；關閉只畫外框',
     shadows: '陰影',
     shadowsHint: '關閉可讓較慢的裝置更順',
     edit: '編輯',

@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { B, Cy, EA, EF, M, edges, mat, mesh, noRay } from './materials'
+import { buildOuterEdges } from './outlines'
 
 // Plan meters from 平面尺寸圖 (cm grid 900/250/565/580/580/565/245 · 615/895/810/655 · A2 780/390/397.5)
 // origin = 景觀梯 NW corner, +x east, +z south
@@ -155,38 +156,31 @@ const WALLS: Seg[] = [
   [33.05, 28.2, 35.2, 28.2],
   // A2 國際會議廳
   [8.6, 29.75, 9.3, 29.75],
-  [11, 29.75, 29.4, 29.75],
-  [31.2, 29.75, 35.4, 29.75],
+  [11, 29.75, 29.215, 29.75],
+  [31.145, 29.75, 35.4, 29.75],
   [36.4, 29.75, 37.3, 29.75],
-  [11.2, 29.75, 11, 33.3],
   // the entrance lobby at A2's north-west corner, with double doors south into the hall
   [8.6, 33.3, 11, 33.3],
   [8.6, 29.75, 8.6, 45.6],
-  [8.6, 45.6, 26, 45.6],
-  [26, 45.6, 32.9, 47.9],
-  [32.9, 47.9, 37.8, 47.9],
+  // its south wall, built below, bent where it slants out past 翻譯室
   [37.8, 47.9, 37.8, 36.2],
   [37.8, 36.2, 37.3, 36.2],
   [37.3, 36.2, 37.3, 29.75],
   // 控制室 in the south-west corner, its door at the west end of its north wall
   [8.6, 41.6, 11.2, 41.6],
-  [11.2, 41.6, 11.6, 45.6],
-  // the proscenium: a wall either side of the stage's opening, turning in at its end
-  [34.1, 29.75, 34.1, 32.28],
-  [34.1, 32.28, 34.7, 32.38],
-  [34.1, 42.92, 34.1, 45.1],
-  [34.1, 42.92, 34.7, 42.82],
-  // the stage's back wall, the screen hung in front of it; at either end, between it and the
-  // walls beside the stage, a curtained way through to the backstage behind
-  [35.41, 32.82, 35.41, 42.43],
-  [35.41, 32.82, 35.73, 32.28],
-  [35.41, 42.43, 35.73, 42.92],
-  [26, 45.5, 29.7, 45.1],
-  // 翻譯室: a window on to the hall (built below) and a door from the backstage
-  [29.7, 45.1, 32, 45.1],
-  [34, 45.1, 36.2, 45.1],
-  [29.7, 45.1, 29.7, 46.83],
-  [36.2, 45.1, 36.2, 47.9],
+  // 翻譯室: its front on to the hall built with A2's side walls, below; a door from the
+  // backstage
+  [34.2, 44.865, 36.2, 44.865],
+  [29.63, 44.94, 29.63, 46.75],
+  [36.2, 44.865, 36.2, 47.775],
+]
+
+/** A2's south wall, west to east: straight, then slanting out past 翻譯室 */
+const SOUTH_WALL: Pt[] = [
+  [8.6, 45.6],
+  [26, 45.6],
+  [32.9, 47.9],
+  [37.8, 47.9],
 ]
 
 /** A2's own walls, as tall as the hall (A2_H); the rest stand H */
@@ -194,7 +188,8 @@ const A2_WALLS = new Set<Seg>(
   WALLS.filter(([x1, z1, x2, z2]) => {
     const [x, z] = [(x1 + x2) / 2, (z1 + z2) / 2]
     // the hall's outline, the proscenium and stage, the back's lobby and 控制室, the backstage
-    return z >= 29.7 && x >= 8.5 && !(x > 26 && z > 45.3 && x < 32.9)
+    // and 翻譯室
+    return z >= 29.7 && x >= 8.5
   }),
 )
 
@@ -226,7 +221,7 @@ const OPENINGS: (Seg | [...Seg, 'full'])[] = [
   // A2: the entrance lobby's double doors into the hall, 控制室's door, 翻譯室's door
   [9.3, 33.3, 10.7, 33.3],
   [9.3, 41.6, 10.1, 41.6],
-  [35.3, 45.1, 36.1, 45.1],
+  [35.3, 44.865, 36.1, 44.865],
 ]
 
 /** Restroom fittings */
@@ -440,7 +435,22 @@ export function buildArchitecture(scene: THREE.Scene): Architecture {
     ),
   )
   slab(8.6, 29.75, 37.8, 45.6) // A2
-  slab(26, 45.6, 37.8, 47.9, M.service) // 翻譯室 and the rooms beside it
+  // 翻譯室 and the rooms beside it, out to the outer walls' faces (the west one slanting)
+  walk.push(
+    prism(
+      [
+        [26, 45.6],
+        [37.925, 45.6],
+        [37.925, 48.025],
+        [32.885, 48.025],
+        [25.96, 45.719],
+      ],
+      0.3,
+      M.service,
+      arch,
+      -0.3,
+    ),
+  )
 
   function seg(
     x1: number,
@@ -563,14 +573,6 @@ export function buildArchitecture(scene: THREE.Scene): Architecture {
   // the lift lobby's window at its east end, and the glass along the restrooms' corridor
   glass(35.9, 9.1, 35.9, 12.2)
   glass(36.9, 19.6, 36.9, 23.2)
-  // 翻譯室's window on to the hall, beside the stage: above a sill a metre over its floor
-  {
-    const [x1, x2, z] = [32, 34, 45.1]
-    const [sill, head] = [STAGE_H + 1, STAGE_H + 2.2]
-    seg(x1, z, x2, z, WALL_T, sill, M.wall, wallsG)
-    glass(x1, z, x2, z, head - sill, wallsG, sill)
-    seg(x1, z, x2, z, WALL_T, A2_H - head, M.wall, wallsG, head)
-  }
   // the floor south of 景觀梯, railed on its west and south
   glass(0.6, 5.9, 0.6, 9.4, 1.1, arch)
   glass(0.6, 9.4, 11.1, 9.4, 1.1, arch)
@@ -612,15 +614,6 @@ export function buildArchitecture(scene: THREE.Scene): Architecture {
       [34.4, 0],
     ] as Pt[]
   ).forEach(([x, z]) => mesh(B(0.8, H, 0.8), M.wall, wallsG, x, H / 2, z))
-  // A2's columns, where 平面尺寸圖 draws them, as tall as the hall and held within its walls'
-  // thickness: no face of theirs comes past either face of the wall they stand in
-  {
-    /** The south wall's line at x: straight, then slanting in by 翻譯室 */
-    const southZ = (x: number) => (x < 26 ? 45.6 : x > 29.7 ? 45.1 : 45.5 - ((x - 26) * 0.4) / 3.7)
-    for (const x of [11.3, 17.1, 23, 28.85, 34.3])
-      for (const z of [29.75, southZ(x)]) mesh(B(0.7, A2_H, WALL_T), M.wall, wallsG, x, A2_H / 2, z)
-  }
-
   // lift cars, two in each lift room where the plan draws them (146 wide, 215 / 220 deep), each
   // with its doors in the lobby wall: the north room's face south, the south room's north
   ;(
@@ -1046,13 +1039,13 @@ export function buildArchitecture(scene: THREE.Scene): Architecture {
     prism(
       [
         [32.24, 30.53],
-        [34.1, 30.53],
-        [34.1, 32.28],
-        [35.41, 32.82],
-        [35.41, 42.43],
-        [34.1, 42.92],
-        [34.1, 44.73],
-        [32.24, 44.73],
+        [34.07, 30.53],
+        [34.07, 32.3],
+        [35.37, 32.8],
+        [35.37, 42.4],
+        [34.07, 42.9],
+        [34.07, 44.69],
+        [32.24, 44.69],
         [32.24, 42.87],
         [30.82, 42.87],
         [30.55, 42.4],
@@ -1070,26 +1063,94 @@ export function buildArchitecture(scene: THREE.Scene): Architecture {
     ),
   )
   // the flights: from the floor at the stage's north and south ends, climbing toward its middle
-  for (const [z0, dir] of [
-    [31.46, 1],
-    [43.74, -1],
-  ] as const)
+  // behind the stage's front, which runs on past them at full height, angled as at its corners,
+  // so from the hall they're hidden and they're come to from the ends
+  const CHEEK = 0.12
+  /** The front's line beside a flight: from its open end (z0) to the stage's notch (z1) */
+  const cheekX = (z: number, z0: number, z1: number) => 30.82 + (0.5 * (z - z1)) / (z0 - z1)
+  for (const [z0, z1] of [
+    [31.46, 32.36],
+    [43.77, 42.87],
+  ] as const) {
+    const dir = Math.sign(z1 - z0)
     for (let i = 0; i < 3; i++) {
       const hh = (STAGE_H / 4) * (i + 1)
+      const [za, zb] = [z0 + dir * 0.3 * i, z0 + dir * 0.3 * (i + 1)]
       walk.push(
-        mesh(B(1.3, hh, 0.3), M.step, arch, 31.59, hh / 2, z0 + dir * (0.15 + i * 0.3), {
-          e: EF,
-          cast: false,
-        }),
+        prism(
+          [
+            [cheekX(za, z0, z1) + CHEEK, za],
+            [32.24, za],
+            [32.24, zb],
+            [cheekX(zb, z0, z1) + CHEEK, zb],
+          ],
+          hh,
+          M.step,
+          arch,
+          0,
+          EF,
+        ),
       )
     }
+    walk.push(
+      prism(
+        [
+          [cheekX(z0, z0, z1), z0],
+          [cheekX(z0, z0, z1) + CHEEK, z0],
+          [30.82 + CHEEK, z1],
+          [30.82, z1],
+        ],
+        STAGE_H,
+        M.stage,
+        arch,
+        0,
+        EA,
+      ),
+    )
+  }
+  // the front, past the flights and round the stage: a rail along its top and slats below,
+  // each standing just proud of it
+  {
+    const front: Pt[] = [
+      [cheekX(31.46, 31.46, 32.36), 31.46],
+      [30.82, 32.36],
+      [30.55, 32.85],
+      [30.38, 33.37],
+      [30.38, 41.83],
+      [30.55, 42.4],
+      [30.82, 42.87],
+      [cheekX(43.77, 43.77, 42.87), 43.77],
+    ]
+    const PROUD = 0.025
+    const bands: [y: number, h: number][] = [[STAGE_H - 0.04, 0.08]]
+    for (let k = 0; k < 6; k++) bands.push([0.08 + 0.09 * k, 0.045])
+    for (let i = 0; i + 1 < front.length; i++) {
+      const [x1, z1] = front[i]!
+      const [x2, z2] = front[i + 1]!
+      const L = Math.hypot(x2 - x1, z2 - z1)
+      // out from the front, toward the hall
+      const [nx, nz] = [-(z2 - z1) / L, (x2 - x1) / L]
+      for (const [y, h] of bands) {
+        const b = mesh(
+          B(L + PROUD, h, PROUD * 2),
+          M.stage,
+          arch,
+          (x1 + x2) / 2 + nx * (PROUD / 2),
+          y,
+          (z1 + z2) / 2 + nz * (PROUD / 2),
+          { e: EF, cast: false },
+        )
+        b.rotation.y = Math.atan2(-(z2 - z1), x2 - x1)
+      }
+    }
+  }
   // the screen (about 6.2 × 3.5, 16:9), its foot 1.1 above the stage, just off the back wall
-  mesh(B(0.1, 3.5, 6.2), M.screen, arch, 35.22, STAGE_H + 1.1 + 1.75, 37.6, { e: EA })
+  mesh(B(0.1, 3.5, 6.2), M.screen, arch, 35.27, STAGE_H + 1.1 + 1.75, 37.6, { e: EA })
   // on each proscenium wall's face, a speaker hung level with the screen's top, and a camera
   // below it
   for (const z of [31.1, 44.1]) {
-    mesh(B(0.5, 1.6, 0.55), M.dark, arch, 33.65, STAGE_H + 4.5, z, { e: EF })
-    mesh(B(0.2, 0.2, 0.2), M.dark, arch, 33.85, STAGE_H + 3.1, z, { e: null })
+    mesh(B(0.5, 1.6, 0.55), M.dark, arch, 33.82, STAGE_H + 4.5, z, { e: EF })
+    mesh(B(0.2, 0.2, 0.2), M.dark, arch, 33.97, STAGE_H + 3.1, z, { e: null })
   }
   // the backstage behind the stage, and 翻譯室 off it, are on the stage's level: the back door
   // (north-east, off the closed corridor) is up four steps
@@ -1100,12 +1161,12 @@ export function buildArchitecture(scene: THREE.Scene): Architecture {
         [37.3, 29.75],
         [37.3, 36.2],
         [37.8, 36.2],
-        [37.8, 45.1],
-        [34.1, 45.1],
-        [34.1, 42.92],
-        [35.41, 42.43],
-        [35.41, 32.82],
-        [34.1, 32.28],
+        [37.8, 44.865],
+        [34.07, 44.865],
+        [34.07, 42.9],
+        [35.37, 42.4],
+        [35.37, 32.8],
+        [34.07, 32.3],
       ],
       STAGE_H,
       M.service,
@@ -1115,11 +1176,11 @@ export function buildArchitecture(scene: THREE.Scene): Architecture {
   walk.push(
     prism(
       [
-        [29.7, 45.1],
-        [36.2, 45.1],
+        [29.63, 44.815],
+        [36.2, 44.815],
         [36.2, 47.9],
         [32.9, 47.9],
-        [29.7, 46.83],
+        [29.63, 46.81],
       ],
       STAGE_H,
       M.service,
@@ -1136,46 +1197,137 @@ export function buildArchitecture(scene: THREE.Scene): Architecture {
   mesh(B(0.6, 1.1, 0.8), M.wood, arch, 31.35, STAGE_H + 0.55, 41.25, { e: EF })
   mesh(B(0.6, 1, 0.8), PODIUM, arch, 29.2, 0.5, 42.4, { e: EF })
 
-  // A2's side walls inside: on each side three sections, each angled in toward the stage and
-  // stepping back out at its end (the seat by the wall is left out where they come in). Each
-  // is solid back to the hall's wall, closed at its step, so nothing behind it shows.
+  // A2's side walls, solid from the corridor's and the outer wall's face to the hall's, as
+  // 平面尺寸圖 draws them (the columns are within): on each side three sections, each angled
+  // in toward the stage and stepping back out at its end (the seat by the wall is left out
+  // where they come in), then straight on to the stage. On the north the double doors in
+  // from the corridor, at the back of their reveal; on the south 翻譯室's front, with its
+  // window on to the hall above a sill a metre over its floor.
   {
-    /** The face toward the hall of its north wall, and of its south wall at x */
-    const NORTH_FACE = 29.75 + WALL_T / 2
-    const southFace = (x: number) =>
-      (x < 26 ? 45.6 : 45.5 - ((Math.min(x, 29.7) - 26) * 0.4) / 3.7) - WALL_T / 2
-    for (const [x1, z1, x2, z2] of [
-      [11.2, 29.92, 18.3, 30.47],
-      [18.3, 29.9, 24.2, 30.47],
-      [24.2, 29.9, 28.5, 30.2],
-    ] as Seg[])
+    const CORRIDOR = 29.75 - WALL_T / 2
+    const OUTER = 45.6 + WALL_T / 2
+    /** A wall of thickness t along a line through pts, mitred at its bends, squared off half
+     * its thickness past its ends */
+    const band = (pts: Pt[], t: number): Pt[] => {
+      const n = pts.length
+      const dir = (i: number) => {
+        const [ax, az] = pts[i]!
+        const [bx, bz] = pts[i + 1]!
+        const L = Math.hypot(bx - ax, bz - az)
+        return [(bx - ax) / L, (bz - az) / L] as const
+      }
+      const left: Pt[] = []
+      const right: Pt[] = []
+      for (let i = 0; i < n; i++) {
+        const [dx, dz] = dir(Math.min(i, n - 2))
+        const [px, pz] = dir(Math.max(i - 1, 0))
+        // the bisector of the two normals, lengthened to keep the faces t / 2 off the line
+        let [mx, mz] = [-(dz + pz) / 2, (dx + px) / 2]
+        const k = t / 2 / (mx * -dz + mz * dx)
+        ;[mx, mz] = [mx * k, mz * k]
+        let [x, z] = pts[i]!
+        if (i === 0) [x, z] = [x - (dx * t) / 2, z - (dz * t) / 2]
+        if (i === n - 1) [x, z] = [x + (dx * t) / 2, z + (dz * t) / 2]
+        left.push([x + mx, z + mz])
+        right.unshift([x - mx, z - mz])
+      }
+      return [...left, ...right]
+    }
+    const side = (pts: Pt[]) => prism(pts, A2_H, M.wall, wallsG)
+    side([
+      [11.17, CORRIDOR],
+      [29.34, CORRIDOR],
+      [29.34, 30.53],
+      [27.5, 30.53],
+      [24.2, 30.22],
+      [23.9, 30.83],
+      [18.2, 30.09],
+      [17.9, 30.7],
+      [11.78, 29.94],
+      [11.78, 30.39],
+      [11.17, 30.39],
+    ])
+    side([
+      [31.02, CORRIDOR],
+      [34.08, CORRIDOR],
+      [34.08, 30.53],
+      [31.02, 30.53],
+    ])
+    side([
+      [11.52, 44.79],
+      [11.82, 44.79],
+      [11.82, 45.28],
+      [17.9, 44.52],
+      [18.2, 45.13],
+      [23.9, 44.39],
+      [24.2, 45],
+      [27.5, 44.69],
+      [29.63, 44.69],
+      [29.63, 46.81],
+      [26, 45.6],
+      [11.6, 45.6],
+    ])
+    // the south wall, its bends mitred
+    side(band(SOUTH_WALL, WALL_T))
+    // the walls at 控制室's and the entrance lobby's hall side, slanting as the plan has them,
+    // squared off at their ends against the walls they meet
+    side([
+      [11.075, CORRIDOR],
+      [11.325, CORRIDOR],
+      [11.125, 33.425],
+      [10.875, 33.425],
+    ])
+    side([
+      [11.075, 41.475],
+      [11.325, 41.475],
+      [11.725, OUTER],
+      [11.475, OUTER],
+    ])
+    // the proscenium: a wall either side of the stage's opening, hooked in at its end; and the
+    // stage's back wall, the screen hung in front of it, its ends turned forward. Between each
+    // hook and the back wall's end, a curtained way through to the backstage behind.
+    const mirror = (pts: Pt[]) => pts.map(([x, z]): Pt => [x, 75.2 - z])
+    const hook: Pt[] = [
+      [34.07, CORRIDOR],
+      [34.27, CORRIDOR],
+      [34.27, 32.145],
+      [34.735, 32.27],
+      [34.645, 32.52],
+      [34.07, 32.3],
+    ]
+    side(hook)
+    side(mirror(hook).map(([x, z]): Pt => [x, Math.min(z, 44.94)]))
+    side([
+      [35.59, 32.27],
+      [35.77, 32.355],
+      [35.575, 32.835],
+      [35.575, 42.365],
+      [35.77, 42.845],
+      [35.59, 42.93],
+      [35.37, 42.4],
+      [35.37, 32.8],
+    ])
+    // 翻譯室's front
+    const [front, back] = [44.69, 44.94]
+    const [win, end] = [31.27, 34.08]
+    const [sill, head] = [STAGE_H + 1, STAGE_H + 2.2]
+    const pane = (x1: number, x2: number, y0: number, h: number) =>
       prism(
         [
-          [x1, NORTH_FACE],
-          [x2, NORTH_FACE],
-          [x2, z2],
-          [x1, z1],
+          [x1, front],
+          [x2, front],
+          [x2, back],
+          [x1, back],
         ],
-        A2_H,
+        h,
         M.wall,
         wallsG,
+        y0,
       )
-    for (const [x1, z1, x2, z2] of [
-      [11.6, 45.2, 18.3, 44.7],
-      [18.3, 45.35, 24.2, 44.75],
-      [24.2, 45.35, 28.5, 44.95],
-    ] as Seg[])
-      prism(
-        [
-          [x1, z1],
-          [x2, z2],
-          [x2, southFace(x2)],
-          [x1, southFace(x1)],
-        ],
-        A2_H,
-        M.wall,
-        wallsG,
-      )
+    pane(29.63, win, 0, A2_H)
+    pane(win, end, 0, sill)
+    pane(win, end, head, A2_H - head)
+    glass(win, (front + back) / 2, end, (front + back) / 2, head - sill, wallsG, sill)
   }
   // 控制室's window on to the stage
   board(
@@ -1222,6 +1374,16 @@ export function buildArchitecture(scene: THREE.Scene): Architecture {
     if ((o as THREE.Mesh).isMesh) o.raycast = noRay
   })
 
+  buildOuterEdges(wallsG)
+  // walls' faces drawn a hair behind their outlines, so a line along one wall's edge doesn't
+  // flicker into dashes against another's face meeting it there
+  wallsG.traverse((o) => {
+    const m = (o as THREE.Mesh).material as THREE.Material | undefined
+    if (!(o as THREE.Mesh).isMesh || !m) return
+    m.polygonOffset = true
+    m.polygonOffsetFactor = 1
+    m.polygonOffsetUnits = 1
+  })
   return { arch, wallsG, zonesG, walk, fixedSeats, seats, openSeats, ground }
 }
 

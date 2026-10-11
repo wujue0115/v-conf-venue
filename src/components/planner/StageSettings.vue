@@ -16,7 +16,14 @@ const open = computed({
 })
 const root = useTemplateRef('root')
 
-type Toggle = 'wallsCut' | 'shadows' | 'snap' | 'walkThroughWalls' | 'walkThroughItems' | 'walkBob'
+type Toggle =
+  | 'wallsCut'
+  | 'wallEdges'
+  | 'shadows'
+  | 'snap'
+  | 'walkThroughWalls'
+  | 'walkThroughItems'
+  | 'walkBob'
 const SWITCHES = computed(() => {
   const m = t().settings
   return [
@@ -24,6 +31,7 @@ const SWITCHES = computed(() => {
       title: m.display,
       rows: [
         { key: 'wallsCut' as Toggle, label: m.wallsCut, hint: m.wallsCutHint },
+        { key: 'wallEdges' as Toggle, label: m.wallEdges, hint: m.wallEdgesHint },
         { key: 'shadows' as Toggle, label: m.shadows, hint: m.shadowsHint },
       ],
     },
