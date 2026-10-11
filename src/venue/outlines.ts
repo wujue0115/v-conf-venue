@@ -144,14 +144,20 @@ function clip(
  * pieces meet in an inside corner, an edge neither has of its own, a line is drawn too (`seam`,
  * shown either way).
  */
-export function buildOuterEdges(group: THREE.Object3D, seam?: THREE.LineBasicMaterial) {
+export function buildOuterEdges(
+  group: THREE.Object3D,
+  seam?: THREE.LineBasicMaterial,
+  /** What the pieces stand on, outside the group: the floors, so their feet are outlined too */
+  ground: THREE.Mesh[] = [],
+) {
   group.updateMatrixWorld(true)
+  ground.forEach((g) => g.updateMatrixWorld(true))
   const meshes: THREE.Mesh[] = []
   group.traverse((o) => {
     const m = o as THREE.Mesh
     if (m.isMesh && !(m.material as THREE.Material).transparent) meshes.push(m)
   })
-  const solids = meshes.map(solidOf).filter((s): s is Solid => s !== null)
+  const solids = [...meshes, ...ground].map(solidOf).filter((s): s is Solid => s !== null)
   const near = new THREE.Box3()
   const inUnion = (p: THREE.Vector3, from: Solid[]) => from.some((s) => s.has(p))
 
@@ -230,7 +236,7 @@ export function buildOuterEdges(group: THREE.Object3D, seam?: THREE.LineBasicMat
     outer.userData.edges = 'outer'
     m.add(outer)
   }
-  if (seam) addSeams(group, meshes, runs, seam)
+  if (seam) addSeams(group, meshes, ground, runs, seam)
 }
 
 /**
@@ -240,10 +246,21 @@ export function buildOuterEdges(group: THREE.Object3D, seam?: THREE.LineBasicMat
 function addSeams(
   group: THREE.Object3D,
   meshes: THREE.Mesh[],
+  ground: THREE.Mesh[],
   runs: (a: THREE.Vector3, b: THREE.Vector3) => [number, number][],
   material: THREE.LineBasicMaterial,
 ) {
-  const feet = meshes.map(footprintOf).filter((f): f is Footprint => f !== null)
+  // the floors take part only as the A below, their tops along the pieces' sides
+  const floors = new Set(ground)
+  const all = [...meshes, ...ground]
+  const feet: Footprint[] = []
+  const isFloor: boolean[] = []
+  all.forEach((m) => {
+    const f = footprintOf(m)
+    if (!f) return
+    feet.push(f)
+    isFloor.push(floors.has(m))
+  })
   const bounds = feet.map(({ poly }) => {
     const xs = poly.map(([x]) => x)
     const zs = poly.map(([, z]) => z)
@@ -281,7 +298,7 @@ function addSeams(
   const M = 0.01
   for (let i = 0; i < feet.length; i++)
     for (let j = 0; j < feet.length; j++) {
-      if (i === j) continue
+      if (i === j || isFloor[j]) continue
       const [A, B] = [feet[i]!, feet[j]!]
       const [ba, bb] = [bounds[i]!, bounds[j]!]
       if (ba[0] > bb[2] + M || bb[0] > ba[2] + M || ba[1] > bb[3] + M || bb[1] > ba[3] + M) continue
@@ -289,7 +306,7 @@ function addSeams(
       if (hi - lo < EPS) continue
       // upright: where a side of A crosses a side of B (each pair once), off either's corners,
       // which have edges of their own
-      if (i < j)
+      if (i < j && !isFloor[i])
         for (const [[ax, az], [bx, bz]] of sides(A))
           for (const [[cx, cz], [dx, dz]] of sides(B)) {
             const [rx, rz, sx, sz] = [bx - ax, bz - az, dx - cx, dz - cz]

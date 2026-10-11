@@ -8,7 +8,13 @@ export const mat = (
 ) => new THREE.MeshStandardMaterial({ color, roughness: 0.85, metalness: 0, ...o })
 
 export const M = {
-  floor: mat('#fbfaf6', { name: 'floor' }),
+  // drawn a hair behind, so the walls' outlines along their feet show on it
+  floor: mat('#fbfaf6', {
+    name: 'floor',
+    polygonOffset: true,
+    polygonOffsetFactor: 2,
+    polygonOffsetUnits: 2,
+  }),
   wall: mat('#ffffff', { name: 'wall' }),
   step: mat('#ebe6da', { name: 'step' }),
   stage: mat('#d9c9ae', { name: 'stage' }),
