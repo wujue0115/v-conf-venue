@@ -46,6 +46,27 @@ describe('outlines', () => {
     expect(outer).toBeCloseTo(4 * 7.2 - 2 * 0.2 + (2 * 3 + 2 * 0.2) + 4 * 1.85, 0)
   })
 
+  it('draws the inside corner where one wall runs into another, which neither has an edge for', () => {
+    const g = new THREE.Group()
+    box(g, 4, 3, 0.2, 0, 0)
+    box(g, 0.2, 3, 2, 0, -0.95)
+    buildOuterEdges(g, new THREE.LineBasicMaterial())
+    const seams = g.children.find((c) => c.userData.edges === 'both') as THREE.LineSegments
+    const p = seams.geometry.getAttribute('position')
+    const lines: number[][] = []
+    for (let i = 0; i < p.count; i += 2)
+      lines.push([p.getX(i), p.getZ(i), p.getY(i), p.getY(i + 1)])
+    // two upright, full height, where the second's sides come out of the first's north face
+    expect(lines).toHaveLength(2)
+    for (const [x, z, y0, y1] of lines) {
+      expect(Math.abs(x!)).toBeCloseTo(0.1)
+      expect(z).toBeCloseTo(-0.1)
+      expect(Math.abs(y1! - y0!)).toBeCloseTo(3, 1)
+    }
+    setEdgeMode(g, 'all')
+    expect(seams.visible).toBe(true)
+  })
+
   it('shows one way or the other', () => {
     const g = new THREE.Group()
     const m = box(g, 1, 1, 1, 0, 0)

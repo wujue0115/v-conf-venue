@@ -1382,7 +1382,7 @@ export function buildArchitecture(scene: THREE.Scene): Architecture {
     if ((o as THREE.Mesh).isMesh) o.raycast = noRay
   })
 
-  buildOuterEdges(wallsG)
+  buildOuterEdges(wallsG, EA)
   // walls' faces drawn a hair behind their outlines, so a line along one wall's edge doesn't
   // flicker into dashes against another's face meeting it there
   wallsG.traverse((o) => {

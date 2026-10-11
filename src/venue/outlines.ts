@@ -72,11 +72,79 @@ function solidOf(m: THREE.Mesh): Solid | null {
   return null
 }
 
+/** A solid standing upright: its outline on the floor (x, z) and the heights it spans */
+interface Footprint {
+  poly: [number, number][]
+  y0: number
+  y1: number
+}
+
+/** A box or a straight extrusion standing upright, as its footprint; else null */
+function footprintOf(m: THREE.Mesh): Footprint | null {
+  const g = m.geometry
+  let base: THREE.Vector3[]
+  let top: THREE.Vector3[]
+  if (g instanceof THREE.BoxGeometry) {
+    const { width: w, height: h, depth: d } = g.parameters
+    const corners = [
+      [-w / 2, -d / 2],
+      [w / 2, -d / 2],
+      [w / 2, d / 2],
+      [-w / 2, d / 2],
+    ]
+    base = corners.map(([x, z]) => new THREE.Vector3(x, -h / 2, z))
+    top = corners.map(([x, z]) => new THREE.Vector3(x, h / 2, z))
+  } else if (g instanceof THREE.ExtrudeGeometry) {
+    const { shapes, options } = g.parameters
+    const shape = Array.isArray(shapes) ? shapes[0] : shapes
+    if (!shape || options.bevelEnabled) return null
+    const pts = shape.getPoints()
+    base = pts.map((pt) => new THREE.Vector3(pt.x, pt.y, 0))
+    top = pts.map((pt) => new THREE.Vector3(pt.x, pt.y, options.depth ?? 1))
+  } else return null
+  base.forEach((v) => v.applyMatrix4(m.matrixWorld))
+  top.forEach((v) => v.applyMatrix4(m.matrixWorld))
+  // upright: each top corner straight above its base corner, the base level
+  const upright = base.every(
+    (b, i) =>
+      Math.abs(b.x - top[i]!.x) < 1e-6 &&
+      Math.abs(b.z - top[i]!.z) < 1e-6 &&
+      Math.abs(b.y - base[0]!.y) < 1e-6,
+  )
+  if (!upright) return null
+  const [y0, y1] = [base[0]!.y, top[0]!.y].sort((p, q) => p - q) as [number, number]
+  return { poly: base.map((b): [number, number] => [b.x, b.z]), y0, y1 }
+}
+
+/** Where along a–b (0–1) the segment from p runs inside the box [x0, x1] × [z0, z1] */
+function clip(
+  [ax, az]: [number, number],
+  [bx, bz]: [number, number],
+  [x0, z0, x1, z1]: [number, number, number, number],
+): [number, number] | null {
+  let [t0, t1] = [0, 1]
+  for (const [d, lo, hi, s] of [
+    [bx - ax, x0, x1, ax],
+    [bz - az, z0, z1, az],
+  ] as const) {
+    if (Math.abs(d) < 1e-12) {
+      if (s < lo || s > hi) return null
+      continue
+    }
+    const [ta, tb] = [(lo - s) / d, (hi - s) / d].sort((p, q) => p - q) as [number, number]
+    t0 = Math.max(t0, ta)
+    t1 = Math.min(t1, tb)
+  }
+  return t1 > t0 ? [t0, t1] : null
+}
+
 /**
  * Each mesh's outline in `group` drawn a second way, with only the outline of the whole: the
- * two kept side by side and shown by `setEdgeMode`. Built from the group as it stands.
+ * two kept side by side and shown by `setEdgeMode`. Built from the group as it stands. Where
+ * pieces meet in an inside corner, an edge neither has of its own, a line is drawn too (`seam`,
+ * shown either way).
  */
-export function buildOuterEdges(group: THREE.Object3D) {
+export function buildOuterEdges(group: THREE.Object3D, seam?: THREE.LineBasicMaterial) {
   group.updateMatrixWorld(true)
   const meshes: THREE.Mesh[] = []
   group.traverse((o) => {
@@ -107,6 +175,35 @@ export function buildOuterEdges(group: THREE.Object3D) {
     return Math.abs(filled - AROUND / 2) >= CREASE && filled < AROUND
   }
 
+  /** The parts of a–b (world space) where the whole's outline bends, as 0–1 ranges along it */
+  function runs(from3: THREE.Vector3, to3: THREE.Vector3): [number, number][] {
+    a.copy(from3)
+    b.copy(to3)
+    const len = a.distanceTo(b)
+    if (len < EPS) return []
+    dir.subVectors(b, a).normalize()
+    u.set(1, 0, 0)
+    if (Math.abs(dir.x) > 0.9) u.set(0, 1, 0)
+    u.cross(dir).normalize()
+    v.crossVectors(dir, u)
+    near.setFromPoints([a, b]).expandByScalar(NEAR * 2)
+    const from = solids.filter((s) => s.box.intersectsBox(near))
+    // the edge in pieces: runs of those that show are kept
+    const n = Math.max(1, Math.ceil(len / STEP))
+    const out: [number, number][] = []
+    let start = -1
+    for (let k = 0; k <= n; k++) {
+      p.lerpVectors(a, b, (k + 0.5) / n)
+      const on = k < n && shows(from)
+      if (on && start < 0) start = k
+      if (!on && start >= 0) {
+        out.push([start / n, k / n])
+        start = -1
+      }
+    }
+    return out
+  }
+
   for (const m of meshes) {
     const lines = m.children.find((c) => (c as THREE.LineSegments).isLineSegments) as
       | THREE.LineSegments
@@ -117,30 +214,12 @@ export function buildOuterEdges(group: THREE.Object3D) {
     for (let i = 0; i < pos.count; i += 2) {
       const la = new THREE.Vector3().fromBufferAttribute(pos, i)
       const lb = new THREE.Vector3().fromBufferAttribute(pos, i + 1)
-      a.copy(la).applyMatrix4(m.matrixWorld)
-      b.copy(lb).applyMatrix4(m.matrixWorld)
-      const len = a.distanceTo(b)
-      if (len < EPS) continue
-      dir.subVectors(b, a).normalize()
-      u.set(1, 0, 0)
-      if (Math.abs(dir.x) > 0.9) u.set(0, 1, 0)
-      u.cross(dir).normalize()
-      v.crossVectors(dir, u)
-      near.setFromPoints([a, b]).expandByScalar(NEAR * 2)
-      const from = solids.filter((s) => s.box.intersectsBox(near))
-      // the edge in pieces: runs of those that show are kept
-      const n = Math.max(1, Math.ceil(len / STEP))
-      let start = -1
-      for (let k = 0; k <= n; k++) {
-        p.lerpVectors(a, b, (k + 0.5) / n)
-        const on = k < n && shows(from)
-        if (on && start < 0) start = k
-        if (!on && start >= 0) {
-          const s = new THREE.Vector3().lerpVectors(la, lb, start / n)
-          const e = new THREE.Vector3().lerpVectors(la, lb, k / n)
-          kept.push(s.x, s.y, s.z, e.x, e.y, e.z)
-          start = -1
-        }
+      const wa = la.clone().applyMatrix4(m.matrixWorld)
+      const wb = lb.clone().applyMatrix4(m.matrixWorld)
+      for (const [t0, t1] of runs(wa, wb)) {
+        const s = new THREE.Vector3().lerpVectors(la, lb, t0)
+        const e = new THREE.Vector3().lerpVectors(la, lb, t1)
+        kept.push(s.x, s.y, s.z, e.x, e.y, e.z)
       }
     }
     const geo = new THREE.BufferGeometry()
@@ -151,12 +230,102 @@ export function buildOuterEdges(group: THREE.Object3D) {
     outer.userData.edges = 'outer'
     m.add(outer)
   }
+  if (seam) addSeams(group, meshes, runs, seam)
+}
+
+/**
+ * The inside corners where upright pieces meet: upright, where two pieces' sides cross; level,
+ * where one piece's top or foot meets another's side. Only where the whole's outline bends there.
+ */
+function addSeams(
+  group: THREE.Object3D,
+  meshes: THREE.Mesh[],
+  runs: (a: THREE.Vector3, b: THREE.Vector3) => [number, number][],
+  material: THREE.LineBasicMaterial,
+) {
+  const feet = meshes.map(footprintOf).filter((f): f is Footprint => f !== null)
+  const bounds = feet.map(({ poly }) => {
+    const xs = poly.map(([x]) => x)
+    const zs = poly.map(([, z]) => z)
+    return [Math.min(...xs), Math.min(...zs), Math.max(...xs), Math.max(...zs)] as [
+      number,
+      number,
+      number,
+      number,
+    ]
+  })
+  const toGroup = group.matrixWorld.clone().invert()
+  const out: number[] = []
+  const seen = new Set<string>()
+  const add = (a: THREE.Vector3, b: THREE.Vector3) => {
+    const key = [a, b]
+      .map((v) =>
+        v
+          .toArray()
+          .map((n) => n.toFixed(3))
+          .join(),
+      )
+      .join('|')
+    if (seen.has(key)) return
+    seen.add(key)
+    for (const [t0, t1] of runs(a, b)) {
+      const s = new THREE.Vector3().lerpVectors(a, b, t0).applyMatrix4(toGroup)
+      const e = new THREE.Vector3().lerpVectors(a, b, t1).applyMatrix4(toGroup)
+      out.push(s.x, s.y, s.z, e.x, e.y, e.z)
+    }
+  }
+  const sides = (f: Footprint) =>
+    f.poly.map((pt, i) => [pt, f.poly[(i + 1) % f.poly.length]!] as const)
+  const isCorner = (f: Footprint, x: number, z: number) =>
+    f.poly.some(([px, pz]) => Math.hypot(px - x, pz - z) < 1e-4)
+  const M = 0.01
+  for (let i = 0; i < feet.length; i++)
+    for (let j = 0; j < feet.length; j++) {
+      if (i === j) continue
+      const [A, B] = [feet[i]!, feet[j]!]
+      const [ba, bb] = [bounds[i]!, bounds[j]!]
+      if (ba[0] > bb[2] + M || bb[0] > ba[2] + M || ba[1] > bb[3] + M || bb[1] > ba[3] + M) continue
+      const [lo, hi] = [Math.max(A.y0, B.y0), Math.min(A.y1, B.y1)]
+      if (hi - lo < EPS) continue
+      // upright: where a side of A crosses a side of B (each pair once), off either's corners,
+      // which have edges of their own
+      if (i < j)
+        for (const [[ax, az], [bx, bz]] of sides(A))
+          for (const [[cx, cz], [dx, dz]] of sides(B)) {
+            const [rx, rz, sx, sz] = [bx - ax, bz - az, dx - cx, dz - cz]
+            const den = rx * sz - rz * sx
+            if (Math.abs(den) < 1e-9) continue
+            const t = ((cx - ax) * sz - (cz - az) * sx) / den
+            const s = ((cx - ax) * rz - (cz - az) * rx) / den
+            if (t < 0 || t > 1 || s < 0 || s > 1) continue
+            const [x, z] = [ax + rx * t, az + rz * t]
+            if (isCorner(A, x, z) || isCorner(B, x, z)) continue
+            add(new THREE.Vector3(x, lo, z), new THREE.Vector3(x, hi, z))
+          }
+      // level: A's top or foot along B's sides, where it is over A
+      for (const y of [A.y0, A.y1]) {
+        if (y <= B.y0 + EPS || y >= B.y1 - EPS) continue
+        for (const [pa, pb] of sides(B)) {
+          const c = clip(pa, pb, [ba[0] - M, ba[1] - M, ba[2] + M, ba[3] + M])
+          if (!c) continue
+          const at = (t: number) =>
+            new THREE.Vector3(pa[0] + (pb[0] - pa[0]) * t, y, pa[1] + (pb[1] - pa[1]) * t)
+          add(at(c[0]), at(c[1]))
+        }
+      }
+    }
+  const geo = new THREE.BufferGeometry()
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(out, 3))
+  const lines = new THREE.LineSegments(geo, material)
+  lines.raycast = () => {}
+  lines.userData.edges = 'both'
+  group.add(lines)
 }
 
 /** Show `group`'s outlines one way: every edge, or only the whole's outline */
 export function setEdgeMode(group: THREE.Object3D, mode: EdgeMode) {
   group.traverse((o) => {
-    const e = o.userData.edges as EdgeMode | undefined
-    if (e) o.visible = e === mode
+    const e = o.userData.edges as EdgeMode | 'both' | undefined
+    if (e) o.visible = e === mode || e === 'both'
   })
 }
