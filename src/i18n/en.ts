@@ -495,7 +495,7 @@ const en: Messages = {
     wallsCut: 'Cut-away walls',
     wallsCutHint: 'Lower the walls to see into the rooms',
     wallEdges: 'Every wall edge',
-    wallEdgesHint: 'Also draw where walls meet and overlap; off draws only their outline',
+    wallEdgesHint: 'Off: outer outline only',
     shadows: 'Shadows',
     shadowsHint: 'Turn off to run smoother on slower devices',
     edit: 'Editing',
