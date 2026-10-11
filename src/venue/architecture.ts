@@ -767,8 +767,9 @@ export function buildArchitecture(scene: THREE.Scene): Architecture {
     x0: 30,
     x1: 33,
     west: 28.475,
-    north: [2.525, 4.29],
-    south: [4.48, 5.875],
+    // two equal rows across the stairwell
+    north: [2.525, 4.105],
+    south: [4.295, 5.875],
     n: 9,
     spine: [30.2, 33],
   })
