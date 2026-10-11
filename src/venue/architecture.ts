@@ -386,7 +386,9 @@ export function buildArchitecture(scene: THREE.Scene): Architecture {
   scene.add(ground)
 
   function slab(x1: number, z1: number, x2: number, z2: number, m: THREE.Material = M.floor) {
+    // floors are drawn without outlines: where they meet, one floor runs on into the next
     const s = mesh(B(x2 - x1, 0.3, z2 - z1), m, arch, (x1 + x2) / 2, -0.15, (z1 + z2) / 2, {
+      e: null,
       cast: false,
     })
     walk.push(s)
@@ -398,7 +400,8 @@ export function buildArchitecture(scene: THREE.Scene): Architecture {
     m: THREE.Material,
     parent: THREE.Object3D,
     y0 = 0,
-    e: THREE.LineBasicMaterial | null = EF,
+    // floors without outlines, as for slab()
+    e: THREE.LineBasicMaterial | null = m === M.floor ? null : EF,
   ) {
     const s = new THREE.Shape(pts.map(([x, z]) => new THREE.Vector2(x, -z)))
     const o = new THREE.Mesh(new THREE.ExtrudeGeometry(s, { depth: hgt, bevelEnabled: false }), m)
@@ -410,19 +413,19 @@ export function buildArchitecture(scene: THREE.Scene): Architecture {
     return o
   }
 
-  slab(11.1, -8.9, 34.9, -0.5, M.floor2) // A201 (2355 × 720)
-  slab(13.8, -0.5, 20.7, 0.4, M.floor2) // A201's two bays, reaching into A215
-  slab(25.1, -0.5, 32, 0.4, M.floor2)
+  slab(11.1, -8.9, 34.9, -0.5, M.floor) // A201 (2355 × 720)
+  slab(13.8, -0.5, 20.7, 0.4, M.floor) // A201's two bays, reaching into A215
+  slab(25.1, -0.5, 32, 0.4, M.floor)
   // 景觀梯's stairwell is open; the 2F floor runs round its east side, where both flights
   // meet it, and on south to the railed edge at z 9.4
-  slab(9.1, -0.4, 11.1, 5.9, M.service)
-  slab(7.9, 2.85, 9.1, 5.9, M.service)
-  slab(0.55, 5.9, 11.1, 9.4, M.service)
+  slab(9.1, -0.4, 11.1, 5.9, M.floor)
+  slab(7.9, 2.85, 9.1, 5.9, M.floor)
+  slab(0.55, 5.9, 11.1, 9.4, M.floor)
   slab(11.1, 0.4, 28.35, 23.2) // A215, and its strips in front of the stepped-back wall
   slab(11.1, -0.5, 13.8, 0.4)
   slab(20.7, -0.5, 25.1, 0.4)
   slab(32, -0.5, 34.85, 0.4)
-  slab(28.35, 0.4, 37.4, 23.2, M.service) // service core
+  slab(28.35, 0.4, 37.4, 23.2, M.floor) // service core
   // south band: A223 / A2 lobby, its west edge the window and the slanting wall
   walk.push(
     prism(
@@ -452,7 +455,7 @@ export function buildArchitecture(scene: THREE.Scene): Architecture {
         [25.96, 45.719],
       ],
       0.3,
-      M.service,
+      M.floor,
       arch,
       -0.3,
     ),
@@ -1184,7 +1187,7 @@ export function buildArchitecture(scene: THREE.Scene): Architecture {
         [34.07, 32.3],
       ],
       STAGE_H,
-      M.service,
+      M.floor,
       arch,
     ),
   )
@@ -1198,7 +1201,7 @@ export function buildArchitecture(scene: THREE.Scene): Architecture {
         [29.63, 46.81],
       ],
       STAGE_H,
-      M.service,
+      M.floor,
       arch,
     ),
   )

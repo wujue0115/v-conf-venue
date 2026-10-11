@@ -9,12 +9,10 @@ export const mat = (
 
 export const M = {
   floor: mat('#fbfaf6', { name: 'floor' }),
-  floor2: mat('#f4f1e9', { name: 'floor_hall' }),
   wall: mat('#ffffff', { name: 'wall' }),
   step: mat('#ebe6da', { name: 'step' }),
   stage: mat('#d9c9ae', { name: 'stage' }),
   rake: mat('#ebe6da', { name: 'rake' }),
-  service: mat('#e7e4dd', { name: 'service_floor' }),
   dark: mat('#2f3237', { name: 'dark' }),
   steel: mat('#d8dce1', { name: 'steel' }),
   glass: new THREE.MeshStandardMaterial({
