@@ -138,7 +138,7 @@ const WALLS: Seg[] = [
   // south band
   // on the way on to A2's back: a window (see glass) then a slanting wall beside the second
   // flight of steps; outside the window there is nothing
-  [10.7, 23.2, 10.1, 23.2],
+  [11.3, 23.2, 10.1, 23.2],
   [10.1, 26.2, 8.6, 28.3],
   [8.6, 28.3, 8.6, 29.75],
   // A223 VIP lounge, and the store beside it (door on its east)
@@ -561,7 +561,9 @@ export function buildArchitecture(scene: THREE.Scene): Architecture {
   // A215's west side: a low glass rail along the lower ground south of 景觀梯's landing, then
   // a curtain wall; on the way on to A2's back, a window beside the second flight of steps
   glass(11.1, 9.4, 11.1, 15.1, 1.1, arch)
-  glass(10.7, 15.2, 10.7, 23.2)
+  // the curtain wall in line with the columns, between them: its ends stop inside the columns,
+  // so beside them it's the column that shows
+  glass(11.3, 15.5, 11.3, 22.9)
   glass(10.1, 23.2, 10.1, 26.2)
   // A201's north façade: glass between its columns and the bays
   ;(
