@@ -783,8 +783,10 @@ export class VenueEditor {
       near: 1,
       far: 160,
     })
-    sun.shadow.bias = -0.0004
-    sun.shadow.normalBias = 0.03
+    // kept small: a larger offset lets light leak in along where walls meet floors and each
+    // other, as if there were a gap
+    sun.shadow.bias = 0
+    sun.shadow.normalBias = 0.006
     scene.add(sun)
 
     this.archi = buildArchitecture(scene)
