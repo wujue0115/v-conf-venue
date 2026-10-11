@@ -566,6 +566,18 @@ const en: Messages = {
     ],
   },
 
+  zoneLock: {
+    label: 'No editing',
+    locked: 'This zone is locked against editing. Untick "No editing" to change it',
+    inside: "This is in a zone locked against editing, so it can't be changed",
+    cantEnter: "Items can't go into a zone locked against editing",
+    lockedOn: 'Zone locked against editing',
+    lockedOff: 'Zone unlocked for editing',
+    stepBlocked:
+      'This step would change a zone locked against editing. Unlock it to undo or redo it',
+    keptOnClear: 'Zones locked against editing, and what is in them, were kept',
+  },
+
   collab: {
     locked: (name: string) => `${name} is editing this item`,
     taken: (name: string) => `${name} picked this item first, so it's no longer selected`,

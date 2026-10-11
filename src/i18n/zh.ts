@@ -577,6 +577,23 @@ const zh = {
     ] as { title: string; rows: [key: string, what: string][] }[],
   },
 
+  /** A zone locked against editing (禁止編輯), and what stands in it */
+  zoneLock: {
+    label: '禁止編輯',
+    /** Trying to change the locked zone selected */
+    locked: '這個區域禁止編輯，取消勾選「禁止編輯」才能修改',
+    /** Trying to change something standing in a locked zone */
+    inside: '這在禁止編輯的區域內，無法修改',
+    /** Putting, moving or copying something into a locked zone */
+    cantEnter: '不能把物件放進禁止編輯的區域',
+    lockedOn: '已將區域設為禁止編輯',
+    lockedOff: '已解除區域的禁止編輯',
+    /** An undo or redo step would change a locked zone or what's in it (locked since) */
+    stepBlocked: '這一步會動到禁止編輯的區域，解除禁止編輯後才能復原或重做',
+    /** Clearing the venue left the locked zones and what's in them */
+    keptOnClear: '禁止編輯的區域和其中的物件已保留',
+  },
+
   /** Working on a cloud project together */
   collab: {
     /** Picking an item someone else has selected */

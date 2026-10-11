@@ -22,7 +22,7 @@ import {
   applyPeople,
   type FurnitureType,
 } from './furniture'
-import { rebaseStep } from './history'
+import { rebaseStep, touchesLocked } from './history'
 import { drawLabels, type LabelFace, type LabelMark, type TagMark } from './imageLabels'
 import { LID_OPEN, clampLid, setLaptopOpen } from './laptop'
 import { TV_LIFT, clampLift, setTvLift } from './tv'
@@ -57,7 +57,7 @@ import {
 } from './path'
 import type { CameraView, Vec3 } from './places'
 import { bearing, linkPosts, withoutCutToward, type Post } from './stanchions'
-import { ZONE_COLOR, ZONE_MIN, applyZone, clampZone, onZoneGrid } from './zone'
+import { ZONE_COLOR, ZONE_MIN, applyZone, clampZone, inZone, onZoneGrid } from './zone'
 
 export interface SelectionInfo {
   /** How many items are selected; the rest describes the first of them */
@@ -96,8 +96,8 @@ export interface SelectionInfo {
   billed?: boolean
   /** 人員 items: how many figures, their colour, and whether they sit on a seat */
   people?: { n: number; color: string; sit: boolean }
-  /** 區域 items: width × depth in metres and colour */
-  zone?: { w: number; d: number; color: string }
+  /** 區域 items: width × depth in metres, colour, and whether it's locked against editing */
+  zone?: { w: number; d: number; color: string; locked: boolean }
   /** Laptops: the lid's opening in degrees */
   laptop?: { open: number }
   /** Mobile TVs: the screen's centre above the floor, metres */
@@ -375,6 +375,8 @@ function setAuto(o: THREE.Object3D, to: readonly string[], on: boolean) {
 }
 const isPerson = (o: THREE.Object3D) => o.userData.type === 'person'
 const isZone = (o: THREE.Object3D) => o.userData.type === 'zone'
+/** A zone locked against editing (禁止編輯): it, and what stands in it, can't be changed */
+const lockedZone = (o: THREE.Object3D) => isZone(o) && !!o.userData.locked
 /** Whether dark text reads better than white on this #rrggbb colour (WCAG relative luminance) */
 function isLight(hex: string) {
   const lin = (i: number) => {
@@ -862,9 +864,15 @@ export class VenueEditor {
     this.commit()
   }
 
+  /** Remove everything but the zones locked against editing and what stands in them */
   clear() {
-    if (!this.placed.children.length) return
-    this.load([], { record: true })
+    const keep = this.placed.children.filter((o) => lockedZone(o) || this.frozen(o))
+    if (keep.length === this.placed.children.length) return
+    this.load(
+      keep.map((o) => this.itemOf(o)),
+      { record: true },
+    )
+    if (keep.length) this.cb.onToast(t().zoneLock.keptOnClear)
   }
 
   get count() {
@@ -910,7 +918,10 @@ export class VenueEditor {
       if (i >= 0) next[i] = o
     }
     this.rebaseHistory(taken, gone)
-    if (next.length !== sel.length || next.some((o, i) => o !== sel[i])) this.setSelection(next)
+    // someone else locked a zone round what's selected here (setSelection lets it go)
+    const lost = next.some((o) => this.frozen(o)) || (next.length > 1 && next.some(lockedZone))
+    if (lost || next.length !== sel.length || next.some((o, i) => o !== sel[i]))
+      this.setSelection(next)
     else if (this.selected) this.updSel()
     this.commit()
   }
@@ -978,19 +989,32 @@ export class VenueEditor {
   }
 
   undo() {
-    const s = this.undoStack.pop()
-    if (!s) return
+    const s = this.undoStack[this.undoStack.length - 1]
+    if (!s || this.refuseStep(s)) return
+    this.undoStack.pop()
     this.redoStack.push(this.snapshot())
     this.restore(s)
     this.cb.onToast(t().toast.undone)
   }
 
   redo() {
-    const s = this.redoStack.pop()
-    if (!s) return
+    const s = this.redoStack[this.redoStack.length - 1]
+    if (!s || this.refuseStep(s)) return
+    this.redoStack.pop()
     this.undoStack.push(this.snapshot())
     this.restore(s)
     this.cb.onToast(t().toast.redone)
+  }
+
+  /**
+   * An undo or redo step that would change a locked zone or what stands in it (someone else
+   * locked it since) is kept, not taken: it can be once the zone is unlocked
+   */
+  private refuseStep(step: string) {
+    const now = JSON.parse(this.snapshot()) as LayoutItem[]
+    if (!touchesLocked(now, JSON.parse(step) as LayoutItem[])) return false
+    this.cb.onToast(t().zoneLock.stepBlocked)
+    return true
   }
 
   /** Switch between edit mode and view-only mode. */
@@ -1076,7 +1100,7 @@ export class VenueEditor {
   /** Change the selected zone's size (metres, on the zone grid, about its centre) and/or colour. */
   setZone({ w, d, color }: { w?: number; d?: number; color?: string }) {
     const s = this.selected
-    if (!s || !isZone(s)) return
+    if (!s || !isZone(s) || this.refuseLocked()) return
     const w0 = s.userData.w as number
     const d0 = s.userData.d as number
     const c0 = (s.userData.color as string | undefined) ?? ZONE_COLOR
@@ -1088,6 +1112,25 @@ export class VenueEditor {
     applyZone(s, { w: w1, d: d1, color: c1 })
     this.updSel()
     this.commit()
+  }
+
+  /**
+   * Lock the selected zone against editing (禁止編輯), or unlock it. Locked, neither it nor
+   * anything standing in it can be selected, moved or changed, and nothing can be put in it.
+   */
+  setZoneLocked(on: boolean) {
+    const s = this.selected
+    if (!s || this.group.size || !isZone(s) || lockedZone(s) === on) return
+    this.pushUndo()
+    applyZone(s, {
+      w: s.userData.w as number,
+      d: s.userData.d as number,
+      color: s.userData.color as string | undefined,
+      locked: on,
+    })
+    this.updSel()
+    this.commit()
+    this.cb.onToast(on ? t().zoneLock.lockedOn : t().zoneLock.lockedOff)
   }
 
   /** Change how many figures the selected 人員 item shows, and/or their colour. */
@@ -1109,7 +1152,7 @@ export class VenueEditor {
   /** Name the selected item; an empty tag removes it. */
   setTag(tag: string) {
     const s = this.selected
-    if (!s) return
+    if (!s || this.refuseLocked()) return
     const t = cleanTag(tag)
     if ((s.userData.tag ?? '') === t) return
     this.pushUndo()
@@ -1129,8 +1172,12 @@ export class VenueEditor {
       : this.selected
         ? [this.selected]
         : []
-    const change = list.filter((o) => !o.userData.unbilled !== on)
-    if (!change.length) return
+    // what stands in a locked zone stays as it is
+    const change = list.filter((o) => !o.userData.unbilled !== on && !this.frozen(o))
+    if (!change.length) {
+      if (list.some((o) => this.frozen(o))) this.cb.onToast(t().zoneLock.inside)
+      return
+    }
     this.pushUndo()
     for (const o of change)
       if (on) delete o.userData.unbilled
@@ -1157,13 +1204,13 @@ export class VenueEditor {
       p1: target.clone().add(back.setLength(dist)),
       g1: target,
     }
-    if (this.editable && o.visible) this.select(o)
+    if (this.editable && o.visible && !this.frozen(o)) this.select(o)
   }
 
   /** Give the selected item a note (補充資訊); an empty one removes it. */
   setInfo(info: string) {
     const s = this.selected
-    if (!s) return
+    if (!s || this.refuseLocked()) return
     const t = cleanInfo(info)
     if ((s.userData.info ?? '') === t) return
     this.pushUndo()
@@ -1176,7 +1223,7 @@ export class VenueEditor {
   /** Colour the selected item's tag (#rrggbb); people and zones use their own colour instead. */
   setTagColor(color: string) {
     const s = this.selected
-    if (!s || !ownTagColor(s) || !isHexColor(color)) return
+    if (!s || !ownTagColor(s) || !isHexColor(color) || this.refuseLocked()) return
     const c = color.toLowerCase()
     if (((s.userData.tagColor as string | undefined) ?? TAG_COLOR) === c) return
     this.pushUndo()
@@ -1331,7 +1378,7 @@ export class VenueEditor {
       const d = this.camera.getWorldDirection(new THREE.Vector3())
       yaw = Math.atan2(d.x, d.z)
     }
-    const mine = !!at && this.editable && !this.lockOf(at.o)
+    const mine = !!at && this.editable && !this.lockOf(at.o) && !this.frozen(at.o)
     // walked as, they stop walking along a path, there and then
     if (mine) this.leavePath(at.o)
     // a stand-in stands, even where the one it stands in for sat
@@ -2280,7 +2327,7 @@ export class VenueEditor {
 
   rotate(deg: number) {
     const s = this.selected
-    if (!s) return
+    if (!s || this.refuseLocked()) return
     // several selected: they turn together, round the middle of the selection
     if (this.group.size) return this.rotateGroup(deg)
     if (onWall(s)) return
@@ -2294,7 +2341,7 @@ export class VenueEditor {
 
   duplicate() {
     const s = this.selected
-    if (!s) return
+    if (!s || this.refuseLocked()) return
     if (this.group.size) return this.duplicateGroup()
     this.pushUndo()
     const type = s.userData.type as FurnitureType
@@ -2337,6 +2384,7 @@ export class VenueEditor {
       // a copied person takes the next seat if there is one
       if (o) this.settle(o)
     }
+    if (o && this.refuseInto([o])) return
     this.select(o)
     this.commit()
   }
@@ -2344,7 +2392,7 @@ export class VenueEditor {
   /** Delete the selected item, or every selected item. */
   remove() {
     const all = this.selection
-    if (!all.length) return
+    if (!all.length || this.refuseLocked()) return
     this.pushUndo()
     for (const s of all) {
       const riders = this.ridersOf(s)
@@ -2481,7 +2529,7 @@ export class VenueEditor {
   /** Take the selected items out of their groups (the whole group, when it is all selected) */
   ungroup() {
     const all = this.selection.filter((o) => o.userData.group)
-    if (!all.length) return
+    if (!all.length || this.refuseLocked()) return
     this.pushUndo()
     for (const o of all)
       for (const k of ['group', 'groupTag', 'groupColor', 'groupInfo']) delete o.userData[k]
@@ -2496,7 +2544,7 @@ export class VenueEditor {
   renameGroup(name: string) {
     const from = this.sharedGroup().group
     const to = cleanTag(name)
-    if (!from || !to || to === from) return false
+    if (!from || !to || to === from || this.refuseLocked()) return false
     if (this.placed.children.some((o) => o.userData.group === to)) return false
     this.pushUndo()
     for (const o of this.placed.children) if (o.userData.group === from) o.userData.group = to
@@ -2566,6 +2614,7 @@ export class VenueEditor {
       copies.push(c)
       if (isPathNode(c)) pointCopies.set(item.id!, c)
     }
+    if (this.refuseInto(copies)) return
     // links between copied 動線點 are copied too, between the copies
     for (const [id, c] of pointCopies) {
       const links = ((this.itemById(id)?.userData.links as string[] | undefined) ?? []).flatMap(
@@ -2590,7 +2639,7 @@ export class VenueEditor {
   /** Repeat the selected object `cols` to its right and `rows` behind it. */
   arrayFromSelected({ cols, rows, dx, dz }: ArrayOptions) {
     const s = this.selected
-    if (!s || onWall(s) || onTable(s)) return
+    if (!s || onWall(s) || onTable(s) || this.refuseLocked()) return
     cols = Math.max(1, Math.min(60, Math.trunc(cols) || 1))
     rows = Math.max(1, Math.min(60, Math.trunc(rows) || 1))
     dx = dx || 1
@@ -2598,6 +2647,7 @@ export class VenueEditor {
     if (cols * rows < 2) return
     this.pushUndo()
     const type = s.userData.type as FurnitureType
+    const copies: THREE.Object3D[] = []
     for (let r = 0; r < rows; r++)
       for (let c = 0; c < cols; c++) {
         if (!r && !c) continue
@@ -2612,7 +2662,9 @@ export class VenueEditor {
           sit: undefined,
         })
         if (o) this.settle(o)
+        if (o) copies.push(o)
       }
+    if (this.refuseInto(copies)) return
     this.commit()
     this.cb.onToast(t().toast.arrayed(cols * rows - 1, nameOf(type), cols, rows))
   }
@@ -2792,6 +2844,12 @@ export class VenueEditor {
       }
       ok = !!p
     }
+    if (ok && this.frozen(o)) {
+      // still armed, for somewhere else
+      this.placed.remove(o)
+      this.cb.onToast(t().zoneLock.cantEnter)
+      return
+    }
     this.placed.remove(o)
     if (!ok) {
       // still armed, for another try
@@ -2843,6 +2901,8 @@ export class VenueEditor {
       this.cb.onToast(t().collab.locked(lock.name))
       return
     }
+    // a locked zone stays put: held, it's only selected
+    if (lockedZone(p.o)) return this.setSelection([p.o])
     // a short buzz where the device has one: it's in hand now
     navigator.vibrate?.(15)
     this.grab(p.last, p.o)
@@ -2950,7 +3010,10 @@ export class VenueEditor {
       this.placing = null
       if (!pl) return
       const clicked = Math.hypot(ev.clientX - pl.sx, ev.clientY - pl.sy) < 5
-      if (pl.obj && pl.obj.visible && this.overCanvas(ev)) {
+      if (pl.obj && pl.obj.visible && this.overCanvas(ev) && this.frozen(pl.obj)) {
+        this.placed.remove(pl.obj)
+        this.cb.onToast(t().zoneLock.cantEnter)
+      } else if (pl.obj && pl.obj.visible && this.overCanvas(ev)) {
         // snapshot undo without the in-flight object
         this.placed.remove(pl.obj)
         this.pushUndo()
@@ -2971,6 +3034,7 @@ export class VenueEditor {
           this.pushUndo()
           const r = facesViewer(type) ? this.facingView() : 0
           const o = this.add({ t: type, x: p.x, y: p.y, z: p.z, r })
+          if (o && this.refuseInto([o])) return
           this.select(o)
           this.commit()
           this.cb.onToast(t().toast.onCentreTable(nameOf(type)))
@@ -2986,6 +3050,7 @@ export class VenueEditor {
           const o = buildFurniture(type)
           this.placed.add(o)
           this.hangOn(o, hit.point, hit.normal)
+          if (this.refuseInto([o])) return
           this.select(o)
           this.commit()
           this.cb.onToast(t().toast.onCentreWall(nameOf(type)))
@@ -2996,6 +3061,7 @@ export class VenueEditor {
           const o = this.add({ t: type, x: this.sn(aim.x), z: this.sn(aim.z), r })
           if (o && seatOf(o)) o.rotation.y = this.facingTable(o) ?? r
           if (o) this.settle(o)
+          if (o && this.refuseInto([o])) return
           this.select(o)
           this.commit()
           this.cb.onToast(t().toast.atCentre(nameOf(type)))
@@ -3069,6 +3135,7 @@ export class VenueEditor {
     w,
     h,
     d,
+    locked,
     img,
     lock,
     tag,
@@ -3106,7 +3173,7 @@ export class VenueEditor {
     if (groupColor) o.userData.groupColor = groupColor
     if (groupInfo) o.userData.groupInfo = groupInfo
     if (t === 'person' && (n || color || sit)) applyPeople(o, n, color, sit)
-    if (t === 'zone' && w && d) applyZone(o, { w, d, color })
+    if (t === 'zone' && w && d) applyZone(o, { w, d, color, locked })
     if (t === 'laptop' && open !== undefined) setLaptopOpen(o, open)
     if (t === 'tvCart' && lift !== undefined) setTvLift(o, lift)
     // a copy (passed without an id) is linked to nothing
@@ -3165,7 +3232,9 @@ export class VenueEditor {
       ...(links?.length && (ud.auto as string[] | undefined)?.length
         ? { auto: (ud.auto as string[]).filter((a) => links.includes(a)) }
         : {}),
-      ...(isZone(o) ? { w: ud.w as number, d: ud.d as number } : {}),
+      ...(isZone(o)
+        ? { w: ud.w as number, d: ud.d as number, ...(ud.locked ? { locked: true } : {}) }
+        : {}),
       ...(ud.img && hasFace(o) ? { img: ud.img as string } : {}),
       ...(resizable(o)
         ? {
@@ -3462,7 +3531,8 @@ export class VenueEditor {
   private updHandles() {
     const s = this.selected
     // resizing is for one item at a time
-    this.handles.visible = !!s && !this.group.size && (resizable(s) || isZone(s))
+    this.handles.visible =
+      !!s && !this.group.size && (resizable(s) || (isZone(s) && !lockedZone(s)))
     if (!s || !this.handles.visible) return
     s.updateMatrixWorld()
     // a zone's handles take its colour; everything else keeps the selection yellow
@@ -3616,6 +3686,7 @@ export class VenueEditor {
   /** Remove an auto-linked belt; the cut is stored on its first post so it survives saves. */
   private cutBelt(belt: THREE.Object3D) {
     const [a, b] = belt.userData.ends as [THREE.Object3D, THREE.Object3D]
+    if (this.frozen(a) || this.frozen(b)) return this.cb.onToast(t().zoneLock.inside)
     this.pushUndo()
     a.userData.cut = [
       ...((a.userData.cut as number[] | undefined) ?? []),
@@ -3672,6 +3743,7 @@ export class VenueEditor {
   /** Take a link out of its 動線, from whichever of its points keeps it */
   private unlink(link: THREE.Object3D) {
     const [a, b] = link.userData.ends as [THREE.Object3D, THREE.Object3D]
+    if (this.frozen(a) || this.frozen(b)) return this.cb.onToast(t().zoneLock.inside)
     this.pushUndo()
     for (const [p, q] of [
       [a, b],
@@ -3767,6 +3839,7 @@ export class VenueEditor {
     this.pushUndo()
     const color = pathColorOf(a)
     const o = this.add({ t: 'pathNode', x: this.sn(p.x), z: this.sn(p.z), r: 0, color })!
+    if (this.refuseInto([o])) return null
     const walks = this.walksOn(a)
     a.userData.links = [...((a.userData.links as string[] | undefined) ?? []), o.userData.id]
     setAuto(a, [o.userData.id as string], walks)
@@ -4442,8 +4515,11 @@ export class VenueEditor {
 
   /** Select these items together; the first one is the one the panel describes */
   private setSelection(list: readonly THREE.Object3D[]) {
-    // someone else's selection can't join this one
-    const [first, ...rest] = [...new Set(list)].filter((o) => !this.lockOf(o))
+    // someone else's selection can't join this one, nor what stands in a locked zone
+    let pick = [...new Set(list)].filter((o) => !this.lockOf(o) && !this.frozen(o))
+    // a locked zone is only selected on its own: nothing can be done to it along with others
+    if (pick.length > 1) pick = pick.filter((o) => !lockedZone(o))
+    const [first, ...rest] = pick
     this.select(first ?? null)
     for (const o of rest) this.group.add(o)
     this.syncGroupBoxes()
@@ -4701,6 +4777,7 @@ export class VenueEditor {
               w: s.userData.w as number,
               d: s.userData.d as number,
               color: (s.userData.color as string | undefined) ?? ZONE_COLOR,
+              locked: lockedZone(s),
             },
           }
         : {}),
@@ -4766,13 +4843,66 @@ export class VenueEditor {
 
   private pickObj(e: PointerEvent) {
     this.setRay(e)
-    // the raycaster doesn't skip hidden objects, so pass over hits on hidden items
+    // the raycaster doesn't skip hidden objects, so pass over hits on hidden items; what stands
+    // in a locked zone is passed over too, so the zone under it is picked instead
     for (const h of this.ray.intersectObjects(this.placed.children, true)) {
       let o = h.object
       while (o.parent && o.parent !== this.placed) o = o.parent
-      if (o.visible) return o
+      if (o.visible && !this.frozen(o)) return o
     }
     return null
+  }
+
+  /**
+   * The cursor over the stage: a corner handle resizes, a locked zone (or anything in it) can't
+   * be touched, anything else to pick can be grabbed
+   */
+  private hoverCursor(e: PointerEvent) {
+    const hd = this.pickHandle(e)
+    if (hd) return hd.userData.sx * hd.userData.sy > 0 ? 'nesw-resize' : 'nwse-resize'
+    const o = this.pickObj(e)
+    if (o && lockedZone(o)) return 'not-allowed'
+    if (o || this.pickLinker(e)) return 'grab'
+    return ''
+  }
+
+  /** Whether `o` stands in a zone locked against editing (other than itself) */
+  private frozen(o: THREE.Object3D) {
+    return this.placed.children.some(
+      (z) => z !== o && lockedZone(z) && inZone(z, o.position.x, o.position.z),
+    )
+  }
+
+  /** A locked zone is selected: nothing may change it (and a toast says so) */
+  private refuseLocked() {
+    if (!this.selection.some(lockedZone)) return false
+    this.cb.onToast(t().zoneLock.locked)
+    return true
+  }
+
+  /**
+   * Whether any of these items has ended up in a locked zone, in a change not yet committed: if
+   * so the change is refused, the layout put back as its undo step has it (the selection kept)
+   */
+  private refuseInto(list: readonly THREE.Object3D[]) {
+    if (!list.some((o) => this.frozen(o))) return false
+    const ids = this.selection.map((o) => o.userData.id as string)
+    const moved = list.map((o) => o.userData.id as string | undefined)
+    const step = this.undoStack[this.undoStack.length - 1]
+    this.dropUndo()
+    if (step) this.restore(step)
+    const byId = this.byId()
+    this.setSelection(ids.flatMap((id) => byId.get(id) ?? []))
+    // others saw them dragged in: nothing new gets saved, so show them where they went back to
+    const back = moved.flatMap((id) => (id && byId.get(id)) || [])
+    this.live(back.flatMap((o) => [o, ...this.ridersOf(o).map((r) => r.o)]))
+    this.cb.onToast(t().zoneLock.cantEnter)
+    return true
+  }
+
+  /** What a click on `o` selects: its whole group, but a locked zone only ever on its own */
+  private pickSet(o: THREE.Object3D) {
+    return lockedZone(o) ? [o] : this.withGroup(o)
   }
 
   private moveTo(o: THREE.Object3D, x: number, z: number) {
@@ -5026,7 +5156,15 @@ export class VenueEditor {
           return
         }
         const keyed = e.shiftKey || e.metaKey || e.ctrlKey
-        if (o && this.multi && !keyed && this.selection.includes(o) && !onWall(o) && !onTable(o)) {
+        if (
+          o &&
+          this.multi &&
+          !keyed &&
+          this.selection.includes(o) &&
+          !onWall(o) &&
+          !onTable(o) &&
+          !lockedZone(o)
+        ) {
           // 多選: dragging a selected item moves them all; a tap takes it out
           e.stopPropagation()
           e.preventDefault()
@@ -5053,8 +5191,9 @@ export class VenueEditor {
           }
           return
         }
-        if (isZone(o) && !this.selection.includes(o)) {
-          // leave the drag to the camera; a plain click selects the zone (pointerup)
+        if (isZone(o) && (!this.selection.includes(o) || lockedZone(o))) {
+          // leave the drag to the camera; a plain click selects the zone (pointerup). A locked
+          // zone is never dragged, selected or not.
           this.zoneClick = o
           return
         }
@@ -5190,14 +5329,7 @@ export class VenueEditor {
       }
       if (this.placing || !this.editable) return
       if (e.target === canvas && e.buttons === 0) {
-        const hd = this.pickHandle(e)
-        canvas.style.cursor = hd
-          ? hd.userData.sx * hd.userData.sy > 0
-            ? 'nesw-resize'
-            : 'nwse-resize'
-          : this.pickObj(e) || this.pickLinker(e)
-            ? 'grab'
-            : ''
+        canvas.style.cursor = this.hoverCursor(e)
       }
     })
     this.listen(window, 'pointerup', (e) => {
@@ -5214,7 +5346,7 @@ export class VenueEditor {
         this.cancelPress()
         const lock = this.lockOf(pr.o)
         if (lock) this.cb.onToast(t().collab.locked(lock.name))
-        else this.setSelection(this.withGroup(pr.o))
+        else this.setSelection(this.pickSet(pr.o))
         this.downPt = null
         return
       }
@@ -5248,8 +5380,11 @@ export class VenueEditor {
         // let go first: what was dragged onto a self-walking path sets off along it (commit)
         this.drag = null
         if (dr.moved) {
-          if (!dr.group) this.ontoPath(dr.o)
-          this.commit()
+          // dragged into a locked zone, it's put back where it was
+          if (!this.refuseInto(dr.group?.map((m) => m.o) ?? [dr.o])) {
+            if (!dr.group) this.ontoPath(dr.o)
+            this.commit()
+          }
         }
         // a tap in 多選 takes the item out; a plain click (no drag) on one of several selected
         // items selects just that one
@@ -5270,7 +5405,7 @@ export class VenueEditor {
         // a tap on a belt or a link puts its 移除連接 button up (as the mouse over it does)
         const link = this.pickJoin(e)
         this.linkHover = link ? (link.userData.key as string) : null
-        if (!link) this.setSelection(this.zoneClick ? this.withGroup(this.zoneClick) : [])
+        if (!link) this.setSelection(this.zoneClick ? this.pickSet(this.zoneClick) : [])
       }
       this.zoneClick = null
       this.downPt = null
@@ -5344,6 +5479,18 @@ export class VenueEditor {
     }
     const s = this.selected
     if (!s) return
+    // a locked zone: Esc lets it go; the keys that would change it only say it's locked
+    if (e.key !== 'Escape' && this.selection.some(lockedZone)) {
+      const edits =
+        (mod && kk === 'd') ||
+        (!mod && ['delete', 'backspace', 'q', 'e', 'r'].includes(kk)) ||
+        kk.startsWith('arrow')
+      if (edits) {
+        e.preventDefault()
+        this.refuseLocked()
+      }
+      return
+    }
     if (mod && kk === 'd') {
       e.preventDefault()
       this.duplicate()
@@ -5361,7 +5508,9 @@ export class VenueEditor {
       if (!ax) return
       const st = e.shiftKey ? 1 : 0.25
       this.pushUndo()
-      this.offsetGroup(this.groupMembers(), ax.x * st, ax.z * st)
+      const members = this.groupMembers()
+      this.offsetGroup(members, ax.x * st, ax.z * st)
+      if (this.refuseInto(members.map((m) => m.o))) return
       this.commit()
     } else if (e.key.startsWith('Arrow') && onWall(s)) {
       // posters slide along their wall: left/right sideways, up/down in height
@@ -5378,6 +5527,7 @@ export class VenueEditor {
       this.pushUndo()
       s.position.addScaledVector(right, dx).setY(s.position.y + dy)
       this.keepAboveFloor(s)
+      if (this.refuseInto([s])) return
       this.updSel()
       this.commit()
     } else if (e.key.startsWith('Arrow') && onTable(s)) {
@@ -5396,6 +5546,7 @@ export class VenueEditor {
       if (y === null) return
       this.pushUndo()
       s.position.set(x, y, z)
+      if (this.refuseInto([s])) return
       this.updSel()
       this.commit()
     } else if (e.key.startsWith('Arrow')) {
@@ -5411,6 +5562,7 @@ export class VenueEditor {
       p.y = this.floorY(p.x, p.z)
       this.carry(s, riders)
       this.settle(s)
+      if (this.refuseInto([s])) return
       this.updSel()
       this.commit()
     }

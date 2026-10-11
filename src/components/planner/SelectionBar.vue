@@ -374,12 +374,29 @@ const generate = () =>
       <button v-if="phone" class="btn" type="button" @click="open = false">
         {{ t().sel.collapse }}
       </button>
-      <button class="btn danger" :title="t().sel.deleteTitle" @click="editor?.remove()">
+      <button
+        class="btn danger"
+        :title="sel.zone?.locked ? t().zoneLock.locked : t().sel.deleteTitle"
+        :disabled="sel.zone?.locked"
+        @click="editor?.remove()"
+      >
         {{ t().sel.delete }}
       </button>
     </div>
 
-    <div class="rows">
+    <!-- 禁止編輯: locked, the zone and what stands in it can't be changed till it's unticked -->
+    <div v-if="sel.zone" class="rows lock-row">
+      <span class="lbl">{{ t().zoneLock.label }}</span>
+      <div class="ctl billed">
+        <TriCheckbox
+          :state="sel.zone.locked ? 'on' : 'off'"
+          :label="t().zoneLock.label"
+          @toggle="editor?.setZoneLocked(!sel.zone.locked)"
+        />
+      </div>
+    </div>
+
+    <fieldset class="rows" :disabled="sel.zone?.locked">
       <template v-for="(a, i) in axes" :key="a.label">
         <span class="lbl">{{ variantLabel(a.label) }}</span>
         <div class="ctl swatches" role="radiogroup" :aria-label="variantLabel(a.label)">
@@ -785,7 +802,7 @@ const generate = () =>
           </button>
         </div>
       </template>
-    </div>
+    </fieldset>
   </div>
 </template>
 
@@ -864,6 +881,20 @@ const generate = () =>
   grid-template-columns: auto minmax(0, 1fr);
   align-items: start;
   gap: 8px 12px;
+  /* a fieldset's own box, gone */
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+/* a zone's 禁止編輯, above the settings it greys out */
+.lock-row {
+  padding-bottom: 8px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.rows:disabled .ctl {
+  opacity: 0.5;
 }
 .lbl {
   /* matches the 30px controls so the label sits on the first line when a row wraps */

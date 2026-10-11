@@ -1,3 +1,4 @@
+import * as THREE from 'three'
 import { describe, expect, it } from 'vitest'
 import {
   clampSlots,
@@ -10,6 +11,7 @@ import {
   type LayoutItem,
 } from '../layout'
 import { footprintOf } from '../furniture'
+import { inZone } from '../zone'
 
 describe('summarizeCost', () => {
   const items: LayoutItem[] = [
@@ -247,6 +249,32 @@ describe('zones', () => {
     expect(a).toMatchObject({ w: 3, d: 0.25, color: '#42b883', tag: '報到區' })
     expect(b).toMatchObject({ w: 2, d: 2 })
     expect(summarizeCost([a!, b!], 1, 3).total).toBe(0)
+  })
+
+  it('keep being locked against editing, and only zones are', () => {
+    const [a, b, c] = parseLayout([
+      { t: 'zone', x: 0, z: 0, r: 0, locked: true },
+      { t: 'zone', x: 0, z: 0, r: 0, locked: 'yes' as unknown as boolean },
+      { t: 'person', x: 0, z: 0, r: 0, locked: true },
+    ])
+    expect(a?.locked).toBe(true)
+    expect(b).not.toHaveProperty('locked')
+    expect(c).toMatchObject({ t: 'person' })
+    expect(c).not.toHaveProperty('locked')
+  })
+
+  it('tell what stands inside them, turned with them, edges included', () => {
+    const z = new THREE.Group()
+    z.position.set(10, 0, 5)
+    z.userData = { w: 4, d: 2 }
+    expect([inZone(z, 12, 6), inZone(z, 12.01, 5), inZone(z, 10, 6.5)]).toEqual([
+      true,
+      false,
+      false,
+    ])
+    // turned a quarter round, its width runs along z
+    z.rotation.y = Math.PI / 2
+    expect([inZone(z, 10, 7), inZone(z, 11, 5), inZone(z, 12, 5)]).toEqual([true, true, false])
   })
 })
 

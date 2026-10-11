@@ -58,6 +58,8 @@ export interface LayoutItem {
   sit?: boolean
   /** Zones only: depth in metres along local z (their width is `w`) */
   d?: number
+  /** Zones only: locked against editing (禁止編輯), itself and everything standing in it */
+  locked?: boolean
   /** Laptops only: lid opening in degrees, 0 (shut) to LID_MAX (absent means LID_OPEN) */
   open?: number
   /** Mobile TVs only: the screen's centre above the floor, metres (absent means TV_LIFT) */
@@ -256,6 +258,7 @@ export function parseLayout(data: unknown): LayoutItem[] {
         ...(t === 'laptop' && i.open !== undefined ? { open: clampLid(i.open) } : {}),
         ...(t === 'tvCart' && i.lift !== undefined ? { lift: clampLift(i.lift) } : {}),
         ...(t === 'zone' ? { w: clampZone(i.w, 2), d: clampZone(i.d, 2) } : {}),
+        ...(t === 'zone' && i.locked === true ? { locked: true } : {}),
         ...(links.length ? { links } : {}),
         ...(auto.length ? { auto } : {}),
       },
