@@ -489,6 +489,9 @@ export function buildArchitecture(scene: THREE.Scene): Architecture {
     y0 = 0,
     bay = 1.6,
   ) {
+    // a centimetre short of the top, so where its ends run into a wall or column their tops
+    // don't share a face and flicker
+    hh -= 0.01
     seg(x1, z1, x2, z2, 0.06, hh, M.glass, parent, y0)
     const L = Math.hypot(x2 - x1, z2 - z1)
     const n = Math.max(1, Math.round(L / bay))
