@@ -8,7 +8,13 @@ export const CENTER = new THREE.Vector3(19, 0, 17.5)
 const H = 4
 /** A2's raked seating: rows, and how much each row steps up toward the back (west) */
 const A2_ROWS = 14
-const A2_RISE = 0.09
+const A2_RISE = 0.16
+/** A2's highest tier: the floor behind the back row, its control room and rear lobby */
+const A2_BACK = (A2_ROWS - 1) * A2_RISE
+/** A2's stage, and the backstage and 翻譯室 behind and beside it, above the hall's floor */
+export const STAGE_H = 0.7
+/** A2's walls: the hall stands about two storeys high */
+const A2_H = 8
 /** Row positions: the first (lowest) row's x, each row's depth, and how the rows bow east toward their ends */
 const A2_X0 = 25.9
 const A2_ROW = 1.105
@@ -48,6 +54,8 @@ export interface Architecture {
   fixedSeats: number
   /** Where someone sits on each fixed A2 seat (hips on the cushion) and the way they face */
   seats: FixedSeat[]
+  /** Put down the cushions of these A2 seats (indices into `seats`), the rest folded up */
+  openSeats: (open: ReadonlySet<number>) => void
   ground: THREE.Mesh
 }
 
@@ -82,7 +90,8 @@ const WALLS: Seg[] = [
   // 服務核 north wall
   [34.85, 0.3, 36.9, 0.3],
   // service core: the north stair, the two lift rooms (east walls on 34.8), the lift lobby
-  // between them opening to A215 on the west and to two rooms on the east
+  // between them opening to A215 on the west and ending in a window on the east (glass, below),
+  // with A210 (電氣機房) north and A216 (弱電機房) south of its east end, their doors beside the lifts
   [28.35, 2.4, 28.35, 9.1],
   [28.35, 12.2, 28.35, 23.2],
   [28.35, 2.4, 34.8, 2.4],
@@ -93,36 +102,48 @@ const WALLS: Seg[] = [
   [28.35, 12.2, 34.8, 12.2],
   [34.8, 12.2, 34.8, 15.1],
   [31.97, 12.2, 31.97, 15.1],
-  [35.9, 9.1, 35.9, 12.2],
   [35.8, 9.1, 37.4, 9.1],
   [35.8, 12.2, 37.2, 12.2],
-  // the restrooms, reached from the lobby through a small hall (34.8–37.2, 12.2–13.8)
+  // the restrooms; A216 (34.8–37.2, 12.2–13.8) has a service door into the men's
   [28.35, 15.1, 34.8, 15.1],
   [34.8, 13.8, 37.2, 13.8],
-  // restrooms | south stairwell: a solid wall, the stair has no way into the restrooms
+  // restrooms | south stairwell. The way in is from the south, off the corridor running north
+  // along the east glass past the stairwell, to a wall (♀|♂, its janitor's closet behind
+  // it): the women's west along the basins, the men's north past the closet's east side.
   [28.35, 19.6, 37.2, 19.6],
-  [33.3, 15.1, 33.3, 17.2],
-  [33.3, 18.4, 33.3, 19.6],
-  [28.35, 23.2, 33.5, 23.2],
-  [33.5, 19.6, 33.5, 23.2],
+  [33.3, 15.1, 33.3, 17.9],
+  [33.3, 17.9, 36.15, 17.9],
+  [34, 17.9, 34, 18.8],
+  [34, 18.8, 36.15, 18.8],
+  [36.15, 17.9, 36.15, 18.8],
+  // the south stairwell's wall on to the corridor, the stair's door in it, and 茶水間 a niche
+  // set back into the stairwell beside the door (the corridor keeps its full width)
+  [28.35, 23.2, 28.8, 23.2],
+  [28.8, 23.2, 28.8, 22.6],
+  [28.8, 22.6, 32.6, 22.6],
+  [32.6, 22.6, 32.6, 23.2],
+  [32.6, 23.2, 35, 23.2],
+  [35, 19.6, 35, 23.2],
   // east exterior
   [36.9, 0.3, 36.9, 5.8],
   [36.9, 5.8, 37.4, 5.8],
   [37.4, 5.8, 37.4, 9.1],
   [37.2, 12.2, 37.2, 19.6],
-  [36.9, 19.6, 36.9, 29.75],
+  [36.9, 23.2, 36.9, 29.75],
   // south band
   // on the way on to A2's back: a window (see glass) then a slanting wall beside the second
   // flight of steps; outside the window there is nothing
   [10.7, 23.2, 10.1, 23.2],
-  [10.1, 25.8, 8.6, 27.9],
-  [8.6, 27.9, 8.6, 29.75],
+  [10.1, 26.2, 8.6, 28.3],
+  [8.6, 28.3, 8.6, 29.75],
   // A223 VIP lounge, and the store beside it (door on its east)
-  [19.4, 25.98, 23.6, 25.98],
-  [19.4, 25.98, 19.4, 29.75],
-  [23.6, 25.98, 23.6, 29.75],
-  [23.4, 23.2, 23.4, 25.98],
-  [22.35, 23.2, 22.35, 25.98],
+  [19.4, 26.3, 23.6, 26.3],
+  [19.4, 26.3, 19.4, 29.75],
+  // A223's and A224's east wall on to the corridor, one flat wall from the column south; A224 a
+  // narrow store behind the column, beside the platform
+  [23.6, 23.6, 23.6, 29.75],
+  [22.45, 23.6, 22.45, 26.3],
+  [22.45, 23.6, 23.6, 23.6],
   // A2's north lobby rooms: the entrance, the accessible toilet room, a service room
   [28.4, 25.3, 28.4, 26.62],
   [28.4, 28.05, 28.4, 29.75],
@@ -150,11 +171,32 @@ const WALLS: Seg[] = [
   // 控制室 in the south-west corner, its door at the west end of its north wall
   [8.6, 41.6, 11.2, 41.6],
   [11.2, 41.6, 11.6, 45.6],
-  [34.2, 29.75, 34.2, 31.8],
-  [34.2, 43.4, 34.2, 45.1],
+  // the proscenium: a wall either side of the stage's opening, turning in at its end
+  [34.1, 29.75, 34.1, 32.28],
+  [34.1, 32.28, 34.7, 32.38],
+  [34.1, 42.92, 34.1, 45.1],
+  [34.1, 42.92, 34.7, 42.82],
+  // the stage's back wall, the screen hung in front of it; at either end, between it and the
+  // walls beside the stage, a curtained way through to the backstage behind
+  [35.41, 32.82, 35.41, 42.43],
+  [35.41, 32.82, 35.73, 32.28],
+  [35.41, 42.43, 35.73, 42.92],
   [26, 45.5, 29.7, 45.1],
+  // 翻譯室: a window on to the hall (built below) and a door from the backstage
+  [29.7, 45.1, 32, 45.1],
+  [34, 45.1, 36.2, 45.1],
+  [29.7, 45.1, 29.7, 46.83],
   [36.2, 45.1, 36.2, 47.9],
 ]
+
+/** A2's own walls, as tall as the hall (A2_H); the rest stand H */
+const A2_WALLS = new Set<Seg>(
+  WALLS.filter(([x1, z1, x2, z2]) => {
+    const [x, z] = [(x1 + x2) / 2, (z1 + z2) / 2]
+    // the hall's outline, the proscenium and stage, the back's lobby and 控制室, the backstage
+    return z >= 29.7 && x >= 8.5 && !(x > 26 && z > 45.3 && x < 32.9)
+  }),
+)
 
 /**
  * Doorways from 平面尺寸圖: where a door (a swing arc whose radius is drawn as a thin leaf)
@@ -167,20 +209,24 @@ const OPENINGS: (Seg | [...Seg, 'full'])[] = [
   [21.45, -0.5, 22.4, -0.5],
   [23.6, -0.5, 24.55, -0.5],
   [32.8, -0.5, 33.7, -0.5],
-  // stairwells: north core by the lifts, south core (its south-east corner, away from the restrooms)
+  // stairwells: north core by the lifts, south core (on to the corridor past the pantry)
   [33.5, 2.4, 34.4, 2.4],
-  [32.9, 23.2, 33.5, 23.2],
-  // the restroom hall, from its door off the lobby into the restrooms
+  [32.75, 23.2, 33.6, 23.2],
+  // A216's service door into the restrooms; the restrooms' way in from the corridor to the
+  // south, and the janitor's closet's door
   [35.6, 13.8, 36.2, 13.8],
+  [35.15, 19.6, 36.75, 19.6],
+  [36.15, 18, 36.15, 18.7],
   // south band: store, VIP lounge, terrace, the accessible toilet room and its toilet
-  [23.4, 23.6, 23.4, 24.7],
-  [23.6, 26.4, 23.6, 27.25],
+  [23.6, 24.2, 23.6, 25.1],
+  [23.6, 26.6, 23.6, 27.45],
   [36.9, 23.85, 36.9, 24.7],
   [31.8, 25.3, 32.75, 25.3],
   [33.05, 26.2, 33.05, 27.1],
-  // A2: the entrance lobby's double doors into the hall, 控制室's door
+  // A2: the entrance lobby's double doors into the hall, 控制室's door, 翻譯室's door
   [9.3, 33.3, 10.7, 33.3],
   [9.3, 41.6, 10.1, 41.6],
+  [35.3, 45.1, 36.1, 45.1],
 ]
 
 /** Restroom fittings */
@@ -188,6 +234,9 @@ const PORCELAIN = mat('#fbfbf9', { roughness: 0.25, name: 'porcelain' })
 const COUNTER = mat('#d9d4ca', { roughness: 0.5, name: 'counter' })
 /** Lift doors */
 const LIFT_DOOR = mat('#f0ebdf', { roughness: 0.5, name: 'lift_door' })
+/** A2's stage curtains, and the white stand below the stage */
+const CURTAIN = mat('#6e2a2c', { name: 'curtain' })
+const PODIUM = mat('#f3f1ec', { roughness: 0.5, name: 'podium' })
 /** Turns (about y) that face a fitting's front, built facing +z, east / west / north / south */
 const FACE = { e: Math.PI / 2, w: -Math.PI / 2, n: Math.PI, s: 0 }
 
@@ -212,8 +261,8 @@ function doorGaps([x1, z1, x2, z2]: Seg): [number, number, boolean][] {
   return gaps.sort((p, q) => p[0] - q[0])
 }
 
-// zone tints (官網配置圖)
-const ZONES: [string, Pt[]][] = [
+// zone tints (官網配置圖), each on the floor it colours (on the hall's unless given)
+const ZONES: [string, Pt[], number?][] = [
   [
     '#f3d9a8',
     [
@@ -232,8 +281,8 @@ const ZONES: [string, Pt[]][] = [
       [28.35, 2.2],
       [28.35, 22.7],
       [22.2, 22.7],
-      [22.2, 20.6],
-      [11.1, 20.6],
+      [22.2, 21.1],
+      [11.1, 21.1],
       [11.1, 15.4],
       [23.5, 15.4],
       [23.5, 5],
@@ -243,8 +292,8 @@ const ZONES: [string, Pt[]][] = [
   [
     '#f3d9a8',
     [
-      [19.5, 26.1],
-      [23.5, 26.1],
+      [19.5, 26.4],
+      [23.5, 26.4],
       [23.5, 29.6],
       [19.5, 29.6],
     ],
@@ -276,9 +325,16 @@ const ZONES: [string, Pt[]][] = [
     [
       [34.3, 29.9],
       [37.2, 29.9],
-      [37.2, 44.9],
-      [34.3, 44.9],
+      [37.2, 36.3],
+      [37.7, 36.3],
+      [37.7, 44.95],
+      [34.3, 44.95],
+      [34.3, 43.45],
+      [35.4, 42.45],
+      [35.4, 32.75],
+      [34.3, 31.75],
     ],
+    STAGE_H,
   ],
   [
     '#e6d2f3',
@@ -288,16 +344,18 @@ const ZONES: [string, Pt[]][] = [
       [11.5, 45.4],
       [8.75, 45.4],
     ],
+    A2_BACK,
   ],
   [
     '#d3efc4',
     [
-      [29.7, 45.2],
+      [29.8, 45.2],
       [36.1, 45.2],
       [36.1, 47.8],
       [32.9, 47.8],
-      [29.7, 46.7],
+      [29.8, 46.75],
     ],
+    STAGE_H,
   ],
 ]
 const ZONE_ON = { rake: '#ecc6d2', stage: '#b9bdf0' }
@@ -372,8 +430,8 @@ export function buildArchitecture(scene: THREE.Scene): Architecture {
         [36.9, 23.2],
         [36.9, 29.75],
         [8.6, 29.75],
-        [8.6, 27.9],
-        [10.1, 25.8],
+        [8.6, 28.3],
+        [10.1, 26.2],
       ],
       0.3,
       M.floor,
@@ -382,7 +440,7 @@ export function buildArchitecture(scene: THREE.Scene): Architecture {
     ),
   )
   slab(8.6, 29.75, 37.8, 45.6) // A2
-  slab(26, 45.6, 37.8, 47.9, M.service) // 翻譯室
+  slab(26, 45.6, 37.8, 47.9, M.service) // 翻譯室 and the rooms beside it
 
   function seg(
     x1: number,
@@ -405,8 +463,6 @@ export function buildArchitecture(scene: THREE.Scene): Architecture {
     w.rotation.y = Math.atan2(-dz, dx)
     return w
   }
-  const wall = (a: number, b: number, c: number, d: number, hh = H) =>
-    seg(a, b, c, d, 0.25, hh, M.wall, wallsG)
   function glass(
     x1: number,
     z1: number,
@@ -430,11 +486,46 @@ export function buildArchitecture(scene: THREE.Scene): Architecture {
     if (hh > 2) seg(x1, z1, x2, z2, 0.1, 0.06, M.dark, parent, y0 + hh * 0.5)
   }
 
+  /**
+   * A board along x1,z1 → x2,z2, `t` thick, from y0 up to y1: `off` from that line, on the side
+   * facing `to`
+   */
+  function board(
+    x1: number,
+    z1: number,
+    x2: number,
+    z2: number,
+    to: Pt,
+    off: number,
+    t: number,
+    y0: number,
+    y1: number,
+    m: THREE.Material,
+  ) {
+    const L = Math.hypot(x2 - x1, z2 - z1)
+    let [nx, nz] = [-(z2 - z1) / L, (x2 - x1) / L]
+    if ((to[0] - (x1 + x2) / 2) * nx + (to[1] - (z1 + z2) / 2) * nz < 0) [nx, nz] = [-nx, -nz]
+    const o = mesh(
+      B(L, y1 - y0, t),
+      m,
+      wallsG,
+      (x1 + x2) / 2 + nx * off,
+      (y0 + y1) / 2,
+      (z1 + z2) / 2 + nz * off,
+      { e: null },
+    )
+    o.rotation.y = Math.atan2(-(z2 - z1), x2 - x1)
+    return o
+  }
+
   // walls, opened up where a door stands in them, with a lintel over each doorway (added once
   // the floors are in, below: a doorway is DOOR_H tall from the floor it's on)
-  const lintels: [Pt, Pt][] = []
+  const lintels: [Pt, Pt, number][] = []
   for (const w of WALLS) {
     const [x1, z1, x2, z2] = w
+    const top = A2_WALLS.has(w) ? A2_H : H
+    const wall = (a: number, b: number, c: number, d: number) =>
+      seg(a, b, c, d, WALL_T, top, M.wall, wallsG)
     const L = Math.hypot(x2 - x1, z2 - z1)
     const at = (t: number): Pt => [x1 + (x2 - x1) * t, z1 + (z2 - z1) * t]
     // seg() pads each piece by half the wall's thickness at both ends; pull pieces back from doorways
@@ -442,7 +533,7 @@ export function buildArchitecture(scene: THREE.Scene): Architecture {
     let from = 0
     for (const [a, b, lintel] of doorGaps(w)) {
       if (a - pad > from) wall(...at(from), ...at(a - pad))
-      if (lintel) lintels.push([at(a + pad), at(b - pad)])
+      if (lintel) lintels.push([at(a + pad), at(b - pad), top])
       from = b + pad
     }
     if (from < 1) wall(...at(from), ...at(1))
@@ -452,7 +543,7 @@ export function buildArchitecture(scene: THREE.Scene): Architecture {
   // a curtain wall; on the way on to A2's back, a window beside the second flight of steps
   glass(11.1, 9.4, 11.1, 15.1, 1.1, arch)
   glass(10.7, 15.2, 10.7, 23.2)
-  glass(10.1, 23.2, 10.1, 25.8)
+  glass(10.1, 23.2, 10.1, 26.2)
   // A201's north façade: glass between its columns and the bays
   ;(
     [
@@ -469,7 +560,17 @@ export function buildArchitecture(scene: THREE.Scene): Architecture {
       [34.4, -8.3],
     ] as Pt[]
   ).forEach(([x, z]) => mesh(B(1.1, H, 1.1), M.wall, wallsG, x, H / 2, z))
-  glass(29.7, 45.1, 36.2, 45.1, 2.4)
+  // the lift lobby's window at its east end, and the glass along the restrooms' corridor
+  glass(35.9, 9.1, 35.9, 12.2)
+  glass(36.9, 19.6, 36.9, 23.2)
+  // 翻譯室's window on to the hall, beside the stage: above a sill a metre over its floor
+  {
+    const [x1, x2, z] = [32, 34, 45.1]
+    const [sill, head] = [STAGE_H + 1, STAGE_H + 2.2]
+    seg(x1, z, x2, z, WALL_T, sill, M.wall, wallsG)
+    glass(x1, z, x2, z, head - sill, wallsG, sill)
+    seg(x1, z, x2, z, WALL_T, A2_H - head, M.wall, wallsG, head)
+  }
   // the floor south of 景觀梯, railed on its west and south
   glass(0.6, 5.9, 0.6, 9.4, 1.1, arch)
   glass(0.6, 9.4, 11.1, 9.4, 1.1, arch)
@@ -509,18 +610,17 @@ export function buildArchitecture(scene: THREE.Scene): Architecture {
       [11.5, 0],
       [22.95, 0],
       [34.4, 0],
-      [11.5, 29.75],
-      [17.15, 29.75],
-      [22.95, 29.75],
-      [28.75, 29.75],
-      [34.4, 29.75],
-      [11.5, 45.5],
-      [17.15, 45.5],
-      [22.95, 45.5],
-      [28.75, 45.3],
-      [34.4, 45.3],
     ] as Pt[]
   ).forEach(([x, z]) => mesh(B(0.8, H, 0.8), M.wall, wallsG, x, H / 2, z))
+  // A2's columns, where 平面尺寸圖 draws them, as tall as the hall and held within its walls'
+  // thickness: no face of theirs comes past either face of the wall they stand in
+  {
+    /** The south wall's line at x: straight, then slanting in by 翻譯室 */
+    const southZ = (x: number) => (x < 26 ? 45.6 : x > 29.7 ? 45.1 : 45.5 - ((x - 26) * 0.4) / 3.7)
+    for (const x of [11.3, 17.1, 23, 28.85, 34.3])
+      for (const z of [29.75, southZ(x)]) mesh(B(0.7, A2_H, WALL_T), M.wall, wallsG, x, A2_H / 2, z)
+  }
+
   // lift cars, two in each lift room where the plan draws them (146 wide, 215 / 220 deep), each
   // with its doors in the lobby wall: the north room's face south, the south room's north
   ;(
@@ -583,11 +683,11 @@ export function buildArchitecture(scene: THREE.Scene): Architecture {
   ;[15.6, 16.5, 17.4].forEach((z) => toilet(32.85, z, FACE.w))
   stalls(33.3, 34.8, [16.05, 16.97, 17.88])
   ;[16.5, 17.4].forEach((z) => toilet(33.8, z, FACE.e))
-  basins(31.75, 17.95, 33.25, 18.55, [
-    [32.2, 18.25],
-    [32.95, 18.25],
+  basins(31.75, 18.03, 34, 18.6, [
+    [32.1, 18.32],
+    [32.85, 18.32],
+    [33.6, 18.32],
   ])
-  basins(33.35, 17.95, 34.15, 18.55, [[33.75, 18.25]])
   ;[14.2, 14.85, 15.5].forEach((z) => urinal(35.0, z, FACE.e))
   ;[14.2, 14.85, 15.5].forEach((z) => urinal(37.0, z, FACE.w))
   basins(36.6, 16.35, 37.1, 17.9, [
@@ -597,6 +697,17 @@ export function buildArchitecture(scene: THREE.Scene): Architecture {
   // the accessible toilet by A2's lobby: the toilet and basin along its south wall
   toilet(33.45, 27.85, FACE.n)
   basins(34.45, 27.7, 35.05, 28.1, [[34.75, 27.9]])
+  // 茶水間, the niche off the corridor: a sink counter, a water heater on its west end, and
+  // the water dispenser at its east end
+  {
+    const w1 = 28.8 + WALL_T / 2
+    const back = 22.6 + WALL_T / 2
+    const x2 = 31.95
+    mesh(B(x2 - w1, 0.8, 0.6), COUNTER, arch, (w1 + x2) / 2, 0.4, back + 0.3, { e: EF })
+    basins(w1, back, x2, back + 0.6, [[29.9, back + 0.3]])
+    mesh(B(0.4, 1.3, 0.45), M.steel, arch, 32.25, 0.65, back + 0.25, { e: EF })
+    mesh(B(0.32, 0.5, 0.32), PODIUM, arch, w1 + 0.25, 1.11, back + 0.22, { e: EF })
+  }
 
   // stairs, their outer edges against the stairwells' walls (the walls' inner faces)
   /**
@@ -667,16 +778,16 @@ export function buildArchitecture(scene: THREE.Scene): Architecture {
     x0: 30.45,
     x1: 32.6,
     west: 28.475,
-    north: [19.725, 21.5],
-    south: [21.68, 23.075],
+    north: [19.725, 21.1],
+    south: [21.28, 22.475],
     n: 8,
     spine: [29.9, 32.6],
   })
   // 景觀梯, as 空間圖 shows it on 2F: in the stairwell, the south row is the short flight
   // arriving from below (climbing east onto 2F at x 7.9), the north row the one leaving upward
   // (from 2F at x 9.1, climbing west). Each turns on a landing at the west (x 1.8, where the
-  // plan draws the stair's outline), half a storey below 2F and half above. Open steel treads
-  // on a dark stringer each side, glass balustrades topped with a handrail all round.
+  // plan draws the stair's outline), half a storey below 2F and half above. Solid stone steps
+  // on a grey-clad flight, glass balustrades topped with a handrail all round.
   {
     const NORTH: [number, number] = [1.26, 2.85]
     const SOUTH: [number, number] = [3.38, 4.93]
@@ -729,15 +840,24 @@ export function buildArchitecture(scene: THREE.Scene): Architecture {
       for (let i = 0; i < n; i++) {
         const top = from + rise * (i + 1)
         const x = dir > 0 ? x0 + tread * (i + 0.5) : x1 - tread * (i + 0.5)
-        mesh(B(tread + 0.02, 0.05, z2 - z1 - 0.1), M.dark, arch, x, top - 0.025, (z1 + z2) / 2, {
-          e: EF,
-        })
+        // each step solid down to the flight's soffit
+        mesh(
+          B(tread, rise + 0.3, z2 - z1),
+          M.step,
+          arch,
+          x,
+          top - (rise + 0.3) / 2,
+          (z1 + z2) / 2,
+          {
+            e: EF,
+          },
+        )
       }
       // the line through the treads' tops, from the foot's end of the flight to the head's
       const [xa, xb] = dir > 0 ? [x0, x1] : [x1, x0]
       const [ya, yb] = [from + rise / 2, from + H / 2 + rise / 2]
       for (const z of [z1, z2]) {
-        slant(xa, ya, xb, yb, z + (z === z1 ? 0.03 : -0.03), [-0.32, 0.06], 0.06, M.dark)
+        slant(xa, ya, xb, yb, z + (z === z1 ? 0.03 : -0.03), [-0.4, 0.06], 0.06, M.steel)
         slant(xa, ya, xb, yb, z, [0.06, 1], 0.03, M.glass)
         slant(xa, ya, xb, yb, z, [1, 1.05], 0.06, M.dark)
       }
@@ -752,7 +872,7 @@ export function buildArchitecture(scene: THREE.Scene): Architecture {
       const [z1, z2] = [NORTH[0], SOUTH[1]]
       mesh(
         B(east - LANDING, 0.2, z2 - z1),
-        M.dark,
+        M.step,
         arch,
         (LANDING + east) / 2,
         y - 0.1,
@@ -776,12 +896,13 @@ export function buildArchitecture(scene: THREE.Scene): Architecture {
     n: number,
     rise: number,
     base = 0,
+    m: THREE.Material = M.step,
   ) {
     const d = (z2 - z1) / n
     for (let i = 0; i < n; i++) {
       const hh = base + rise * (i + 1)
       walk.push(
-        mesh(B(x2 - x1, hh, d), M.step, arch, (x1 + x2) / 2, hh / 2, z1 + d * (i + 0.5), {
+        mesh(B(x2 - x1, hh, d), m, arch, (x1 + x2) / 2, hh / 2, z1 + d * (i + 0.5), {
           e: EF,
           cast: false,
         }),
@@ -789,42 +910,111 @@ export function buildArchitecture(scene: THREE.Scene): Architecture {
     }
   }
   // 流光中庭 → A2 國際會議廳's raised back: the floor keeps climbing south. A first flight rises
-  // from the atrium to a platform, a second from there to the level of A2's top seating row,
-  // where A2's rear doors open.
-  const A2_BACK = (A2_ROWS - 1) * A2_RISE // A2's highest tier
-  const MID = 0.8
-  // the top step runs on to the platform's edge, with no gap between them
-  tiers(12.2, 22.1, 20.6, 23.2, 4, MID / 4)
+  // from the atrium to a wide platform, a second from there to the level of A2's top seating
+  // row, where A2's rear doors open. Each flight is timber bleacher seating, its big tiers two
+  // steps high, with ordinary steps (about 15 cm) to walk up at either end: four tiers to the
+  // platform, three more to the landing. The platform stops at A224's wall, the store (and A223
+  // beside it) on the corridor's level.
+  const MID = 1.2
+  /** Where the second flight reaches the landing in front of A2's rear lobby */
+  const LANDING = 27.8
+  /** The slanting wall beside the second flight: x along it at z, then the hall's west wall */
+  const slantX = (z: number) => Math.max(8.6, 10.1 + ((z - 26.2) * (8.6 - 10.1)) / (28.3 - 26.2))
+  /**
+   * A flight of bleachers from z1 up to z2 (rising south) by `rise`, from `base`, over `n`
+   * tiers: between x west(z) and x2, two steps a tier in the lanes people walk up, one big
+   * step elsewhere
+   */
+  function bleachers(
+    west: (z: number) => number,
+    x2: number,
+    [z1, z2]: [number, number],
+    base: number,
+    rise: number,
+    n: number,
+    lanes: (z: number) => [number, number][],
+  ) {
+    const D = (z2 - z1) / n
+    const box = (a: number, b: number, za: number, zb: number, hh: number) =>
+      walk.push(
+        mesh(B(b - a, hh, zb - za), M.step, arch, (a + b) / 2, hh / 2, (za + zb) / 2, {
+          e: EF,
+          cast: false,
+        }),
+      )
+    for (let t = 0; t < n; t++) {
+      const za = z1 + D * t
+      const x1 = west(za)
+      const ls = lanes(za)
+      // the big tier between the lanes
+      let from = x1
+      for (const [a, b] of ls) {
+        if (a > from) box(from, a, za, za + D, base + (rise * (t + 1)) / n)
+        from = Math.max(from, b)
+      }
+      if (x2 > from) box(from, x2, za, za + D, base + (rise * (t + 1)) / n)
+      // the lanes' two steps
+      for (const [a, b] of ls) {
+        box(a, b, za, za + D / 2, base + (rise * (2 * t + 1)) / (2 * n))
+        box(a, b, za + D / 2, za + D, base + (rise * (t + 1)) / n)
+      }
+    }
+  }
+  /** A glass balustrade at x, its foot along z from (za, ya) to (zb, yb), a handrail on top */
+  function sideRail(x: number, za: number, ya: number, zb: number, yb: number) {
+    for (const [lo, hi, m, t] of [
+      [0, 0.9, M.glass, 0.03],
+      [0.9, 0.95, M.dark, 0.05],
+    ] as const) {
+      const sh = new THREE.Shape([
+        new THREE.Vector2(za, ya + lo),
+        new THREE.Vector2(zb, yb + lo),
+        new THREE.Vector2(zb, yb + hi),
+        new THREE.Vector2(za, ya + hi),
+      ])
+      const o = new THREE.Mesh(new THREE.ExtrudeGeometry(sh, { depth: t, bevelEnabled: false }), m)
+      // the shape's x runs along z, its extrusion toward -x
+      o.rotation.y = -Math.PI / 2
+      o.position.x = x + t / 2
+      o.raycast = noRay
+      arch.add(o)
+    }
+  }
+  // the first flight, from the atrium's floor, its lanes at either end railed on their outer side
+  bleachers(
+    () => 12.2,
+    22.45,
+    [21.1, 23.2],
+    0,
+    MID,
+    4,
+    () => [
+      [12.2, 13.7],
+      [20.7, 22.45],
+    ],
+  )
+  sideRail(12.25, 21.1, 0, 23.2, MID)
+  sideRail(22.4, 21.1, 0, 23.2, MID)
   walk.push(
     prism(
       [
         [10.1, 23.2],
-        [23.4, 23.2],
-        [23.4, 25.98],
-        [9.98, 25.98],
-        [10.1, 25.8],
+        [22.45, 23.2],
+        [22.45, 26.3],
+        [slantX(26.3), 26.3],
+        [10.1, 26.2],
       ],
       MID,
       M.floor,
       arch,
     ),
   )
-  // the second flight: each step runs west to the slanting wall
-  const slantX = (z: number) => 10.1 + ((z - 25.8) * (8.6 - 10.1)) / (27.9 - 25.8)
-  {
-    const d = (27.4 - 25.98) / 3
-    for (let i = 0; i < 3; i++) {
-      const z1 = 25.98 + d * i
-      const x1 = slantX(z1)
-      const hh = MID + ((A2_BACK - MID) / 3) * (i + 1)
-      walk.push(
-        mesh(B(19.2 - x1, hh, d), M.step, arch, (x1 + 19.2) / 2, hh / 2, z1 + d / 2, {
-          e: EF,
-          cast: false,
-        }),
-      )
-    }
-  }
+  // the second flight, from the platform, running west to the slanting wall; its lanes along
+  // the wall and along A223's
+  bleachers(slantX, 19.4, [26.3, LANDING], MID, A2_BACK - MID, 3, (z) => [
+    [slantX(z), 12.2],
+    [17.65, 19.4],
+  ])
   // inside A2, everything behind the back row (and the small room off it) sits at that row's
   // level; its east edge steps with the rake's sections so it meets the seating exactly
   const backEdge: Pt[] = []
@@ -838,11 +1028,11 @@ export function buildArchitecture(scene: THREE.Scene): Architecture {
   walk.push(
     prism(
       [
-        [slantX(27.4), 27.4],
-        [19.4, 27.4],
+        [slantX(LANDING), LANDING],
+        [19.4, LANDING],
         [19.4, 29.75],
         [8.6, 29.75],
-        [8.6, 27.9],
+        [8.6, 28.3],
       ],
       A2_BACK,
       M.floor,
@@ -852,26 +1042,25 @@ export function buildArchitecture(scene: THREE.Scene): Architecture {
 
   // A2: stage on the east, seats face east, rake rises to the west. The stage's curved front
   // leaves a notch at each end for a short flight up onto it.
-  const STAGE_H = 0.9
   walk.push(
     prism(
       [
-        [32.4, 30.5],
-        [34.2, 30.5],
-        [34.2, 31.8],
-        [35.3, 32.8],
-        [35.3, 42.4],
-        [34.2, 43.4],
-        [34.2, 44.7],
-        [32.4, 44.7],
-        [32.4, 42.95],
-        [31.1, 42.95],
-        [30.8, 41.5],
-        [30.4, 39.5],
-        [30.4, 35.5],
-        [30.8, 33.8],
-        [31.1, 32.4],
-        [32.4, 32.4],
+        [32.24, 30.53],
+        [34.1, 30.53],
+        [34.1, 32.28],
+        [35.41, 32.82],
+        [35.41, 42.43],
+        [34.1, 42.92],
+        [34.1, 44.73],
+        [32.24, 44.73],
+        [32.24, 42.87],
+        [30.82, 42.87],
+        [30.55, 42.4],
+        [30.38, 41.83],
+        [30.38, 33.37],
+        [30.55, 32.85],
+        [30.82, 32.36],
+        [32.24, 32.36],
       ],
       STAGE_H,
       M.stage,
@@ -882,21 +1071,127 @@ export function buildArchitecture(scene: THREE.Scene): Architecture {
   )
   // the flights: from the floor at the stage's north and south ends, climbing toward its middle
   for (const [z0, dir] of [
-    [31.5, 1],
-    [43.8, -1],
+    [31.46, 1],
+    [43.74, -1],
   ] as const)
     for (let i = 0; i < 3; i++) {
       const hh = (STAGE_H / 4) * (i + 1)
       walk.push(
-        mesh(B(1.3, hh, 0.3), M.step, arch, 31.75, hh / 2, z0 + dir * (0.15 + i * 0.3), {
+        mesh(B(1.3, hh, 0.3), M.step, arch, 31.59, hh / 2, z0 + dir * (0.15 + i * 0.3), {
           e: EF,
           cast: false,
         }),
       )
     }
-  mesh(B(0.1, 3.4, 10), M.screen, arch, 34.1, 3, 37.6, { e: EA })
+  // the screen (about 6.2 × 3.5, 16:9), its foot 1.1 above the stage, just off the back wall
+  mesh(B(0.1, 3.5, 6.2), M.screen, arch, 35.22, STAGE_H + 1.1 + 1.75, 37.6, { e: EA })
+  // on each proscenium wall's face, a speaker hung level with the screen's top, and a camera
+  // below it
+  for (const z of [31.1, 44.1]) {
+    mesh(B(0.5, 1.6, 0.55), M.dark, arch, 33.65, STAGE_H + 4.5, z, { e: EF })
+    mesh(B(0.2, 0.2, 0.2), M.dark, arch, 33.85, STAGE_H + 3.1, z, { e: null })
+  }
+  // the backstage behind the stage, and 翻譯室 off it, are on the stage's level: the back door
+  // (north-east, off the closed corridor) is up four steps
+  walk.push(
+    prism(
+      [
+        [34.1, 29.75],
+        [37.3, 29.75],
+        [37.3, 36.2],
+        [37.8, 36.2],
+        [37.8, 45.1],
+        [34.1, 45.1],
+        [34.1, 42.92],
+        [35.41, 42.43],
+        [35.41, 32.82],
+        [34.1, 32.28],
+      ],
+      STAGE_H,
+      M.service,
+      arch,
+    ),
+  )
+  walk.push(
+    prism(
+      [
+        [29.7, 45.1],
+        [36.2, 45.1],
+        [36.2, 47.9],
+        [32.9, 47.9],
+        [29.7, 46.83],
+      ],
+      STAGE_H,
+      M.service,
+      arch,
+    ),
+  )
+  tiers(35.2, 36.9, 28.1, 29.75, 4, STAGE_H / 4)
+  // the side curtains, half drawn across the ways through to the backstage between each
+  // proscenium wall and the back wall's turned end
+  for (const z of [32.33, 42.87]) seg(34.75, z, 35.25, z, 0.12, STAGE_H + 5.5, CURTAIN, wallsG)
 
-  const seats = buildA2Seating(arch, walk)
+  // the venue's own furniture: its wooden lectern on the stage's south side and a white stand
+  // on the floor below, facing the hall
+  mesh(B(0.6, 1.1, 0.8), M.wood, arch, 31.35, STAGE_H + 0.55, 41.25, { e: EF })
+  mesh(B(0.6, 1, 0.8), PODIUM, arch, 29.2, 0.5, 42.4, { e: EF })
+
+  // A2's side walls inside: on each side three sections, each angled in toward the stage and
+  // stepping back out at its end (the seat by the wall is left out where they come in). Each
+  // is solid back to the hall's wall, closed at its step, so nothing behind it shows.
+  {
+    /** The face toward the hall of its north wall, and of its south wall at x */
+    const NORTH_FACE = 29.75 + WALL_T / 2
+    const southFace = (x: number) =>
+      (x < 26 ? 45.6 : 45.5 - ((Math.min(x, 29.7) - 26) * 0.4) / 3.7) - WALL_T / 2
+    for (const [x1, z1, x2, z2] of [
+      [11.2, 29.92, 18.3, 30.47],
+      [18.3, 29.9, 24.2, 30.47],
+      [24.2, 29.9, 28.5, 30.2],
+    ] as Seg[])
+      prism(
+        [
+          [x1, NORTH_FACE],
+          [x2, NORTH_FACE],
+          [x2, z2],
+          [x1, z1],
+        ],
+        A2_H,
+        M.wall,
+        wallsG,
+      )
+    for (const [x1, z1, x2, z2] of [
+      [11.6, 45.2, 18.3, 44.7],
+      [18.3, 45.35, 24.2, 44.75],
+      [24.2, 45.35, 28.5, 44.95],
+    ] as Seg[])
+      prism(
+        [
+          [x1, z1],
+          [x2, z2],
+          [x2, southFace(x2)],
+          [x1, southFace(x1)],
+        ],
+        A2_H,
+        M.wall,
+        wallsG,
+      )
+  }
+  // 控制室's window on to the stage
+  board(
+    11.3,
+    42.6,
+    11.45,
+    44.2,
+    [20, 37.6],
+    WALL_T / 2 + 0.03,
+    0.02,
+    A2_BACK + 1,
+    A2_BACK + 1.9,
+    M.glass,
+  )
+
+  const { seats, openSeats } = buildA2Seating(arch, walk)
   const fixedSeats = seats.length
 
   // the lintels, over the higher of the floors either side of each doorway (A2's back rooms
@@ -907,18 +1202,18 @@ export function buildArchitecture(scene: THREE.Scene): Architecture {
     down.set(new THREE.Vector3(x, 40, z), new THREE.Vector3(0, -1, 0))
     return down.intersectObjects(walk, false)[0]?.point.y ?? 0
   }
-  for (const [[x1, z1], [x2, z2]] of lintels) {
+  for (const [[x1, z1], [x2, z2], top] of lintels) {
     const L = Math.hypot(x2 - x1, z2 - z1)
     // a step either side of the wall, square to it
     const nx = (-(z2 - z1) / L) * 0.4
     const nz = ((x2 - x1) / L) * 0.4
     const [mx, mz] = [(x1 + x2) / 2, (z1 + z2) / 2]
     const y0 = Math.max(0, floorAt(mx + nx, mz + nz), floorAt(mx - nx, mz - nz)) + DOOR_H
-    if (y0 < H) seg(x1, z1, x2, z2, WALL_T, H - y0, M.wall, wallsG, y0)
+    if (y0 < top) seg(x1, z1, x2, z2, WALL_T, top - y0, M.wall, wallsG, y0)
   }
 
-  ZONES.forEach(([c, p]) => {
-    const o = prism(p, 0.01, mat(c, { name: 'zone' }), zonesG, 0.002, null)
+  ZONES.forEach(([c, p, y = 0]) => {
+    const o = prism(p, 0.01, mat(c, { name: 'zone' }), zonesG, y + 0.002, null)
     o.castShadow = false
     o.raycast = noRay
   })
@@ -927,11 +1222,36 @@ export function buildArchitecture(scene: THREE.Scene): Architecture {
     if ((o as THREE.Mesh).isMesh) o.raycast = noRay
   })
 
-  return { arch, wallsG, zonesG, walk, fixedSeats, seats, ground }
+  return { arch, wallsG, zonesG, walk, fixedSeats, seats, openSeats, ground }
 }
 
-/** Curved, raked fixed seating in A2. Returns the seat count. */
-function buildA2Seating(arch: THREE.Group, walk: THREE.Mesh[]): FixedSeat[] {
+/**
+ * A2's seats, as in the hall: upholstered dark red, every so often mauve, on a black frame,
+ * the armrests glossy black, a dark wooden panel at the end of each row by an aisle
+ */
+const SEAT = {
+  red: new THREE.Color('#7b2c2a'),
+  mauve: new THREE.Color('#b59ba4'),
+  fabric: mat('#ffffff', { roughness: 0.95, name: 'seat_fabric' }),
+  shell: mat('#1f1f22', { roughness: 0.6, name: 'seat_shell' }),
+  arm: mat('#18181a', { roughness: 0.3, name: 'seat_arm' }),
+  end: mat('#4b2e20', { roughness: 0.55, name: 'seat_end' }),
+}
+/**
+ * Rows (from the front) whose side blocks are a seat short, the one by the wall: the side walls
+ * step in toward the stage in three sections, leaving no room for it there (平面尺寸圖: 6 seats
+ * a side in the other rows, 10 in the middle; 296 in all)
+ */
+const A2_SHORT_ROWS = new Set([2, 3, 4, 5, 8, 9])
+
+/**
+ * Curved, raked fixed seating in A2, each seat's cushion folded up until someone sits on it.
+ * Returns where people sit, and how to put cushions down.
+ */
+function buildA2Seating(
+  arch: THREE.Group,
+  walk: THREE.Mesh[],
+): { seats: FixedSeat[]; openSeats: (open: ReadonlySet<number>) => void } {
   const K = A2_BOW
   const ZC = A2_ZC
   const blocks: Pt[] = [
@@ -940,7 +1260,10 @@ function buildA2Seating(arch: THREE.Group, walk: THREE.Mesh[]): FixedSeat[] {
     [41.6, 44.6],
   ]
   const cuts = A2_CUTS
-  const slots: { x: number; z: number; h: number; r: number }[] = []
+  type Slot = { x: number; z: number; h: number; r: number; mauve: boolean }
+  const slots: Slot[] = []
+  /** The seats at the ends of each row's block, by an aisle or a wall: the end panels stand there */
+  const ends: { s: Slot; side: 1 | -1 }[] = []
   for (let i = 0; i < A2_ROWS; i++) {
     const xr = A2_X0 - i * A2_ROW
     const hh = i * A2_RISE
@@ -954,35 +1277,92 @@ function buildA2Seating(arch: THREE.Group, walk: THREE.Mesh[]): FixedSeat[] {
           }),
         )
       })
-    blocks.forEach(([p, q]) => {
+    blocks.forEach(([p, q], b) => {
       const n = Math.floor((q - p) / 0.53) + 1
-      for (let k = 0; k < n; k++) {
+      // the north block's wall end is its first seat, the south block's its last
+      const short = A2_SHORT_ROWS.has(i) && b !== 1
+      const from = short && b === 0 ? 1 : 0
+      const to = short && b === 2 ? n - 1 : n
+      for (let k = from; k < to; k++) {
         const z = p + k * 0.53
-        slots.push({ x: xr + K * (z - ZC) ** 2, z, h: hh, r: Math.atan(2 * K * (z - ZC)) })
+        // the fabric's two colours mixed through the hall, about one seat in three mauve
+        const mauve = (i * 7 + k * 3 + b * 5) % 10 < 3
+        const s = { x: xr + K * (z - ZC) ** 2, z, h: hh, r: Math.atan(2 * K * (z - ZC)), mauve }
+        slots.push(s)
+        if (k === from) ends.push({ s, side: -1 })
+        if (k === to - 1) ends.push({ s, side: 1 })
       }
     })
   }
-  const s1 = new THREE.InstancedMesh(B(0.48, 0.1, 0.5), M.seatA, slots.length)
-  const s2 = new THREE.InstancedMesh(B(0.07, 0.5, 0.5), M.seatB, slots.length)
-  const d = new THREE.Object3D()
-  slots.forEach((s, i) => {
-    d.rotation.set(0, s.r, 0)
-    d.position.set(s.x, s.h + 0.44, s.z)
-    d.updateMatrix()
-    s1.setMatrixAt(i, d.matrix)
-    d.position.set(s.x - 0.22 * Math.cos(s.r), s.h + 0.7, s.z + 0.22 * Math.sin(s.r))
-    d.updateMatrix()
-    s2.setMatrixAt(i, d.matrix)
-  })
-  for (const m of [s1, s2]) {
-    m.castShadow = m.receiveShadow = true
-    arch.add(m)
+
+  const at = new THREE.Matrix4()
+  const off = new THREE.Matrix4()
+  const turn = new THREE.Matrix4()
+  const place = (s: Slot) => at.makeRotationY(s.r).setPosition(s.x, s.h, s.z)
+  const add = (im: THREE.InstancedMesh) => {
+    im.castShadow = im.receiveShadow = true
+    arch.add(im)
+    return im
   }
+  // each fixed part of a seat as it stands facing +x (the stage), from its spot on the floor:
+  // the back (leaning back a little) and its foot, the armrest on its +z side and the standard
+  // under it
+  const fixed: [THREE.BufferGeometry, THREE.Material, [number, number, number], number][] = [
+    [B(0.09, 0.56, 0.5), SEAT.fabric, [-0.25, 0.75, 0], 0.17],
+    [B(0.1, 0.12, 0.5), SEAT.shell, [-0.24, 0.42, 0], 0],
+    [B(0.5, 0.06, 0.07), SEAT.arm, [-0.03, 0.64, 0.27], 0],
+    [B(0.07, 0.6, 0.06), SEAT.shell, [-0.2, 0.3, 0.27], 0],
+  ]
+  fixed.forEach(([geo, m, [ox, oy, oz], lean], j) => {
+    const im = add(new THREE.InstancedMesh(geo, m, slots.length))
+    slots.forEach((s, k) => {
+      im.setMatrixAt(
+        k,
+        place(s)
+          .multiply(off.makeTranslation(ox, oy, oz))
+          .multiply(turn.makeRotationZ(lean)),
+      )
+      if (j === 0) im.setColorAt(k, s.mauve ? SEAT.mauve : SEAT.red)
+    })
+  })
+  // the cushion, upholstered on top and black beneath, drawn down; it folds up about a hinge
+  // near its back, its underside then facing the stage
+  const HINGE = [-0.12, 0.42] as const
+  const cushion: [THREE.InstancedMesh, [number, number]][] = [
+    [add(new THREE.InstancedMesh(B(0.46, 0.09, 0.48), SEAT.fabric, slots.length)), [0, 0.445]],
+    [add(new THREE.InstancedMesh(B(0.44, 0.05, 0.48), SEAT.shell, slots.length)), [0, 0.375]],
+  ]
+  slots.forEach((s, k) => cushion[0]![0].setColorAt(k, s.mauve ? SEAT.mauve : SEAT.red))
+  const hinge = new THREE.Matrix4()
+  const openSeats = (open: ReadonlySet<number>) => {
+    for (const [im, [ox, oy]] of cushion) {
+      slots.forEach((s, k) =>
+        im.setMatrixAt(
+          k,
+          place(s)
+            .multiply(hinge.makeTranslation(HINGE[0], HINGE[1], 0))
+            .multiply(turn.makeRotationZ(open.has(k) ? 0 : Math.PI / 2))
+            .multiply(off.makeTranslation(ox - HINGE[0], oy - HINGE[1], 0)),
+        ),
+      )
+      im.instanceMatrix.needsUpdate = true
+      im.boundingSphere = null
+    }
+  }
+  openSeats(new Set())
+  // at each end of a block's row: a dark wooden end panel, the row's last armrest on top
+  const endPanel = add(new THREE.InstancedMesh(B(0.55, 0.62, 0.04), SEAT.end, ends.length))
+  const endArm = add(new THREE.InstancedMesh(B(0.5, 0.06, 0.08), SEAT.arm, ends.length))
+  ends.forEach(({ s, side }, k) => {
+    endPanel.setMatrixAt(k, place(s).multiply(off.makeTranslation(-0.08, 0.32, side * 0.28)))
+    endArm.setMatrixAt(k, place(s).multiply(off.makeTranslation(-0.03, 0.66, side * 0.28)))
+  })
   // seats face east (the stage), bowed by r; hips sit just behind the cushion's centre
-  return slots.map((s) => ({
+  const seats = slots.map((s) => ({
     x: s.x - 0.04 * Math.cos(s.r),
     y: s.h + 0.49,
     z: s.z + 0.04 * Math.sin(s.r),
     turn: Math.PI / 2 + s.r,
   }))
+  return { seats, openSeats }
 }

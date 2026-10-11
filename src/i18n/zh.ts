@@ -343,6 +343,7 @@ const zh = {
     lift: '電梯',
     liftLobby: '電梯廳',
     restroom: '洗手間',
+    pantry: '茶水間',
     a2Entrance: 'A2 入口',
     closed: '非開放空間',
     stage: '舞台',

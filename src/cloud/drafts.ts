@@ -1,4 +1,5 @@
 import type { ProjectSettings } from './projects'
+import { FLOORS, floorsOf, toCurrentFloors } from '@/venue/floors'
 import { parseLayout, type LayoutItem } from '@/venue/layout'
 import { readJSON, removeKey, writeJSON } from '@/venue/storage'
 
@@ -23,7 +24,10 @@ export function loadDraft(projectId: string): Draft | null {
   const d = readJSON(key(projectId)) as Partial<Draft> | null
   if (!d || typeof d.base !== 'string' || typeof d.at !== 'string') return null
   try {
-    return { base: d.base, at: d.at, items: parseLayout(d.items), settings: d.settings ?? {} }
+    const settings = d.settings ?? {}
+    // kept before the floors moved: its items moved on to today's, like the project's own
+    const items = toCurrentFloors(parseLayout(d.items), floorsOf(settings.floors))
+    return { base: d.base, at: d.at, items, settings: { ...settings, floors: FLOORS } }
   } catch {
     return null
   }

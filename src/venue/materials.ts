@@ -26,8 +26,6 @@ export const M = {
     side: THREE.DoubleSide,
     name: 'glass',
   }),
-  seatA: mat('#4a4e57', { name: 'seat' }),
-  seatB: mat('#2f3237', { name: 'seat_back' }),
   ink: mat('#3a3d44', { name: 'ink' }),
   leg: mat('#9aa0a8', { metalness: 0.4, roughness: 0.45, name: 'leg' }),
   top: mat('#f7f6f2', { name: 'top' }),

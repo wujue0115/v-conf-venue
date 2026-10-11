@@ -1,7 +1,8 @@
 import { clampLid } from './laptop'
 import { clampLift } from './tv'
 import { clampPosterSize, isImageDataUrl } from './poster'
-import { readJSON, writeJSON } from './storage'
+import { FLOORS, floorsOf, toCurrentFloors } from './floors'
+import { readJSON, removeKey, writeJSON } from './storage'
 import { clampZone } from './zone'
 import {
   FURNITURE_TYPES,
@@ -120,8 +121,11 @@ export const clampPeople = (n: unknown) =>
 export const isHexColor = (s: unknown): s is string =>
   typeof s === 'string' && /^#[0-9a-f]{6}$/i.test(s)
 
-export const STORAGE_KEY = 'vueconf26-nccu-layout-v4'
-export const PRICE_KEY = STORAGE_KEY + '-price'
+/** The layout kept in this browser, on today's floors (see floors.ts) */
+export const STORAGE_KEY = 'vueconf26-nccu-layout-v5'
+/** …and as it was kept before, on floors 1: read once, moved on to today's, then cleared */
+const STORAGE_KEY_FLOORS1 = 'vueconf26-nccu-layout-v4'
+export const PRICE_KEY = 'vueconf26-nccu-layout-v4-price'
 export const MAX_SLOTS = 9
 
 export const formatNT = (n: number) => 'NT$ ' + n.toLocaleString('en-US')
@@ -273,8 +277,8 @@ export interface Pricing {
 }
 
 /**
- * The exported file: the items, and (when given) the pricing the total was worked out with
- * and the colour rows people pick from
+ * The exported file: the items, the floors they stand on, and (when given) the pricing the
+ * total was worked out with and the colour rows people pick from
  */
 export function exportLayout(
   items: readonly LayoutItem[],
@@ -284,6 +288,7 @@ export function exportLayout(
     {
       venue: 'NCCU-CPBAE-A2F',
       event: 'VueConf Taiwan 2026',
+      floors: FLOORS,
       items,
       ...(pricing ? { pricing } : {}),
       ...(palettes ? { palettes } : {}),
@@ -334,21 +339,33 @@ export function demoLayout(): LayoutItem[] {
     }
   }
   L.push(
-    { t: 'whiteSofa', x: 20.6, z: 26.6, r: 0 },
-    { t: 'whiteSofa', x: 22.2, z: 26.6, r: 0 },
-    { t: 'teaWhite', x: 21.4, z: 27.8, r: 0 },
-    { t: 'armchair', x: 21.4, z: 28.9, r: Math.PI },
+    { t: 'whiteSofa', x: 20.6, z: 26.95, r: 0 },
+    { t: 'whiteSofa', x: 22.2, z: 26.95, r: 0 },
+    { t: 'teaWhite', x: 21.4, z: 28.05, r: 0 },
+    { t: 'armchair', x: 21.4, z: 29.05, r: Math.PI },
   )
-  L.push({ t: 'woodLectern', x: 31.6, y: 0.9, z: 35.5, r: -Math.PI / 2 })
   return L
+}
+
+/** A layout file's items, moved on to today's floors from the ones it was saved on */
+export function readLayoutFile(file: unknown): LayoutItem[] {
+  const floors = Array.isArray(file) ? 1 : floorsOf((file as { floors?: unknown } | null)?.floors)
+  return toCurrentFloors(parseLayout(file), floors)
 }
 
 export function loadSavedLayout(): LayoutItem[] | null {
   const saved = readJSON(STORAGE_KEY)
-  return Array.isArray(saved) ? parseLayout(saved) : null
+  if (Array.isArray(saved)) return parseLayout(saved)
+  const before = readJSON(STORAGE_KEY_FLOORS1)
+  return Array.isArray(before) ? toCurrentFloors(parseLayout(before), 1) : null
 }
 /** Returns false when the browser refused to store it (e.g. large poster images over quota) */
-export const saveLayout = (items: readonly LayoutItem[]) => writeJSON(STORAGE_KEY, items)
+export function saveLayout(items: readonly LayoutItem[]) {
+  const ok = writeJSON(STORAGE_KEY, items)
+  // kept now on today's floors: the copy from before isn't needed (and would hold the quota)
+  if (ok) removeKey(STORAGE_KEY_FLOORS1)
+  return ok
+}
 
 export function loadPricing(): { priceMode: PriceMode; slots: number } {
   const p = readJSON(PRICE_KEY) as { priceMode?: number; slots?: number } | null

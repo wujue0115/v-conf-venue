@@ -26,6 +26,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useCloudStore } from '@/stores/cloud'
 import { usePalettesStore } from '@/stores/palettes'
 import { usePlannerStore } from '@/stores/planner'
+import { FLOORS, floorsOf, toCurrentFloors } from '@/venue/floors'
 import type { LayoutItem } from '@/venue/layout'
 import { t } from '@/i18n'
 
@@ -102,6 +103,11 @@ export const useProjectStore = defineStore('project', () => {
   let opened: LayoutItem[] | null = null
   /** The layout right after taking in other people's changes: nothing of this person's to save */
   let remote: LayoutItem[] | null = null
+  /**
+   * Opened on older floors (see floors.ts): the items moved on to today's, to save with the
+   * project's floors, so it's done once. Null when there's nothing to save for it.
+   */
+  let movedOn: Set<string> | null = null
   let savedSettings = ''
   let timer: ReturnType<typeof setTimeout> | undefined
   let saving: Promise<void> | null = null
@@ -124,6 +130,7 @@ export const useProjectStore = defineStore('project', () => {
   const settings = (): ProjectSettings => ({
     pricing: { priceMode: planner.priceMode, slots: planner.slots },
     palettes: palettes.palettes,
+    floors: FLOORS,
   })
 
   function resetFailure() {
@@ -147,10 +154,15 @@ export const useProjectStore = defineStore('project', () => {
     meta.value = p.meta
     // its colour rows join the palettes like an imported file's do
     palettes.importPalettes(p.settings)
-    opened = p.items
+    const floors = floorsOf(p.settings.floors)
+    const items = toCurrentFloors(p.items, floors)
+    movedOn =
+      floors < FLOORS ? new Set(items.filter((i, k) => i !== p.items[k]).map((i) => i.id!)) : null
+    opened = items
     saved = null
-    planner.openProject(p.meta.id, p.items, p.settings.pricing, { readOnly: !canEdit.value })
-    savedSettings = JSON.stringify(settings())
+    planner.openProject(p.meta.id, items, p.settings.pricing, { readOnly: !canEdit.value })
+    // on older floors, its settings save too (with today's), whatever else changes
+    savedSettings = movedOn ? '' : JSON.stringify(settings())
     status.value = 'saved'
     resetFailure()
     draft.value = mayEdit.value ? loadDraft(p.meta.id) : null
@@ -249,6 +261,7 @@ export const useProjectStore = defineStore('project', () => {
     saved = null
     opened = null
     remote = null
+    movedOn = null
     draft.value = null
     shareDenied.value = null
     resetFailure()
@@ -522,6 +535,12 @@ export const useProjectStore = defineStore('project', () => {
       if (list === opened) return
       if (!saved) {
         saved = new Map(list.map((i) => [i.id!, rowKey(i)]))
+        // moved on to today's floors as it opened: those items aren't saved as they are yet
+        if (movedOn) {
+          for (const id of movedOn) if (saved.has(id)) saved.set(id, '')
+          movedOn = null
+          schedule()
+        }
         return
       }
       if (list === remote) return

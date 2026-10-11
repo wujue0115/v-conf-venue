@@ -3473,6 +3473,28 @@ export class VenueEditor {
     return best
   }
 
+  /** Who sat where when A2's cushions were last put down (see updateCushions) */
+  private seated = ''
+
+  /**
+   * A2's fixed seats with someone on them (a placed 人員, a stand-in walking the venue, or
+   * someone else's) have their cushions down; the rest stay folded up
+   */
+  private updateCushions() {
+    const on: THREE.Vector3[] = []
+    for (const o of this.placed.children) if (o.userData.sit && o.visible) on.push(o.position)
+    if (this.walk?.seat) on.push(this.walk.seat.p)
+    for (const e of this.walkers.values()) if (e.sit && !e.id) on.push(e.at)
+    const key = on.map((p) => `${p.x.toFixed(2)},${p.z.toFixed(2)}`).join(';')
+    if (key === this.seated) return
+    this.seated = key
+    const open = new Set<number>()
+    this.archi.seats.forEach((f, k) => {
+      if (on.some((p) => Math.abs(p.x - f.x) < 0.05 && Math.abs(p.z - f.z) < 0.05)) open.add(k)
+    })
+    this.archi.openSeats(open)
+  }
+
   /** A single person on a free seat sits down on it; anyone else stands on the floor. */
   private settle(o: THREE.Object3D) {
     if (!isPerson(o)) return
@@ -5657,6 +5679,7 @@ export class VenueEditor {
       helper.visible = o.visible
     }
     this.updGroupFrames()
+    this.updateCushions()
     this.renderer.render(this.scene, camera)
     this.layoutCursors(dt)
     this.layoutWalkers(dt)

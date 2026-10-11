@@ -326,6 +326,7 @@ const en: Messages = {
     lift: 'Lift',
     liftLobby: 'Lift lobby',
     restroom: 'Restrooms',
+    pantry: 'Pantry',
     a2Entrance: 'A2 entrance',
     closed: 'Closed area',
     stage: 'Stage',

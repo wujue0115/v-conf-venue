@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
 import type { Role, SharedResult } from '@/cloud/projects'
+import { FLOORS } from '@/venue/floors'
 import type { LayoutItem } from '@/venue/layout'
 import { STORAGE_KEY } from '@/venue/layout'
 
@@ -54,7 +55,7 @@ async function openProject(role: Role = 'owner') {
       sharing: null,
     },
     items: [item(A, 1), item(B, 2)],
-    settings: { pricing: { priceMode: 1, slots: 2 } },
+    settings: { pricing: { priceMode: 1, slots: 2 }, floors: FLOORS },
   })
   const project = useProjectStore()
   const planner = usePlannerStore()
@@ -90,6 +91,38 @@ describe('project store', () => {
     await vi.runAllTimersAsync()
     expect(api.saveChanges).not.toHaveBeenCalled()
     expect(project.status).toBe('saved')
+  })
+
+  it('moves a project saved on older floors on to today’s, and saves that once', async () => {
+    useAuthStore().user = { id: OWNER } as never
+    // on the stage as it was (0.9 m), and one where no floor moved
+    const onStage: LayoutItem = { id: A, t: 'sign', x: 33, y: 0.9, z: 37.6, r: 0 }
+    api.loadProject.mockResolvedValue({
+      meta: {
+        id: 'p1',
+        name: 'Test',
+        updated_at: '2026-10-01T00:00:00Z',
+        role: 'owner',
+        requested: null,
+        sharing: null,
+      },
+      items: [onStage, item(B, 2)],
+      settings: { pricing: { priceMode: 1, slots: 2 } },
+    })
+    const project = useProjectStore()
+    const planner = usePlannerStore()
+    await project.open('p1')
+    expect(planner.items[0]!.y).toBeCloseTo(0.7)
+    planner.items = [...planner.items]
+    await nextTick()
+    await vi.runAllTimersAsync()
+    expect(api.saveChanges).toHaveBeenCalledTimes(1)
+    const [, changes] = api.saveChanges.mock.calls[0]!
+    expect(changes.upserts.map((i: LayoutItem) => i.id)).toEqual([A])
+    expect(changes.settings?.floors).toBe(FLOORS)
+    // done: nothing more to save until something changes
+    await vi.runAllTimersAsync()
+    expect(api.saveChanges).toHaveBeenCalledTimes(1)
   })
 
   it('saves just what changed, a moment after the last change', async () => {

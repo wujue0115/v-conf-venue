@@ -11,6 +11,8 @@ import { parseLayout, type LayoutItem, type Pricing } from '@/venue/layout'
 export interface ProjectSettings {
   pricing?: Partial<Pricing>
   palettes?: Record<string, readonly string[]>
+  /** The floors its items stand on (see floors.ts); absent on projects saved before floors 2 */
+  floors?: number
 }
 
 /** The signed-in person's part in a project (or a guest's, through an open share link) */

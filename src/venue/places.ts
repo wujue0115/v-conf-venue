@@ -14,6 +14,7 @@ export type FacilityKey =
   | 'lift'
   | 'liftLobby'
   | 'restroom'
+  | 'pantry'
   | 'a2Entrance'
   | 'closed'
   | 'stage'
@@ -42,6 +43,7 @@ export const FACILITIES: FacilityLabel[] = [
   { key: 'liftLobby', pos: [32.6, 1.5, 10.6] },
   { key: 'lift', pos: [31.4, 4, 13.6] },
   { key: 'restroom', pos: [32.6, 4, 17.3] },
+  { key: 'pantry', pos: [30.7, 2.6, 23.2] },
   { key: 'stairs', pos: [31, 4, 21.4] },
   { key: 'a2Entrance', pos: [30, 1.5, 27.5] },
   { key: 'closed', pos: [33.4, 4, 27.5] },

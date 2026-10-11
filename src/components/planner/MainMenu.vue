@@ -15,7 +15,8 @@ import { usePhone } from '@/composables/usePhone'
 import { usePalettesStore } from '@/stores/palettes'
 import { usePlannerStore } from '@/stores/planner'
 import { downloadJSON, stamp } from '@/venue/download'
-import { exportLayout, parseLayout, readPricing } from '@/venue/layout'
+import { FLOORS } from '@/venue/floors'
+import { exportLayout, readLayoutFile, readPricing } from '@/venue/layout'
 
 /**
  * ☰ at the top left: the layout file (open, save, export an image, clear),
@@ -55,7 +56,7 @@ async function onFile(e: Event) {
   if (!f) return
   try {
     const file: unknown = JSON.parse(await f.text())
-    editor.value?.load(parseLayout(file), { record: true })
+    editor.value?.load(readLayoutFile(file), { record: true })
     // the pricing its total was worked out with, and its colour rows, come along too
     const pricing = readPricing(file)
     if (pricing.priceMode !== undefined) store.priceMode = pricing.priceMode
@@ -101,6 +102,7 @@ async function saveToCloud() {
       const id = await createProject(auth.user!.id, name, store.items, {
         pricing: { priceMode: store.priceMode, slots: store.slots },
         palettes: palettes.palettes,
+        floors: FLOORS,
       })
       store.notify(t().cloud.savedAs(name))
       void router.push({ name: 'project', params: { projectId: id } })
