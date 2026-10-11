@@ -981,19 +981,20 @@ export function buildArchitecture(scene: THREE.Scene): Architecture {
     }
   }
   // the first flight, from the atrium's floor, its lanes at either end railed on their outer side
+  // its west end against the column's face
   bleachers(
-    () => 12.2,
+    () => 11.9,
     22.45,
     [21.1, 23.2],
     0,
     MID,
     4,
     () => [
-      [12.2, 13.7],
+      [11.9, 13.4],
       [20.7, 22.45],
     ],
   )
-  sideRail(12.25, 21.1, 0, 23.2, MID)
+  sideRail(11.95, 21.1, 0, 23.2, MID)
   sideRail(22.4, 21.1, 0, 23.2, MID)
   walk.push(
     prism(
