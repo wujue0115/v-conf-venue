@@ -1292,12 +1292,33 @@ export function buildArchitecture(scene: THREE.Scene): Architecture {
       [11.125, 33.425],
       [10.875, 33.425],
     ])
-    side([
-      [11.075, 41.475],
-      [11.325, 41.475],
-      [11.725, OUTER],
-      [11.475, OUTER],
-    ])
+    // 控制室's, with its window on to the hall and the stage: glass between a sill a metre over
+    // its floor and a head at 1.9, seen through from both sides
+    {
+      const [z0, z1] = [41.475, OUTER]
+      const west = (z: number) => 11.075 + ((z - z0) * 0.4) / (z1 - z0)
+      const part = (a: number, b: number, y0: number, h: number) =>
+        prism(
+          [
+            [west(a), a],
+            [west(a) + WALL_T, a],
+            [west(b) + WALL_T, b],
+            [west(b), b],
+          ],
+          h,
+          M.wall,
+          wallsG,
+          y0,
+        )
+      const [wa, wb] = [42.6, 44.2]
+      const [sill, head] = [A2_BACK + 1, A2_BACK + 1.9]
+      part(z0, wa, 0, A2_H)
+      part(wa, wb, 0, sill)
+      part(wa, wb, head, A2_H - head)
+      part(wb, z1, 0, A2_H)
+      const mid = (z: number) => west(z) + WALL_T / 2
+      glass(mid(wa - 0.03), wa - 0.03, mid(wb + 0.03), wb + 0.03, head - sill + 0.01, wallsG, sill)
+    }
     // the proscenium: a wall either side of the stage's opening, hooked in at its end; and the
     // stage's back wall, the screen hung in front of it, its ends turned forward. Between each
     // hook and the back wall's end, a curtained way through to the backstage behind.
@@ -1344,19 +1365,6 @@ export function buildArchitecture(scene: THREE.Scene): Architecture {
     pane(win, end, head, A2_H - head)
     glass(win, (front + back) / 2, end, (front + back) / 2, head - sill, wallsG, sill)
   }
-  // 控制室's window on to the stage
-  board(
-    11.3,
-    42.6,
-    11.45,
-    44.2,
-    [20, 37.6],
-    WALL_T / 2 + 0.03,
-    0.02,
-    A2_BACK + 1,
-    A2_BACK + 1.9,
-    M.glass,
-  )
 
   const { seats, openSeats } = buildA2Seating(arch, walk)
   const fixedSeats = seats.length
