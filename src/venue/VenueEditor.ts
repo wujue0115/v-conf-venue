@@ -20,6 +20,11 @@ import {
   priceOf,
   type Footprint,
   applyPeople,
+  heightOf,
+  heightScale,
+  isPersonHeight,
+  personTagY,
+  setPersonHeight,
   type FurnitureType,
 } from './furniture'
 import { rebaseStep, touchesLocked } from './history'
@@ -48,17 +53,33 @@ import {
   nearestOnPath,
   paintGhostNode,
   paintLinker,
+  PATH_SPEED,
+  isPathSpeed,
   pathColorOf,
   pathGraph,
   pathRing,
+  pathSpeedOf,
   ringMat,
   setPathNodeColor,
+  setPathNodeSpeed,
   stepArrows,
+  walkSpeed,
   type PathGraph,
 } from './path'
 import type { CameraView, Vec3 } from './places'
 import { bearing, linkPosts, withoutCutToward, type Post } from './stanchions'
-import { ZONE_COLOR, ZONE_MIN, applyZone, clampZone, inZone, onZoneGrid } from './zone'
+import {
+  ZONE_COLOR,
+  ZONE_MIN,
+  applyZone,
+  clampZone,
+  cleanCorners,
+  cornerBounds,
+  inZone,
+  onZoneGrid,
+  zoneCorners,
+  type ZonePoint,
+} from './zone'
 
 export interface SelectionInfo {
   /** How many items are selected; the rest describes the first of them */
@@ -95,23 +116,28 @@ export interface SelectionInfo {
   info: string
   /** Rented items: whether it counts toward the rental total */
   billed?: boolean
-  /** 人員 items: how many figures, their colour, and whether they sit on a seat */
-  people?: { n: number; color: string; sit: boolean }
-  /** 區域 items: width × depth in metres, colour, and whether it's locked against editing */
-  zone?: { w: number; d: number; color: string; locked: boolean }
+  /** 人員 items: how many figures, their colour, whether they sit on a seat, and how tall (cm) */
+  people?: { n: number; color: string; sit: boolean; height: number }
+  /**
+   * 區域 items: width × depth in metres (a polygon's bounds), colour, whether it's locked against
+   * editing, and a polygon's corners
+   */
+  zone?: { w: number; d: number; color: string; locked: boolean; corners?: number }
   /** Laptops: the lid's opening in degrees */
   laptop?: { open: number }
   /** Mobile TVs: the screen's centre above the floor, metres */
   tv?: { lift: number }
   /**
    * 動線點: whether the 人員 on the links from it walk along them on their own (or are dragged
-   * by hand), how many links it has, and the path's colour
+   * by hand), how many links it has, and the path's colour and speed
    */
   path?: {
     /** How the links from it go: undefined when there are none */
     mode?: 'auto' | 'manual' | 'mixed'
     links: number
     color: string
+    /** How fast its 人員 walk on their own: 1 (slowest) to 5 */
+    speed: number
   }
 }
 
@@ -358,8 +384,6 @@ const isPathNode = (o: THREE.Object3D) => o.userData.type === 'pathNode'
 const PATH_ON = 0.4
 /** Dragged along a path by hand, a 人員 leaves it once the pointer is this far (m) off it */
 const PATH_LEAVE = 1.2
-/** How fast (m/s) 人員 walk along a path on their own */
-const PATH_SPEED = 0.6
 /** Items this near (m) a selected 動線點 are kept clear of by its arrow, with no mouse to point it */
 const LINKER_ROOM = 1.5
 /** How far (m) round a 人員 others keep, walking along a path: one figure, or a crowd */
@@ -497,6 +521,24 @@ const lockedAspect = (o: THREE.Object3D) => !!o.userData.lock
 const WALL_GAP = 0.002
 const HANDLE_GEO = new THREE.BoxGeometry(1, 1, 0.2)
 const HANDLE_MAT = new THREE.MeshBasicMaterial({ color: YEL, depthTest: false })
+/** The dot halfway along each edge of the selected zone, dragged out to add a corner there */
+const KNOB_GEO = new THREE.CircleGeometry(0.4, 20)
+const KNOB_MAT = new THREE.MeshBasicMaterial({
+  color: YEL,
+  depthTest: false,
+  transparent: true,
+  opacity: 0.6,
+})
+/** Two taps on a zone's corner within this long (ms) take the corner away */
+const DOUBLE_TAP = 400
+/**
+ * A handle on the selected zone: a rectangle's corner (its sides resized from it), a
+ * polygon's corner (moved on its own), or the dot halfway along the edge from corner `i`
+ */
+type ZoneKnob =
+  | { kind: 'corner'; sx: number; sy: number }
+  | { kind: 'vertex'; i: number }
+  | { kind: 'mid'; i: number }
 const toPost = (o: THREE.Object3D): Post => ({
   x: o.position.x,
   z: o.position.z,
@@ -670,7 +712,14 @@ export class VenueEditor {
     anchor: THREE.Vector3
     aspect: number
     moved: boolean
+    /** A zone's corner dragged on its own: which; `insert`, added there once the drag starts */
+    corner?: number
+    insert?: boolean
   } | null = null
+  /** The selected zone's handles (the 4 handles in `handles` are a poster's) */
+  private readonly knobs = new THREE.Group()
+  /** The zone corner last tapped, and when: tapped again soon after, it is taken away */
+  private lastKnob: { o: THREE.Object3D; i: number; at: number } | null = null
   private downPt: { x: number; y: number } | null = null
   private placing: { type: FurnitureType; obj: THREE.Group | null; sx: number; sy: number } | null =
     null
@@ -806,6 +855,7 @@ export class VenueEditor {
       h.userData = { sx, sy }
       this.handles.add(h)
     }
+    this.handles.add(this.knobs)
     this.handles.visible = false
 
     const grid = (this.grid = new THREE.GridHelper(
@@ -1105,19 +1155,38 @@ export class VenueEditor {
     this.hiddenInfo = new Set(types)
   }
 
-  /** Change the selected zone's size (metres, on the zone grid, about its centre) and/or colour. */
-  setZone({ w, d, color }: { w?: number; d?: number; color?: string }) {
+  /**
+   * Change the selected zone's size (metres, on the zone grid, about its centre; a polygon is
+   * stretched to it) and/or colour, or (`rect`) make a polygon the rectangle round it again.
+   */
+  setZone({ w, d, color, rect }: { w?: number; d?: number; color?: string; rect?: boolean }) {
     const s = this.selected
     if (!s || !isZone(s) || this.refuseLocked()) return
     const w0 = s.userData.w as number
     const d0 = s.userData.d as number
     const c0 = (s.userData.color as string | undefined) ?? ZONE_COLOR
+    const p0 = s.userData.pts as ZonePoint[] | undefined
     const w1 = w === undefined ? w0 : clampZone(w, w0)
     const d1 = d === undefined ? d0 : clampZone(d, d0)
     const c1 = color && isHexColor(color) ? color.toLowerCase() : c0
-    if (w1 === w0 && d1 === d0 && c1 === c0) return
+    const square = !!rect && !!p0
+    if (w1 === w0 && d1 === d0 && c1 === c0 && !square) return
     this.pushUndo()
-    applyZone(s, { w: w1, d: d1, color: c1 })
+    let pts: ZonePoint[] | undefined
+    if (p0 && !square) {
+      // stretched about the middle, its corners kept on the grid from the bounds' corner
+      const fit = (v: number, k: number, size: number) => onZoneGrid(v * k + size / 2) - size / 2
+      const stretched = p0.map(([x, z]): ZonePoint => [x * (w1 / w0), z * (d1 / d0)])
+      pts =
+        cleanCorners(stretched.map(([x, z]): ZonePoint => [fit(x, 1, w1), fit(z, 1, d1)])) ??
+        stretched
+    }
+    applyZone(s, {
+      w: square ? clampZone(w1, ZONE_MIN) : w1,
+      d: square ? clampZone(d1, ZONE_MIN) : d1,
+      color: c1,
+      pts,
+    })
     this.updSel()
     this.commit()
   }
@@ -1134,6 +1203,7 @@ export class VenueEditor {
       w: s.userData.w as number,
       d: s.userData.d as number,
       color: s.userData.color as string | undefined,
+      pts: s.userData.pts as ZonePoint[] | undefined,
       locked: on,
     })
     this.updSel()
@@ -1141,17 +1211,50 @@ export class VenueEditor {
     this.cb.onToast(on ? t().zoneLock.lockedOn : t().zoneLock.lockedOff)
   }
 
-  /** Change how many figures the selected 人員 item shows, and/or their colour. */
-  setPeople({ n, color }: { n?: number; color?: string }) {
+  /**
+   * Give zone `o` these corners: its origin moved to the middle of their bounds, where they
+   * stay put. False (nothing changed) when they enclose nothing.
+   */
+  private reshapeZone(o: THREE.Object3D, pts: readonly ZonePoint[]) {
+    const c = cleanCorners(pts)
+    if (!c) return false
+    const { cx, cz } = cornerBounds(c)
+    o.position.add(new THREE.Vector3(cx, 0, cz).applyQuaternion(o.quaternion))
+    applyZone(o, {
+      w: 0,
+      d: 0,
+      color: o.userData.color as string | undefined,
+      pts: c.map(([x, z]): ZonePoint => [x - cx, z - cz]),
+    })
+    return true
+  }
+
+  /** Take corner `i` away from zone `o` (one undo step); a zone keeps three at least */
+  private removeCorner(o: THREE.Object3D, i: number) {
+    const pts = zoneCorners(o)
+    if (pts.length <= 3) return this.cb.onToast(t().toast.zoneCorners)
+    pts.splice(i, 1)
+    if (!cleanCorners(pts)) return
+    this.pushUndo()
+    this.reshapeZone(o, pts)
+    this.updSel()
+    this.commit()
+  }
+
+  /** Change how many figures the selected 人員 item shows, their colour, and/or how tall (cm). */
+  setPeople({ n, color, height }: { n?: number; color?: string; height?: number }) {
     const s = this.selected
     if (!s || s.userData.type !== 'person') return
     const n0 = (s.userData.n as number | undefined) ?? 1
     const c0 = (s.userData.color as string | undefined) ?? PERSON_COLOR
+    const h0 = heightOf(s)
     // someone sitting is always one person
     const n1 = s.userData.sit ? 1 : n === undefined ? n0 : clampPeople(n)
     const c1 = color && isHexColor(color) ? color.toLowerCase() : c0
-    if (n1 === n0 && c1 === c0) return
+    const h1 = isPersonHeight(height) ? height : h0
+    if (n1 === n0 && c1 === c0 && h1 === h0) return
     this.pushUndo()
+    setPersonHeight(s, h1)
     applyPeople(s, n1, c1, !!s.userData.sit)
     this.updSel()
     this.commit()
@@ -1615,9 +1718,7 @@ export class VenueEditor {
       r.body.visible = !item
       let head: THREE.Vector3
       if (item) {
-        head = item.position
-          .clone()
-          .setY(item.position.y + (item.userData.sit ? SEATED_TAG_Y : PERSON_TAG_Y) + 0.4)
+        head = item.position.clone().setY(item.position.y + personTagY(item) + 0.4)
       } else {
         r.body.geometry = r.sit
           ? seatedGeometry()
@@ -1939,6 +2040,7 @@ export class VenueEditor {
         r.visible = !seated && !out
         if (!r.visible) return
         r.geometry = stride
+        r.scale.copy(fig.scale)
         r.position.copy(o.localToWorld(fig.position.clone()))
         r.rotation.y = o.rotation.y
       })
@@ -1967,16 +2069,14 @@ export class VenueEditor {
     const at = w.from && this.figureOf(w.from)
     let eye: THREE.Vector3
     if (o && at) {
-      const sit = !!o.userData.sit
+      // their eyes are as high as they are tall
+      const k = heightScale(o)
+      const y = (o.userData.sit ? SEATED_EYE_Y : EYE_Y) * k
       o.updateMatrixWorld()
       eye = w.third
-        ? o.position.clone().setY(o.position.y + (sit ? SEATED_EYE_Y : EYE_Y))
+        ? o.position.clone().setY(o.position.y + y)
         : o.localToWorld(
-            new THREE.Vector3(
-              at.fig.position.x,
-              sit ? SEATED_EYE_Y : EYE_Y,
-              at.fig.position.z + EYE_FORWARD,
-            ),
+            new THREE.Vector3(at.fig.position.x, y, at.fig.position.z + EYE_FORWARD * k),
           )
     } else eye = w.pos.clone().setY(w.pos.y + (w.seat ? SEATED_EYE_Y : EYE_Y))
     eye.y -= w.dip
@@ -2193,9 +2293,7 @@ export class VenueEditor {
     // over the item's middle, where its tag is: one 👁 for a crowd
     const { o } = at
     o.updateMatrixWorld()
-    const v = o
-      .localToWorld(this.v.set(0, o.userData.sit ? SEATED_TAG_Y : PERSON_TAG_Y, 0))
-      .project(this.camera)
+    const v = o.localToWorld(this.v.set(0, personTagY(o), 0)).project(this.camera)
     if (v.z > 1 || Math.abs(v.x) > 1.2 || Math.abs(v.y) > 1.2) {
       btn.hidden = true
       return
@@ -3161,6 +3259,9 @@ export class VenueEditor {
     lift,
     links,
     auto,
+    speed,
+    height,
+    pts,
   }: LayoutItem) {
     if (!isFurnitureType(t)) return null
     const o = buildFurniture(t, v, w && h ? { w, h } : undefined)
@@ -3181,13 +3282,15 @@ export class VenueEditor {
     if (groupColor) o.userData.groupColor = groupColor
     if (groupInfo) o.userData.groupInfo = groupInfo
     if (t === 'person' && (n || color || sit)) applyPeople(o, n, color, sit)
-    if (t === 'zone' && w && d) applyZone(o, { w, d, color, locked })
+    if (t === 'person' && height) setPersonHeight(o, height)
+    if (t === 'zone' && w && d) applyZone(o, { w, d, color, pts, locked })
     if (t === 'laptop' && open !== undefined) setLaptopOpen(o, open)
     if (t === 'tvCart' && lift !== undefined) setTvLift(o, lift)
     // a copy (passed without an id) is linked to nothing
     if (t === 'pathNode' && id && links?.length) o.userData.links = [...links]
     if (t === 'pathNode' && id && auto?.length) o.userData.auto = [...auto]
     if (t === 'pathNode' && color) setPathNodeColor(o, color)
+    if (t === 'pathNode' && speed) setPathNodeSpeed(o, speed)
     o.visible = !this.hidden.has(t)
     this.placed.add(o)
     return o
@@ -3234,14 +3337,21 @@ export class VenueEditor {
       ...(ud.n ? { n: ud.n as number } : {}),
       ...(ud.color ? { color: ud.color as string } : {}),
       ...(ud.sit ? { sit: true } : {}),
+      ...(ud.height ? { height: ud.height as number } : {}),
       ...(ud.open !== undefined ? { open: ud.open as number } : {}),
       ...(ud.lift !== undefined ? { lift: ud.lift as number } : {}),
       ...(links?.length ? { links: [...links] } : {}),
       ...(links?.length && (ud.auto as string[] | undefined)?.length
         ? { auto: (ud.auto as string[]).filter((a) => links.includes(a)) }
         : {}),
+      ...(ud.speed ? { speed: ud.speed as number } : {}),
       ...(isZone(o)
-        ? { w: ud.w as number, d: ud.d as number, ...(ud.locked ? { locked: true } : {}) }
+        ? {
+            w: ud.w as number,
+            d: ud.d as number,
+            ...(ud.pts ? { pts: (ud.pts as ZonePoint[]).map((p): ZonePoint => [...p]) } : {}),
+            ...(ud.locked ? { locked: true } : {}),
+          }
         : {}),
       ...(ud.img && hasFace(o) ? { img: ud.img as string } : {}),
       ...(resizable(o)
@@ -3566,23 +3676,52 @@ export class VenueEditor {
     if (!s || !this.handles.visible) return
     s.updateMatrixWorld()
     // a zone's handles take its colour; everything else keeps the selection yellow
-    HANDLE_MAT.color.set(isZone(s) ? ((s.userData.color as string | undefined) ?? ZONE_COLOR) : YEL)
+    const color = isZone(s) ? ((s.userData.color as string | undefined) ?? ZONE_COLOR) : YEL
+    HANDLE_MAT.color.set(color)
+    KNOB_MAT.color.set(color)
+    for (const hd of this.handles.children) hd.visible = isZone(s) === (hd === this.knobs)
     if (isZone(s)) {
-      // a zone's handles lie flat on its corners
-      const w = s.userData.w as number
-      const d = s.userData.d as number
+      // a zone's handles lie flat on its corners, with a dot halfway along each edge
+      const pts = zoneCorners(s)
+      const poly = !!s.userData.pts
+      const key = `${poly}|${pts.length}`
+      if (this.knobs.userData.key !== key) {
+        this.knobs.clear()
+        pts.forEach(([x, z], i) => {
+          const h = new THREE.Mesh(HANDLE_GEO, HANDLE_MAT)
+          h.renderOrder = 1001
+          h.userData = (
+            poly ? { kind: 'vertex', i } : { kind: 'corner', sx: Math.sign(x), sy: Math.sign(z) }
+          ) satisfies ZoneKnob
+          this.knobs.add(h)
+        })
+        pts.forEach((_, i) => {
+          const h = new THREE.Mesh(KNOB_GEO, KNOB_MAT)
+          h.renderOrder = 1000
+          h.userData = { kind: 'mid', i } satisfies ZoneKnob
+          this.knobs.add(h)
+        })
+        this.knobs.userData.key = key
+      }
       const flat = s.quaternion.clone().multiply(FLAT)
-      for (const hd of this.handles.children) {
-        const { sx, sy } = hd.userData as { sx: number; sy: number }
-        hd.position.copy(s.localToWorld(new THREE.Vector3((sx * w) / 2, 0.02, (sy * d) / 2)))
+      const n = pts.length
+      this.knobs.children.forEach((hd, j) => {
+        const i = j % n
+        const [x, z] = pts[i]!
+        const mid = j >= n
+        const [x1, z1] = mid ? pts[(i + 1) % n]! : [x, z]
+        // the corners a little higher, so a pointer on both picks the corner
+        hd.position.copy(
+          s.localToWorld(new THREE.Vector3((x + x1) / 2, mid ? 0.015 : 0.02, (z + z1) / 2)),
+        )
         hd.quaternion.copy(flat)
         const k = THREE.MathUtils.clamp(
           this.camera.position.distanceTo(hd.position) * 0.012,
           0.03,
           0.4,
         )
-        hd.scale.set(k, k, k)
-      }
+        hd.scale.setScalar(mid ? k * 0.75 : k)
+      })
       return
     }
     const w = s.userData.w as number
@@ -3604,7 +3743,10 @@ export class VenueEditor {
   private pickHandle(e: PointerEvent) {
     if (!this.handles.visible) return null
     this.setRay(e)
-    return this.ray.intersectObjects(this.handles.children, false)[0]?.object ?? null
+    const s = this.selected
+    const from =
+      s && isZone(s) ? this.knobs.children : this.handles.children.filter((h) => h !== this.knobs)
+    return this.ray.intersectObjects(from, false)[0]?.object ?? null
   }
 
   /** Drag a poster corner: the opposite corner stays put. Shift keeps the aspect ratio. */
@@ -3612,6 +3754,27 @@ export class VenueEditor {
     const r = this.resizing
     if (!r) return
     const { o } = r
+    if (isZone(o) && r.corner !== undefined) {
+      // a corner of its own: it follows the pointer on the zone grid (as the others are on it)
+      this.setRay(e)
+      const p = this.ray.ray.intersectPlane(
+        new THREE.Plane(new THREE.Vector3(0, 1, 0), -o.position.y),
+        new THREE.Vector3(),
+      )
+      if (!p) return
+      const pts = zoneCorners(o)
+      if (r.insert) {
+        // dragged out from halfway along an edge: a new corner there
+        const [a, b] = [pts[r.corner - 1]!, pts[r.corner % pts.length]!]
+        pts.splice(r.corner, 0, [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2])
+        r.insert = false
+      }
+      const at = o.worldToLocal(p)
+      const [rx, rz] = pts[(r.corner + 1) % pts.length]!
+      pts[r.corner] = [rx + onZoneGrid(at.x - rx), rz + onZoneGrid(at.z - rz)]
+      if (this.reshapeZone(o, pts)) this.updSel()
+      return
+    }
     if (isZone(o)) {
       // on the floor: the opposite corner stays put, sizes snap to the zone grid
       this.setRay(e)
@@ -3756,6 +3919,7 @@ export class VenueEditor {
       const b = this.pathPoints.get(ib)!
       const m = linkMesh(a.position, b.position, pathColorOf(a), {
         creeping: this.graph.auto.has(linkKey(ia, ib)),
+        speed: pathSpeedOf(a),
       })
       if (!m) continue
       m.userData.ends = [a, b]
@@ -3843,11 +4007,15 @@ export class VenueEditor {
     if (this.graph.adj.get(ia)?.has(ib)) this.cb.onToast(t().path.already)
     else {
       this.pushUndo()
-      // the path joined on takes on this one's colour
+      // the path joined on takes on this one's colour and speed
       const color = pathColorOf(a)
+      const speed = pathSpeedOf(a)
       const joined = this.graph.path.get(ib)
       for (const [id, p] of this.graph.path)
-        if (p === joined) setPathNodeColor(this.pathPoints.get(id)!, color)
+        if (p === joined) {
+          setPathNodeColor(this.pathPoints.get(id)!, color)
+          setPathNodeSpeed(this.pathPoints.get(id)!, speed)
+        }
       const walks = this.walksOn(a)
       a.userData.links = [...((a.userData.links as string[] | undefined) ?? []), ib]
       setAuto(a, [ib], walks)
@@ -3867,8 +4035,14 @@ export class VenueEditor {
     if (!p) return null
     this.hideGhost()
     this.pushUndo()
-    const color = pathColorOf(a)
-    const o = this.add({ t: 'pathNode', x: this.sn(p.x), z: this.sn(p.z), r: 0, color })!
+    const o = this.add({
+      t: 'pathNode',
+      x: this.sn(p.x),
+      z: this.sn(p.z),
+      r: 0,
+      color: pathColorOf(a),
+      speed: pathSpeedOf(a),
+    })!
     if (this.refuseInto([o])) return null
     const walks = this.walksOn(a)
     a.userData.links = [...((a.userData.links as string[] | undefined) ?? []), o.userData.id]
@@ -4140,19 +4314,34 @@ export class VenueEditor {
     paintLinker(this.linker, pathColorOf(s), this.linkerHot)
   }
 
+  /** Every 動線點 on the selected 動線點's path (none when no 動線點 is selected) */
+  private selectedPath() {
+    const s = this.selected
+    if (!s || !isPathNode(s)) return []
+    const path = this.graph.path.get(s.userData.id as string)
+    if (path === undefined) return []
+    return [...this.graph.path].flatMap(([id, p]) => (p === path ? [this.pathPoints.get(id)!] : []))
+  }
+
   /** Paint the selected 動線點's whole path `color` */
   setPathColor(color: string) {
-    const s = this.selected
-    if (!s || !isPathNode(s) || !isHexColor(color)) return
+    if (!isHexColor(color)) return
     const c = color.toLowerCase()
-    const path = this.graph.path.get(s.userData.id as string)
-    if (path === undefined) return
-    const points = [...this.graph.path].flatMap(([id, p]) =>
-      p === path ? [this.pathPoints.get(id)!] : [],
-    )
-    if (points.every((o) => pathColorOf(o) === c)) return
+    const points = this.selectedPath()
+    if (!points.length || points.every((o) => pathColorOf(o) === c)) return
     this.pushUndo()
     for (const o of points) setPathNodeColor(o, c)
+    this.commit()
+    this.updSel()
+  }
+
+  /** How fast the 人員 walk along the selected 動線點's whole path on their own: 1 (slowest) to 5 */
+  setPathSpeed(speed: number) {
+    if (!isPathSpeed(speed)) return
+    const points = this.selectedPath()
+    if (!points.length || points.every((o) => pathSpeedOf(o) === speed)) return
+    this.pushUndo()
+    for (const o of points) setPathNodeSpeed(o, speed)
     this.commit()
     this.updSel()
   }
@@ -4338,7 +4527,10 @@ export class VenueEditor {
       let q = this.pathPoints.get(w.to)?.position
       if (!q) continue
       let left = Math.hypot(q.x - p.x, q.z - p.z)
-      let go = w.done ? 0 : Math.min(PATH_SPEED * dt, this.roomAhead(o, people, q))
+      // at the speed of the link's own point, as its arrows creep
+      const from = this.pathPoints.get(w.from)
+      const pace = walkSpeed(from ? pathSpeedOf(from) : PATH_SPEED)
+      let go = w.done ? 0 : Math.min(pace * dt, this.roomAhead(o, people, q))
       const went = go
       while (!w.done && go > 0 && go >= left) {
         p.x = q.x
@@ -4798,6 +4990,7 @@ export class VenueEditor {
               n: (s.userData.n as number | undefined) ?? 1,
               color: (s.userData.color as string | undefined) ?? PERSON_COLOR,
               sit: !!s.userData.sit,
+              height: heightOf(s),
             },
           }
         : {}),
@@ -4808,6 +5001,7 @@ export class VenueEditor {
               d: s.userData.d as number,
               color: (s.userData.color as string | undefined) ?? ZONE_COLOR,
               locked: lockedZone(s),
+              ...(s.userData.pts ? { corners: (s.userData.pts as ZonePoint[]).length } : {}),
             },
           }
         : {}),
@@ -4823,6 +5017,7 @@ export class VenueEditor {
               mode: this.modeOf(s),
               links: this.graph.adj.get(s.userData.id as string)?.size ?? 0,
               color: pathColorOf(s),
+              speed: pathSpeedOf(s),
             },
           }
         : {}),
@@ -4889,6 +5084,9 @@ export class VenueEditor {
    */
   private hoverCursor(e: PointerEvent) {
     const hd = this.pickHandle(e)
+    const kind = (hd?.userData as ZoneKnob | undefined)?.kind
+    if (kind === 'vertex') return 'move'
+    if (kind === 'mid') return 'copy'
     if (hd) return hd.userData.sx * hd.userData.sy > 0 ? 'nesw-resize' : 'nwse-resize'
     const o = this.pickObj(e)
     if (o && lockedZone(o)) return 'not-allowed'
@@ -4936,7 +5134,14 @@ export class VenueEditor {
   }
 
   private moveTo(o: THREE.Object3D, x: number, z: number) {
-    if (isZone(o)) {
+    const pts = o.userData.pts as ZonePoint[] | undefined
+    if (isZone(o) && pts) {
+      // keep a polygon's corners on the grid, as they are on it from each other
+      const [px, pz] = pts[0]!
+      const off = new THREE.Vector3(px, 0, pz).applyQuaternion(o.quaternion)
+      x = onZoneGrid(x + off.x) - off.x
+      z = onZoneGrid(z + off.z) - off.z
+    } else if (isZone(o)) {
       // keep a zone's edges on the grid (its centre is off-grid when a side is an odd length)
       const hw = (o.userData.w as number) / 2
       const hd = (o.userData.d as number) / 2
@@ -5153,6 +5358,36 @@ export class VenueEditor {
           e.preventDefault()
           const s = this.selected
           const { sx, sy } = hd.userData as { sx: number; sy: number }
+          const knob = hd.userData as ZoneKnob
+          if (isZone(s) && knob.kind !== 'corner') {
+            // a polygon's corner tapped twice: taken away
+            const last = this.lastKnob
+            const now = performance.now()
+            if (
+              knob.kind === 'vertex' &&
+              last?.o === s &&
+              last.i === knob.i &&
+              now - last.at < DOUBLE_TAP
+            ) {
+              this.lastKnob = null
+              this.removeCorner(s, knob.i)
+              return
+            }
+            this.lastKnob = knob.kind === 'vertex' ? { o: s, i: knob.i, at: now } : null
+            this.resizing = {
+              o: s,
+              sx: 0,
+              sy: 0,
+              anchor: s.position.clone(),
+              aspect: 1,
+              moved: false,
+              corner: knob.kind === 'mid' ? knob.i + 1 : knob.i,
+              insert: knob.kind === 'mid',
+            }
+            this.controls.enabled = false
+            this.grid.visible = true
+            return
+          }
           if (isZone(s)) {
             const w = s.userData.w as number
             const d = s.userData.d as number
@@ -5728,9 +5963,7 @@ export class VenueEditor {
       const above = isZone(o)
         ? 0.02
         : isPerson(o)
-          ? o.userData.sit
-            ? SEATED_TAG_Y
-            : PERSON_TAG_Y
+          ? personTagY(o)
           : tagBox.setFromObject(o).max.y - o.position.y + TAG_CLEARANCE
       const p = new THREE.Vector3(o.position.x, o.position.y + above, o.position.z)
       yield { key: o as THREE.Object3D | string, p, tag: showTag ? tag : undefined, info, c }

@@ -2,8 +2,9 @@ import { clampLid } from './laptop'
 import { clampLift } from './tv'
 import { clampPosterSize, isImageDataUrl } from './poster'
 import { FLOORS, floorsOf, toCurrentFloors } from './floors'
+import { isPathSpeed, PATH_SPEED } from './path'
 import { readJSON, removeKey, writeJSON } from './storage'
-import { clampZone } from './zone'
+import { ZONE_MAX, clampZone, cleanCorners, cornerBounds } from './zone'
 import {
   FURNITURE_TYPES,
   defaultSizeOf,
@@ -12,7 +13,9 @@ import {
   priceOf,
   resolveVariant,
   takesImage,
+  isPersonHeight,
   PEOPLE_MAX,
+  PERSON_HEIGHT,
   type FurnitureType,
 } from './furniture'
 
@@ -57,10 +60,17 @@ export interface LayoutItem {
   color?: string
   /** People only: sitting on the seat at this position (always a single figure) */
   sit?: boolean
+  /** People only: how tall, in cm (130–200 in steps of 10; absent means 170) */
+  height?: number
   /** Zones only: depth in metres along local z (their width is `w`) */
   d?: number
   /** Zones only: locked against editing (禁止編輯), itself and everything standing in it */
   locked?: boolean
+  /**
+   * Zones only, once a corner has been added: the corners, [x, z] in metres about the item's
+   * position (before its rotation), in order round it; `w` × `d` are then their bounds
+   */
+  pts?: [number, number][]
   /** Laptops only: lid opening in degrees, 0 (shut) to LID_MAX (absent means LID_OPEN) */
   open?: number
   /** Mobile TVs only: the screen's centre above the floor, metres (absent means TV_LIFT) */
@@ -74,6 +84,8 @@ export interface LayoutItem {
    * dragged by hand). `true`, as saved before links had one each, means all of them.
    */
   auto?: string[]
+  /** 動線點 only: its path's speed, 1 (slowest) to 5 (absent means the default, 3; see path.ts) */
+  speed?: number
 }
 
 /** 0 = 自助搬運 (self-carry), 1 = 含搬運 (with carrying service) */
@@ -229,6 +241,18 @@ export function parseLayout(data: unknown): LayoutItem[] {
               (i.auto as unknown[]).some((a) => isUuid(a) && a.toLowerCase() === l),
             )
           : []
+    const pts =
+      t === 'zone' && Array.isArray(i.pts)
+        ? cleanCorners(
+            (i.pts as unknown[]).flatMap((p) =>
+              Array.isArray(p) &&
+              p.length === 2 &&
+              p.every((v) => Number.isFinite(v) && Math.abs(v) <= ZONE_MAX)
+                ? [[p[0], p[1]] as [number, number]]
+                : [],
+            ),
+          )
+        : null
     if (id) ids.add(id)
     return [
       {
@@ -254,6 +278,9 @@ export function parseLayout(data: unknown): LayoutItem[] {
         ...(tagColor ? { tagColor } : {}),
         ...(info ? { info } : {}),
         ...(sit ? { sit } : {}),
+        ...(t === 'person' && isPersonHeight(i.height) && i.height !== PERSON_HEIGHT
+          ? { height: i.height }
+          : {}),
         ...(priceOf(t) && i.unbilled === true ? { unbilled: true } : {}),
         ...(group ? { group } : {}),
         ...(groupTag ? { groupTag } : {}),
@@ -261,10 +288,17 @@ export function parseLayout(data: unknown): LayoutItem[] {
         ...(groupInfo ? { groupInfo } : {}),
         ...(t === 'laptop' && i.open !== undefined ? { open: clampLid(i.open) } : {}),
         ...(t === 'tvCart' && i.lift !== undefined ? { lift: clampLift(i.lift) } : {}),
-        ...(t === 'zone' ? { w: clampZone(i.w, 2), d: clampZone(i.d, 2) } : {}),
+        ...(t === 'zone'
+          ? pts
+            ? { w: +cornerBounds(pts).w.toFixed(3), d: +cornerBounds(pts).d.toFixed(3), pts }
+            : { w: clampZone(i.w, 2), d: clampZone(i.d, 2) }
+          : {}),
         ...(t === 'zone' && i.locked === true ? { locked: true } : {}),
         ...(links.length ? { links } : {}),
         ...(auto.length ? { auto } : {}),
+        ...(t === 'pathNode' && isPathSpeed(i.speed) && i.speed !== PATH_SPEED
+          ? { speed: i.speed }
+          : {}),
       },
     ]
   })

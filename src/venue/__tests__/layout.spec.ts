@@ -276,6 +276,87 @@ describe('zones', () => {
     z.rotation.y = Math.PI / 2
     expect([inZone(z, 10, 7), inZone(z, 11, 5), inZone(z, 12, 5)]).toEqual([true, true, false])
   })
+
+  it('tell what stands inside a polygon, not in the notch cut into it, edges included', () => {
+    const z = new THREE.Group()
+    z.position.set(10, 0, 5)
+    z.userData = {
+      w: 4,
+      d: 2,
+      pts: [
+        [-2, -1],
+        [2, -1],
+        [2, 1],
+        [0, 0],
+        [-2, 1],
+      ],
+    }
+    expect([inZone(z, 9, 5), inZone(z, 10, 5.5), inZone(z, 12, 6), inZone(z, 11, 5.5)]).toEqual([
+      true,
+      false,
+      true,
+      true,
+    ])
+  })
+
+  it("keep a polygon's corners, sized by their bounds, and drop ones that enclose nothing", () => {
+    const [a, b, c] = parseLayout([
+      { t: 'zone', x: 1, z: 2, r: 0, w: 9, d: 9, pts: [[-1, -1], [1, -1], [1, -1], [0, 1.5], 'x'] },
+      {
+        t: 'zone',
+        x: 1,
+        z: 2,
+        r: 0,
+        pts: [
+          [0, 0],
+          [1, 0],
+          [2, 0],
+        ],
+      },
+      {
+        t: 'person',
+        x: 1,
+        z: 2,
+        r: 0,
+        pts: [
+          [0, 0],
+          [1, 0],
+          [0, 1],
+        ],
+      },
+    ])
+    expect(a).toMatchObject({
+      w: 2,
+      d: 2.5,
+      pts: [
+        [-1, -1],
+        [1, -1],
+        [0, 1.5],
+      ],
+    })
+    expect(b).toMatchObject({ w: 2, d: 2 })
+    expect(b?.pts).toBeUndefined()
+    expect(c?.pts).toBeUndefined()
+  })
+})
+
+describe('people', () => {
+  it('keep a height from 130 to 200 cm in steps of 10, leaving out the default 170', () => {
+    const heights = [130, 200, 170, 135, 210, '180'].map(
+      (height) => parseLayout([{ t: 'person', x: 0, z: 0, r: 0, height }])[0]?.height,
+    )
+    expect(heights).toEqual([130, 200, undefined, undefined, undefined, undefined])
+    expect(parseLayout([{ t: 'zone', x: 0, z: 0, r: 0, height: 150 }])[0]?.height).toBeUndefined()
+  })
+})
+
+describe('path speed', () => {
+  it('keep a speed from 1 to 5, leaving out the default 3', () => {
+    const speeds = [1, 5, 3, 0, 6, 2.5].map(
+      (speed) => parseLayout([{ t: 'pathNode', x: 0, z: 0, r: 0, speed }])[0]?.speed,
+    )
+    expect(speeds).toEqual([1, 5, undefined, undefined, undefined, undefined])
+  })
 })
 
 describe('snack trays', () => {
@@ -478,10 +559,25 @@ describe('export', () => {
         groupInfo: '工作人員 2 位',
       },
       { t: 'person', x: 0, y: 0.5, z: 0, r: 0, n: 3, color: '#42b883', tag: '志工' },
-      { t: 'person', x: 1, y: 0.4, z: 0, r: 0, sit: true },
+      { t: 'person', x: 1, y: 0.4, z: 0, r: 0, sit: true, height: 140 },
       { t: 'laptop', x: 1, y: 0.71, z: 2, r: 0, v: 's16-black', open: 95, img },
       { t: 'poster', x: 3, y: 1.5, z: 0, r: 0, w: 0.6, h: 0.9, lock: true, img },
       { t: 'zone', x: 5, y: 0, z: 5, r: 0, w: 3, d: 2, color: '#9575cd', tag: 'A 區' },
+      {
+        t: 'zone',
+        x: 6,
+        y: 0,
+        z: 6,
+        r: 0,
+        w: 2,
+        d: 1.5,
+        pts: [
+          [-1, -0.75],
+          [1, -0.75],
+          [0.5, 0.75],
+          [-0.5, 0.75],
+        ],
+      },
       { t: 'stanchion', x: 7, y: 0, z: 7, r: 0, cut: [1.571] },
       { t: 'shapeSofa', x: 9, y: 0, z: 9, r: 0, v: 'green' },
       { t: 'tvCart', x: 11, y: 0, z: 11, r: 0, v: 's75-port-black', lift: 1.6, img },
@@ -496,6 +592,7 @@ describe('export', () => {
         r: 0,
         links: ['22222222-2222-4222-8222-222222222222'],
         auto: ['22222222-2222-4222-8222-222222222222'],
+        speed: 4,
       },
     ]
     expect(parseLayout(JSON.parse(exportLayout(items)))).toEqual(items)

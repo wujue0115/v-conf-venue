@@ -8,10 +8,33 @@ import { B, Cy, mat, mesh, noRay } from './materials'
  * linked together, directly or through others, make one path. 人員 standing on a link walk
  * along it on their own when it is set to (kept with the link, in its point's `auto`: the ids
  * of the points it links to that way; its arrows creep along), or are dragged along it by hand.
- * A path has one colour (`color`), which every point of it keeps the same.
+ * A path has one colour (`color`) and one speed (`speed`), which every point of it keeps the same.
  */
 
 export const PATH_COLOR = '#2a9d8f'
+
+/** How fast (m/s) a path's 人員 walk on their own, by its speed (1 the slowest, 5 the fastest) */
+export const PATH_SPEEDS = [0.3, 0.45, 0.6, 0.9, 1.2] as const
+/** A path's speed when none is kept */
+export const PATH_SPEED = 3
+
+/** A speed kept in a file, if it is one (1–5) */
+export const isPathSpeed = (n: unknown): n is number =>
+  Number.isInteger(n) && (n as number) >= 1 && (n as number) <= PATH_SPEEDS.length
+
+/** A path point's speed */
+export const pathSpeedOf = (g: THREE.Object3D) =>
+  (g.userData.speed as number | undefined) ?? PATH_SPEED
+
+/** Set a path point's speed (the default is kept as none) */
+export function setPathNodeSpeed(g: THREE.Object3D, speed: number) {
+  if (speed === PATH_SPEED || !isPathSpeed(speed)) delete g.userData.speed
+  else g.userData.speed = speed
+}
+
+/** How fast (m/s) 人員 walk at this speed */
+export const walkSpeed = (speed: number): number =>
+  PATH_SPEEDS[speed - 1] ?? PATH_SPEEDS[PATH_SPEED - 1]!
 
 const paints = new Map<string, THREE.Material>()
 /** The solid paint of a path's points and links in `color` */
@@ -73,22 +96,25 @@ const LINK_W = 0.07
 const LINK_Y = 0.004
 /**
  * Arrows along a link, like the markings on a conveyor belt: one every this many metres,
- * creeping this fast (m/s)
+ * creeping this much slower than the path's 人員 walk
  */
 const ARROW_STEP = 0.12
-const ARROW_SPEED = 0.25
+const ARROW_PACE = 0.25 / 0.6
 const X_AXIS = new THREE.Vector3(1, 0, 0)
 
-let arrows: { creeping: THREE.MeshBasicMaterial; still: THREE.MeshBasicMaterial } | null = null
+let arrowCanvas: HTMLCanvasElement | null = null
+let stillArrows: THREE.MeshBasicMaterial | null = null
+/** The creeping arrows of each speed (each creeps on its own) */
+const creepingArrows = new Map<number, THREE.MeshBasicMaterial>()
 /**
  * Bold white chevrons pointing along +u, repeating: shallow and running the strip's whole
  * width, as on a conveyor belt (the canvas is ARROW_STEP long by the strip's width, near enough
- * the same pixels per metre both ways). Made the first time a link is drawn, twice over: ones
- * that creep along (a path whose 人員 walk on their own), and ones that keep still.
+ * the same pixels per metre both ways). Made the first time a link is drawn: ones that creep
+ * along (a path whose 人員 walk on their own), as fast as they walk, and ones that keep still.
  */
-function arrowMat(creeping: boolean) {
-  if (!arrows) {
-    const c = document.createElement('canvas')
+function arrowMat(creeping: boolean, speed: number) {
+  if (!arrowCanvas) {
+    const c = (arrowCanvas = document.createElement('canvas'))
     c.width = 128
     c.height = 64
     const g = c.getContext('2d')!
@@ -100,38 +126,42 @@ function arrowMat(creeping: boolean) {
     g.lineTo(70, 32)
     g.lineTo(38, 72)
     g.stroke()
-    const paint = () => {
-      const tex = new THREE.CanvasTexture(c)
-      tex.wrapS = THREE.RepeatWrapping
-      tex.colorSpace = THREE.SRGBColorSpace
-      return new THREE.MeshBasicMaterial({
-        map: tex,
-        transparent: true,
-        opacity: 0.9,
-        depthWrite: false,
-      })
-    }
-    arrows = { creeping: paint(), still: paint() }
   }
-  return creeping ? arrows.creeping : arrows.still
+  const paint = () => {
+    const tex = new THREE.CanvasTexture(arrowCanvas!)
+    tex.wrapS = THREE.RepeatWrapping
+    tex.colorSpace = THREE.SRGBColorSpace
+    return new THREE.MeshBasicMaterial({
+      map: tex,
+      transparent: true,
+      opacity: 0.9,
+      depthWrite: false,
+    })
+  }
+  if (!creeping) return (stillArrows ??= paint())
+  let m = creepingArrows.get(speed)
+  if (!m) creepingArrows.set(speed, (m = paint()))
+  return m
 }
 
-/** Creep the arrows of every link whose 人員 walk on their own on along it */
+/** Creep the arrows of every link whose 人員 walk on their own on along it, at its path's speed */
 export function stepArrows(dt: number) {
-  const map = arrows?.creeping.map
-  if (map) map.offset.x = (map.offset.x - (dt * ARROW_SPEED) / ARROW_STEP) % 1
+  for (const [speed, m] of creepingArrows) {
+    const map = m.map!
+    map.offset.x = (map.offset.x - (dt * walkSpeed(speed) * ARROW_PACE) / ARROW_STEP) % 1
+  }
 }
 
 /**
  * A link's strip along the floor from `from` to `to`, in `color`: solid with arrows along it,
- * creeping on (`creeping`, its path's 人員 walking on their own) or still, or see-through
- * (`ghost`, while drawing) without. Null when the two points meet.
+ * creeping on at its path's `speed` (`creeping`, its path's 人員 walking on their own) or
+ * still, or see-through (`ghost`, while drawing) without. Null when the two points meet.
  */
 export function linkMesh(
   from: THREE.Vector3,
   to: THREE.Vector3,
   color: string,
-  { ghost = false, creeping = false } = {},
+  { ghost = false, creeping = false, speed = PATH_SPEED } = {},
 ) {
   const p = from.clone().setY(from.y + LINK_Y)
   const d = to
@@ -152,7 +182,7 @@ export function linkMesh(
   // one arrow every ARROW_STEP along the link
   const uv = g.attributes.uv!
   for (let i = 0; i < uv.count; i++) uv.setX(i, (uv.getX(i) * len) / ARROW_STEP)
-  const a = new THREE.Mesh(g, arrowMat(creeping))
+  const a = new THREE.Mesh(g, arrowMat(creeping, speed))
   a.position.y = 0.0035
   a.raycast = noRay
   m.add(a)

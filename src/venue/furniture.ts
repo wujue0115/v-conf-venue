@@ -399,6 +399,31 @@ export const PERSON_COLOR = '#f1d3b3'
 /** Default colour of a tag on anything but a person or zone (theirs wear the item's colour) */
 export const TAG_COLOR = '#35495e'
 export const PEOPLE_MAX = 6
+/** A 人員's height (cm): from PERSON_MIN to PERSON_MAX in steps of PERSON_STEP; the figure is PERSON_HEIGHT */
+export const PERSON_HEIGHT = 170
+export const PERSON_MIN = 130
+export const PERSON_MAX = 200
+export const PERSON_STEP = 10
+
+/** A height kept in a file, if it is one */
+export const isPersonHeight = (n: unknown): n is number =>
+  Number.isInteger(n) &&
+  (n as number) >= PERSON_MIN &&
+  (n as number) <= PERSON_MAX &&
+  (n as number) % PERSON_STEP === 0
+
+/** A 人員's height (cm) */
+export const heightOf = (g: THREE.Object3D) =>
+  (g.userData.height as number | undefined) ?? PERSON_HEIGHT
+
+/** How much taller (or shorter) than the figure a 人員 is */
+export const heightScale = (g: THREE.Object3D) => heightOf(g) / PERSON_HEIGHT
+
+/** How high above a 人員 item's origin its tag sits: as far above their head, however tall */
+export const personTagY = (g: THREE.Object3D) =>
+  g.userData.sit
+    ? SEATED_TAG_Y + (heightScale(g) - 1) * 0.97
+    : PERSON_TAG_Y + (heightScale(g) - 1) * (PERSON_HEIGHT / 100)
 /** Where each figure stands for a group of n (x, z in metres): rows of up to three */
 const FORMATIONS: Record<number, [number, number][]> = {
   1: [[0, 0]],
@@ -461,6 +486,16 @@ export function applyPeople(g: THREE.Object3D, n = 1, color = PERSON_COLOR, sit 
   else delete g.userData.n
   if (color !== PERSON_COLOR) g.userData.color = color
   else delete g.userData.color
+  const k = heightScale(g)
+  for (const f of g.children) f.scale.setScalar(k)
+}
+
+/** Make a 人員 item `cm` tall (the default is kept as none), each figure grown or shrunk alike */
+export function setPersonHeight(g: THREE.Object3D, cm: number) {
+  if (cm === PERSON_HEIGHT || !isPersonHeight(cm)) delete g.userData.height
+  else g.userData.height = cm
+  const k = heightScale(g)
+  for (const f of g.children) f.scale.setScalar(k)
 }
 
 const person: Builder = (g) => applyPeople(g)

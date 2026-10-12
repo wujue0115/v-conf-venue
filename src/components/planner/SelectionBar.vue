@@ -12,6 +12,9 @@ import { usePlannerStore } from '@/stores/planner'
 import {
   FURNITURE,
   PEOPLE_MAX,
+  PERSON_MAX,
+  PERSON_MIN,
+  PERSON_STEP,
   TAG_COLOR,
   isWallItem,
   onTableOnly,
@@ -128,6 +131,11 @@ watch(
   { immediate: true },
 )
 const def = computed(() => (sel.value ? FURNITURE[sel.value.type] : null))
+/** The heights (cm) a 人員 can be */
+const HEIGHTS = Array.from(
+  { length: (PERSON_MAX - PERSON_MIN) / PERSON_STEP + 1 },
+  (_, k) => PERSON_MIN + k * PERSON_STEP,
+)
 /** Quick picks for a laptop's lid */
 const LID_PRESETS = computed(() => [
   { name: t().sel.lidShut, deg: 0 },
@@ -475,6 +483,19 @@ const generate = () =>
             @pick="editor?.setPathColor($event)"
           />
         </div>
+        <span class="lbl">{{ t().path.speed }}</span>
+        <div class="ctl">
+          <select
+            class="pick"
+            :value="sel.path.speed"
+            :aria-label="t().path.speedLabel"
+            @change="editor?.setPathSpeed(+($event.target as HTMLSelectElement).value)"
+          >
+            <option v-for="(name, k) in t().path.speeds" :key="k" :value="k + 1">
+              {{ name }}
+            </option>
+          </select>
+        </div>
         <!-- the links on from it (the next 動線點's keep theirs); none on: nothing to set -->
         <template v-if="sel.path.mode">
           <span class="lbl">{{ t().path.mode }}</span>
@@ -573,6 +594,18 @@ const generate = () =>
           <span v-if="sel.people.sit" class="hint">{{ t().sel.seatedOne }}</span>
         </div>
 
+        <span class="lbl">{{ t().sel.height }}</span>
+        <div class="ctl">
+          <select
+            class="pick"
+            :value="sel.people.height"
+            :aria-label="t().sel.heightLabel"
+            @change="editor?.setPeople({ height: +($event.target as HTMLSelectElement).value })"
+          >
+            <option v-for="cm in HEIGHTS" :key="cm" :value="cm">{{ cm }} cm</option>
+          </select>
+        </div>
+
         <span class="lbl">{{ t().sel.colour }}</span>
         <div class="ctl">
           <ColorChips
@@ -611,7 +644,15 @@ const generate = () =>
             />
             <span class="op">m</span>
           </div>
-          <span class="hint">{{ t().sel.dragCorners }}</span>
+          <template v-if="sel.zone.corners">
+            <span class="hint">{{ t().sel.corners(sel.zone.corners) }}</span>
+            <button class="btn" type="button" @click="editor?.setZone({ rect: true })">
+              {{ t().sel.toRect }}
+            </button>
+          </template>
+          <span class="hint">
+            {{ sel.zone.corners ? t().sel.dragPolygon : t().sel.dragCorners }}
+          </span>
         </div>
 
         <span class="lbl">{{ t().sel.colour }}</span>
@@ -954,6 +995,27 @@ const generate = () =>
 .arr input:focus {
   outline: 2px solid var(--yel);
   border-color: transparent;
+}
+/* our own chevron, the same as the collapsible sections' */
+.pick {
+  height: 30px;
+  padding: 0 26px 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 6l4 4 4-4' fill='none' stroke='%238b8e95' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")
+    no-repeat right 8px center / 12px;
+  font-size: 12px;
+  color: var(--ink);
+  cursor: pointer;
+  appearance: none;
+}
+.pick:hover {
+  border-color: var(--line-strong);
+}
+.pick:focus-visible {
+  outline: 2px solid var(--yel);
+  outline-offset: 1px;
 }
 .ctl .gen {
   margin-left: auto;
