@@ -199,7 +199,10 @@ export async function listMyProjects(ownerId: string): Promise<ProjectSummary[]>
   const rows = check(
     await db()
       .from('projects')
-      .select('id, name, updated_at, project_objects(count), project_scenes(count)')
+      // project_scenes by its own key: project_objects, keyed by both, is another way there
+      .select(
+        'id, name, updated_at, project_objects(count), project_scenes!project_scenes_project_id_fkey(count)',
+      )
       .eq('owner_id', ownerId)
       .order('updated_at', { ascending: false }),
   ) as (Omit<ProjectSummary, 'count' | 'scenes'> & {

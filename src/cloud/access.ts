@@ -158,8 +158,9 @@ export async function listSharedWithMe(userId: string): Promise<SharedSummary[]>
   const rows = check(
     await db()
       .from('projects')
+      // project_scenes by its own key: project_objects, keyed by both, is another way there
       .select(
-        'id, name, updated_at, project_objects(count), project_scenes(count), project_access!inner(role)',
+        'id, name, updated_at, project_objects(count), project_scenes!project_scenes_project_id_fkey(count), project_access!inner(role)',
       )
       .neq('owner_id', userId)
       .not('project_access.role', 'is', null)
