@@ -39,15 +39,17 @@ onBeforeUnmount(unlisten)
 <template>
   <div ref="root" class="help" data-stage-ui>
     <div v-if="open" id="stage-help" class="pop" role="dialog" :aria-label="t().help.title">
-      <section v-for="s in t().help.sections" :key="s.title">
-        <h4>{{ s.title }}</h4>
-        <dl>
-          <template v-for="[k, v] in s.rows" :key="k">
-            <dt>{{ k }}</dt>
-            <dd>{{ v }}</dd>
-          </template>
-        </dl>
-      </section>
+      <div class="body">
+        <section v-for="s in t().help.sections" :key="s.title">
+          <h4>{{ s.title }}</h4>
+          <dl>
+            <template v-for="[k, v] in s.rows" :key="k">
+              <dt>{{ k }}</dt>
+              <dd>{{ v }}</dd>
+            </template>
+          </dl>
+        </section>
+      </div>
     </div>
     <button
       class="q"
@@ -109,12 +111,22 @@ onBeforeUnmount(unlisten)
   bottom: calc(100% + 8px);
   width: max-content;
   max-width: min(300px, calc(100vw - 28px));
-  padding: 10px 14px 12px;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 12px;
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
   font-size: 12px;
+}
+/*
+ * What scrolls when the window is too short for it all: clear of the toolbar at the top, and
+ * apart from .pop so its arrow isn't cut off
+ */
+.body {
+  max-height: calc(100dvh - 130px);
+  padding: 10px 14px 12px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-radius: inherit;
 }
 /* Little arrow pointing at the ? button */
 .pop::after {
@@ -180,9 +192,9 @@ dd {
     bottom: calc(58px + env(safe-area-inset-bottom, 0px));
     width: auto;
     max-width: none;
+  }
+  .body {
     max-height: calc(100dvh - 140px);
-    overflow-y: auto;
-    overscroll-behavior: contain;
   }
   .pop::after {
     display: none;
