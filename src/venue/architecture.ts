@@ -1206,9 +1206,9 @@ export function buildArchitecture(scene: THREE.Scene): Architecture {
     ),
   )
   tiers(35.2, 36.9, 28.1, 29.75, 4, STAGE_H / 4)
-  // the side curtains, half drawn across the ways through to the backstage between each
-  // proscenium wall and the back wall's turned end
-  for (const z of [32.33, 42.87]) seg(34.75, z, 35.25, z, 0.12, STAGE_H + 5.5, CURTAIN, wallsG)
+  // the side curtains, drawn back against each proscenium wall's hook, leaving the way through
+  // to the backstage beside the back wall's turned end wide enough to walk
+  for (const z of [32.33, 42.87]) seg(34.75, z, 34.85, z, 0.12, STAGE_H + 5.5, CURTAIN, wallsG)
 
   // the venue's own furniture: its wooden lectern on the stage's south side and a white stand
   // on the floor below, facing the hall
