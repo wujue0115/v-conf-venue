@@ -289,7 +289,13 @@ const en: Messages = {
       starlight: 'Starlight',
       sky: 'Sky Blue',
     },
-    outlet: { g110: '110V earthed', n110: '110V unearthed', v220: '220V' },
+    outlet: {
+      g110: '110V earthed',
+      n110: '110V unearthed',
+      v220: '220V',
+      col: 'Stacked',
+      row: 'Side by side',
+    },
     tvCart: {
       s55: '55"',
       s65: '65"',

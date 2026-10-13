@@ -6,11 +6,12 @@ import { B, Cy, FM, mat, mesh } from './materials'
  * Outlets as found in Taiwan, whose plans the venue doesn't give: they're put where they turn
  * out to be on site.
  *
- * 插座 hangs on a wall: a white plate with two sockets one above the other. It hangs from its
- * group origin, the centre of the plate's back on the wall, like a poster; local +z points out
- * of the wall. Its variant is the kind of socket: 110V with an earth hole (two upright flat
- * slots over a round hole), 110V without one (the two slots alone), or 220V (two flat slots
- * lying side by side over the hole).
+ * 插座 hangs on a wall: a white plate with two sockets, one above the other or side by side
+ * on a plate turned on its side. It hangs from its group origin, the centre of the plate's
+ * back on the wall, like a poster; local +z points out of the wall. Its variant is the kind
+ * of socket: 110V with an earth hole (two upright flat slots over a round hole), 110V without
+ * one (the two slots alone), or 220V (two flat slots lying side by side over the hole); then
+ * how the two sit.
  *
  * 地板插座 is set in the floor: a stainless plate round a white insert with two 110V earthed
  * sockets side by side, facing up and read from the front (+z). The origin is its middle on
@@ -24,6 +25,13 @@ export const OUTLET_AXES: readonly VariantAxis[] = [
       { id: 'g110', swatch: '' },
       { id: 'n110', swatch: '' },
       { id: 'v220', swatch: '' },
+    ],
+  },
+  {
+    label: 'orientation',
+    options: [
+      { id: 'col', swatch: '' },
+      { id: 'row', swatch: '' },
     ],
   },
 ]
@@ -71,11 +79,14 @@ function socket(g: THREE.Object3D, kind: string, x: number, y: number, z: number
 }
 
 export function buildOutlet(g: THREE.Group, v?: string) {
+  const [kind = 'g110', layout] = (v ?? '').split('-')
+  const row = layout === 'row'
+  const [w, h] = row ? [PLATE_H, PLATE_W] : [PLATE_W, PLATE_H]
   // the size a wall item keeps above the floor and steps along by when copied
-  g.userData.w = PLATE_W
-  g.userData.h = PLATE_H
-  mesh(B(PLATE_W, PLATE_H, PLATE_T), plastic, g, 0, 0, PLATE_T / 2)
-  for (const y of [FACE_GAP / 2, -FACE_GAP / 2]) socket(g, v ?? 'g110', 0, y, PLATE_T)
+  g.userData.w = w
+  g.userData.h = h
+  mesh(B(w, h, PLATE_T), plastic, g, 0, 0, PLATE_T / 2)
+  for (const d of [FACE_GAP / 2, -FACE_GAP / 2]) socket(g, kind, row ? d : 0, row ? 0 : d, PLATE_T)
 }
 
 export function buildFloorOutlet(g: THREE.Group) {

@@ -581,7 +581,7 @@ describe('export', () => {
       { t: 'stanchion', x: 7, y: 0, z: 7, r: 0, cut: [1.571] },
       { t: 'shapeSofa', x: 9, y: 0, z: 9, r: 0, v: 'green' },
       { t: 'tvCart', x: 11, y: 0, z: 11, r: 0, v: 's75-port-black', lift: 1.6, img },
-      { t: 'outlet', x: 13, y: 0.3, z: 0.1, r: 3.1416, v: 'v220' },
+      { t: 'outlet', x: 13, y: 0.3, z: 0.1, r: 3.1416, v: 'v220-row' },
       { t: 'floorOutlet', x: 15, y: 0, z: 15, r: 0 },
       {
         id: '11111111-1111-4111-8111-111111111111',
