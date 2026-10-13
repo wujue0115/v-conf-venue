@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, shallowRef, useId, useTemplateRef, watch } from 'vue'
+import { computed, onBeforeUnmount, shallowRef, useId, useTemplateRef, watch } from 'vue'
 import { TAG_MAX } from '@/venue/layout'
 import { t } from '@/i18n'
 
@@ -16,6 +16,41 @@ const draft = shallowRef(props.value)
 const open = shallowRef(false)
 const active = shallowRef(-1)
 const listId = useId()
+/** Where the list goes on screen: it's moved to <body> so the scrolling panel can't clip it */
+const place = shallowRef<Record<string, string>>({})
+
+/** Height the list may take at most (its max-height) and its gap from the field */
+const LIST_MAX = 188
+const GAP = 6
+
+/** Below the field when the list fits there, else above it */
+function placeList() {
+  const r = input.value?.getBoundingClientRect()
+  if (!r) return
+  const below = innerHeight - r.bottom - GAP
+  const down = below >= LIST_MAX || below >= r.top - GAP
+  place.value = {
+    left: `${r.left}px`,
+    width: `${r.width}px`,
+    ...(down
+      ? { top: `${r.bottom + GAP}px`, maxHeight: `${Math.min(LIST_MAX, below - GAP)}px` }
+      : {
+          bottom: `${innerHeight - r.top + GAP}px`,
+          maxHeight: `${Math.min(LIST_MAX, r.top - 2 * GAP)}px`,
+        }),
+  }
+}
+// follow the field while the panel scrolls or the window resizes
+watch(open, (o) => {
+  const on = o ? addEventListener : removeEventListener
+  on('scroll', placeList, true)
+  on('resize', placeList)
+  if (o) placeList()
+})
+onBeforeUnmount(() => {
+  removeEventListener('scroll', placeList, true)
+  removeEventListener('resize', placeList)
+})
 
 watch(
   () => props.value,
@@ -100,21 +135,23 @@ function clear() {
     >
       ×
     </button>
-    <ul v-if="open && rows.length" :id="listId" class="list" role="listbox">
-      <li
-        v-for="(r, i) in rows"
-        :id="`${listId}-${i}`"
-        :key="(r.add ? '+' : '') + r.tag"
-        role="option"
-        :aria-selected="r.tag === value"
-        :class="{ active: i === active, cur: r.tag === value, add: r.add }"
-        @pointerdown.prevent
-        @click="commit(r.tag)"
-      >
-        <template v-if="r.add">{{ t().tagBox.add(r.tag) }}</template>
-        <template v-else>{{ r.tag }}</template>
-      </li>
-    </ul>
+    <Teleport to="body">
+      <ul v-if="open && rows.length" :id="listId" class="list" role="listbox" :style="place">
+        <li
+          v-for="(r, i) in rows"
+          :id="`${listId}-${i}`"
+          :key="(r.add ? '+' : '') + r.tag"
+          role="option"
+          :aria-selected="r.tag === value"
+          :class="{ active: i === active, cur: r.tag === value, add: r.add }"
+          @pointerdown.prevent
+          @click="commit(r.tag)"
+        >
+          <template v-if="r.add">{{ t().tagBox.add(r.tag) }}</template>
+          <template v-else>{{ r.tag }}</template>
+        </li>
+      </ul>
+    </Teleport>
   </div>
 </template>
 
@@ -160,14 +197,11 @@ input:focus {
   color: var(--ink);
   background: var(--hover);
 }
-/* The selection panel sits at the bottom of the screen, so the list opens upward */
+/* Fixed to the screen (see placeList), over the panel and everything else on the stage */
 .list {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: calc(100% + 6px);
-  z-index: 5;
-  max-height: 188px;
+  position: fixed;
+  z-index: 20;
+  box-sizing: border-box;
   margin: 0;
   padding: 4px;
   overflow-y: auto;
