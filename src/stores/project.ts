@@ -594,7 +594,7 @@ export const useProjectStore = defineStore('project', () => {
     const gone = planner.takeScenes(rows, added)
     // what came is saved already; what went, gone from the cloud too
     const ids = new Set(rows.map((r) => r.id))
-    for (const k of [...saved.keys()]) if (!ids.has(splitRef(k).scene)) saved.delete(k)
+    for (const k of saved.keys()) if (!ids.has(splitRef(k).scene)) saved.delete(k)
     for (const s of added) for (const i of s.items) saved.set(refOf(s.id, i.id!), rowKey(i))
     savedScenes = sceneRows()
     if (gone) planner.notify(t().scenes.removedByOthers(gone))

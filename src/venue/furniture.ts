@@ -6,7 +6,8 @@ import { LAPTOP_AXES, buildLaptop, laptopFootprint } from './laptop'
 import { TV_AXES, buildTvCart } from './tv'
 import { OUTLET_AXES, buildFloorOutlet, buildOutlet } from './outlet'
 import { buildPathNode, setPathNodeColor } from './path'
-import { TRAY_L, TRAY_W, buildSnack } from './snack'
+import { DRINK_AXES, buildDrinkBarrel, drinkFootprint } from './drink'
+import { SNACKS, TRAY_COLOURS, TRAY_L, TRAY_W, buildSnack } from './snack'
 import { applyZone, buildZone } from './zone'
 
 /**
@@ -554,6 +555,8 @@ export type VariantLabel = 'colour' | 'flavour' | 'size' | 'orientation' | 'kind
 export interface VariantAxis {
   label: VariantLabel
   options: readonly FurnitureVariant[]
+  /** Too many for a row of buttons: picked from a drop-down list */
+  menu?: boolean
 }
 
 /**
@@ -578,9 +581,9 @@ export interface FurnitureDef {
   variantAxes?: readonly VariantAxis[]
   /**
    * Can only stand on a table top (see TABLES); gives its footprint there for a variant (and a
-   * laptop's lid opening), length along local x by width along z
+   * laptop's lid opening, or a resizable item's size), length along local x by width along z
    */
-  onTable?: (v?: string, open?: number) => Footprint
+  onTable?: (v?: string, open?: number, size?: { w: number; h: number }) => Footprint
   /** Default array spacing [left-right, front-back] in metres */
   arr: [number, number]
   /** Rental price per slot: [自助搬運, 含搬運]; absent for items we bring ourselves */
@@ -726,17 +729,24 @@ export const FURNITURE = {
     build: person,
     arr: [0.6, 0.8],
   },
+  // its length × width can be set (w × h), on the table as on the panel
   snack: {
-    size: 'L420×W290',
+    size: 'L440×W288',
     build: buildSnack,
-    variants: [
-      { id: 'puff', swatch: '#e7b45c' },
-      { id: 'cake', swatch: '#4a2a1c' },
-      { id: 'tart', swatch: '#f6d36c' },
+    variantAxes: [
+      { label: 'flavour', menu: true, options: SNACKS.map(([id]) => ({ id, swatch: '' })) },
+      { label: 'colour', options: TRAY_COLOURS },
     ],
-    variantLabel: 'flavour',
-    onTable: () => [TRAY_L, TRAY_W],
-    arr: [0.47, 0.34],
+    onTable: (_v, _open, size) => [size?.w ?? TRAY_L, size?.h ?? TRAY_W],
+    resizable: [TRAY_L, TRAY_W],
+    arr: [0.49, 0.34],
+  },
+  drinkBarrel: {
+    size: '',
+    build: buildDrinkBarrel,
+    variantAxes: DRINK_AXES,
+    onTable: drinkFootprint,
+    arr: [0.4, 0.4],
   },
   laptop: {
     size: '',
@@ -807,6 +817,7 @@ const OTHER_ORDER: FurnitureType[] = [
   'poster',
   'rollup',
   'snack',
+  'drinkBarrel',
   'laptop',
   'tvCart',
   'outlet',
@@ -834,8 +845,12 @@ export const isWallItem = (type: FurnitureType) => !!(FURNITURE[type] as Furnitu
 export const takesImage = (type: FurnitureType) => !!(FURNITURE[type] as FurnitureDef).image
 export const onTableOnly = (type: FurnitureType) => !!(FURNITURE[type] as FurnitureDef).onTable
 /** An on-table item's footprint (length along x, width along z), or none */
-export const footprintOf = (type: FurnitureType, v?: string, open?: number): Footprint =>
-  (FURNITURE[type] as FurnitureDef).onTable?.(v, open) ?? [0, 0]
+export const footprintOf = (
+  type: FurnitureType,
+  v?: string,
+  open?: number,
+  size?: { w: number; h: number },
+): Footprint => (FURNITURE[type] as FurnitureDef).onTable?.(v, open, size) ?? [0, 0]
 export const isResizable = (type: FurnitureType) => !!(FURNITURE[type] as FurnitureDef).resizable
 /** Default width × height in metres, for resizable items */
 export const defaultSizeOf = (type: FurnitureType): readonly [number, number] =>
@@ -925,18 +940,26 @@ function shoot(o: THREE.Object3D) {
   return r.domElement.toDataURL()
 }
 
-/** Render a small isometric preview of every furniture type and colour, keyed by {@link thumbKey}. */
+/**
+ * Render a small isometric preview of every furniture type and colour, keyed by {@link thumbKey};
+ * a type whose choices are a drop-down list (the snacks) just as it comes, the rest wait till
+ * one is wanted (see renderPaintedThumbnail)
+ */
 export function renderThumbnails(): Record<string, string> {
   const out: Record<string, string> = {}
   const shots = FURNITURE_TYPES.flatMap((type): [FurnitureType, string | undefined][] => {
     const vs = variantsOf(type)
+    if (variantAxesOf(type).some((a) => a.menu)) return [[type, vs[0]?.id]]
     return vs.length ? vs.map((v) => [type, v.id]) : [[type, undefined]]
   })
   for (const [type, v] of shots) out[thumbKey(type, v)] = shoot(buildFurniture(type, v))
   return out
 }
 
-/** A preview of a kind in a colour of its own: people's, a zone's or a 動線點's */
+/**
+ * A preview of a kind in a colour of its own (people's, a zone's or a 動線點's), or of a choice
+ * not rendered with the rest (a snack)
+ */
 export function renderPaintedThumbnail(type: FurnitureType, v: string | undefined, color: string) {
   const o = buildFurniture(type, v)
   if (type === 'person') applyPeople(o, 1, color)

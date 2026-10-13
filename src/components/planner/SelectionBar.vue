@@ -151,14 +151,18 @@ function pick(axis: number, id: string) {
   parts[axis] = id
   editor.value?.setVariant(parts.join('-'))
 }
-/** Its preview, in its own colour where it has one (people, zones, 動線點) */
+/**
+ * Its preview, in its own colour where it has one (people, zones, 動線點); a snack not rendered
+ * with the rest, rendered now
+ */
 const thumb = computed(() => {
   const s = sel.value
   if (!s) return ''
   const color = s.people?.color ?? s.zone?.color ?? s.path?.color
   return (
     (color && thumbs.value[s.type] && paintedThumbnail(s.type, s.variant, color)) ||
-    thumbs.value[thumbKey(s.type, s.variant)]
+    thumbs.value[thumbKey(s.type, s.variant)] ||
+    (thumbs.value[s.type] && paintedThumbnail(s.type, s.variant, ''))
   )
 })
 const price = computed(() => {
@@ -426,7 +430,20 @@ const generate = () =>
     <fieldset class="rows" :disabled="sel.zone?.locked">
       <template v-for="(a, i) in axes" :key="a.label">
         <span class="lbl">{{ variantLabel(a.label) }}</span>
-        <div class="ctl swatches" role="radiogroup" :aria-label="variantLabel(a.label)">
+        <!-- many options (the snacks): a drop-down list -->
+        <div v-if="a.menu" class="ctl">
+          <select
+            class="menu"
+            :value="picked[i]"
+            :aria-label="variantLabel(a.label)"
+            @change="pick(i, ($event.target as HTMLSelectElement).value)"
+          >
+            <option v-for="v in a.options" :key="v.id" :value="v.id">
+              {{ variantName(sel.type, v.id) }}
+            </option>
+          </select>
+        </div>
+        <div v-else class="ctl swatches" role="radiogroup" :aria-label="variantLabel(a.label)">
           <button
             v-for="v in a.options"
             :key="v.id"
@@ -540,13 +557,18 @@ const generate = () =>
       <template v-if="sel.size">
         <span class="lbl">{{ t().sel.size }}</span>
         <div class="ctl arr">
-          <div class="pair" role="group" :aria-label="t().sel.widthHeightCm">
+          <!-- a tray lies flat: its length × width -->
+          <div
+            class="pair"
+            role="group"
+            :aria-label="sel.size.tray ? t().sel.lengthWidthCm : t().sel.widthHeightCm"
+          >
             <input
               v-model.number="pw"
               type="number"
               inputmode="decimal"
-              step="1"
-              :aria-label="t().sel.widthCm"
+              :step="sel.size.tray ? 0.1 : 1"
+              :aria-label="sel.size.tray ? t().sel.lengthCm : t().sel.widthCm"
               @change="applySize"
             />
             <button
@@ -573,8 +595,8 @@ const generate = () =>
               v-model.number="ph"
               type="number"
               inputmode="decimal"
-              step="1"
-              :aria-label="t().sel.heightCm"
+              :step="sel.size.tray ? 0.1 : 1"
+              :aria-label="sel.size.tray ? t().sel.trayWidthCm : t().sel.heightCm"
               @change="applySize"
             />
             <span class="op">cm</span>
@@ -876,6 +898,21 @@ const generate = () =>
 </template>
 
 <style scoped>
+.menu {
+  max-width: 100%;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--paper);
+  font: inherit;
+  font-size: 13px;
+  color: var(--ink);
+}
+.menu:focus-visible {
+  outline: 2px solid var(--yel);
+  border-color: transparent;
+}
 .sel {
   position: absolute;
   /* on the left under ☰, with the selected item's properties; clear of undo/redo below it */

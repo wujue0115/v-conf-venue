@@ -370,7 +370,17 @@ describe('snack trays', () => {
       { t: 'snack', x: 0, y: 0.71, z: 0, r: 0, v: 'tart' },
       { t: 'snack', x: 0, y: 0.71, z: 0, r: 0, v: 'pizza' },
     ])
-    expect([a?.v, b?.v]).toEqual(['tart', 'puff'])
+    expect([a?.v, b?.v]).toEqual(['tart-silver', 'garlic-silver'])
+    // the tray's own puffs are the bakery's; its black forest went
+    const [puff, cake] = parseLayout([
+      { t: 'snack', x: 0, z: 0, r: 0, v: 'puff' },
+      { t: 'snack', x: 0, z: 0, r: 0, v: 'cake' },
+    ])
+    expect([puff?.v, cake?.v]).toEqual(['puff-silver', 'garlic-silver'])
+    // and a black platter
+    expect(parseLayout([{ t: 'snack', x: 0, z: 0, r: 0, v: 'salad-black' }])[0]?.v).toBe(
+      'salad-black',
+    )
     expect(a?.y).toBe(0.71)
     expect(summarizeCost([a!, b!], 1, 2).total).toBe(0)
   })
@@ -646,7 +656,7 @@ describe('scenes in the exported file', () => {
     expect(new Set(read.map((s) => s.id)).size).toBe(SCENE_MAX)
     expect(read[0]!.id).toBe(A)
     expect(read[1]!.name).toBe('Scene 2')
-    expect(() => readScenesFile({ scenes: [{ name: 'no items' }] })).toThrow()
+    expect(() => readScenesFile({ scenes: [{ name: 'no items' }] })).toThrow('Invalid layout')
   })
 })
 
@@ -666,5 +676,26 @@ describe('rentAcrossScenes', () => {
 
   it('leaves out what is not billed', () => {
     expect(rentAcrossScenes([{ items: [table(true)] }, { items: [] }], 0, 1)).toBe(0)
+  })
+})
+
+describe('snack trays and drink dispensers', () => {
+  it('stand on a table as large as the tray is set to, 440 × 288 mm as it comes', () => {
+    expect(footprintOf('snack', 'puff')).toEqual([0.44, 0.288])
+    expect(footprintOf('snack', 'puff', undefined, { w: 0.6, h: 0.4 })).toEqual([0.6, 0.4])
+    const [t] = parseLayout([{ t: 'snack', x: 0, z: 0, r: 0, v: 'salad', w: 0.6, h: 0.4 }])
+    expect([t?.w, t?.h]).toEqual([0.6, 0.4])
+  })
+
+  it('come in a large and a medium size, the large the default', () => {
+    const [big, mid, odd] = parseLayout([
+      { t: 'drinkBarrel', x: 0, z: 0, r: 0 },
+      { t: 'drinkBarrel', x: 0, z: 0, r: 0, v: 'medium' },
+      { t: 'drinkBarrel', x: 0, z: 0, r: 0, v: 'small' },
+    ])
+    expect([big?.v, mid?.v, odd?.v]).toEqual(['large', 'medium', 'large'])
+    expect(footprintOf('drinkBarrel', 'large')[0]).toBeGreaterThan(
+      footprintOf('drinkBarrel', 'medium')[0],
+    )
   })
 })

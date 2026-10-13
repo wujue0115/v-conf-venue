@@ -44,6 +44,7 @@ import {
   setFaceImage,
   type PosterFit,
 } from './poster'
+import { clampTray } from './snack'
 import {
   disposeLink,
   ghostNode,
@@ -104,8 +105,9 @@ export interface SelectionInfo {
   /** Height of the object's origin (a poster's centre) */
   y: number
   /** Resizable items only: width × height, editable in the panel. `presets` offers paper
-   * sizes and only applies to wall items (posters); floor-standing ones (易拉展) don't get them. */
-  size?: { w: number; h: number; lock: boolean; presets: boolean }
+   * sizes and only applies to wall items (posters); floor-standing ones (易拉展) don't get them.
+   * `tray`: a tray on a table, its length × width (w × h) lying flat. */
+  size?: { w: number; h: number; lock: boolean; presets: boolean; tray: boolean }
   /** Items with a printable face */
   image?: { hasImage: boolean }
   /** Its name tag ('' when none) */
@@ -431,6 +433,8 @@ const footOf = (o: THREE.Object3D) =>
     o.userData.type as FurnitureType,
     o.userData.variant as string | undefined,
     o.userData.open as number | undefined,
+    // a tray set to its own size
+    typeof o.userData.w === 'number' ? { w: o.userData.w, h: o.userData.h as number } : undefined,
   )
 /** How far a tray's centre must stay inside a table top's edge */
 const TABLE_MARGIN = 0.1
@@ -2849,8 +2853,10 @@ export class VenueEditor {
       if (w !== w0) h = w / (w0 / h0)
       else w = h * (w0 / h0)
     }
-    w = clampPosterSize(w, w0)
-    h = clampPosterSize(h, h0)
+    // a tray's sizes are a tray's, not a poster's
+    const clamp = onTable(s) ? clampTray : clampPosterSize
+    w = clamp(w, w0)
+    h = clamp(h, h0)
     if (w === w0 && h === h0) return
     this.pushUndo()
     if (onWall(s)) {
@@ -3720,8 +3726,9 @@ export class VenueEditor {
   private updHandles() {
     const s = this.selected
     // resizing is for one item at a time
+    // a tray on a table is sized in the panel only
     this.handles.visible =
-      !!s && !this.group.size && (resizable(s) || (isZone(s) && !lockedZone(s)))
+      !!s && !this.group.size && ((resizable(s) && !onTable(s)) || (isZone(s) && !lockedZone(s)))
     if (!s || !this.handles.visible) return
     s.updateMatrixWorld()
     // a zone's handles take its colour; everything else keeps the selection yellow
@@ -5023,6 +5030,7 @@ export class VenueEditor {
               h: s.userData.h,
               lock: !!s.userData.lock,
               presets: onWall(s),
+              tray: onTable(s),
             },
           }
         : {}),
