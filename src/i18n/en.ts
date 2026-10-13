@@ -57,6 +57,7 @@ const en: Messages = {
     deleteConfirm: (name: string) => `Delete "${name}"? This can't be undone.`,
     deleted: (name: string) => `Deleted "${name}"`,
     count: (n: number) => `${n} ${n === 1 ? 'item' : 'items'}`,
+    sceneCount: (n: number) => `${n} scenes`,
     updated: (when: string) => `Updated ${when}`,
     justNow: 'just now',
     empty: 'No cloud projects yet. Make one, or choose "Save to the cloud" from ☰ in the planner.',
@@ -398,6 +399,46 @@ const en: Messages = {
     billed: (name: string) => `Count ${name} in the rental total`,
     goTo: (name: string) => `Go to ${name}`,
     unbilled: 'Not billed',
+    sceneTotal: 'This scene',
+    allScenesNote: (n: number) =>
+      `${n} scenes share the furniture: each kind is counted as the scene using most of it needs`,
+  },
+
+  scenes: {
+    label: 'Scenes',
+    defaultName: (n: number) => `Scene ${n}`,
+    add: 'Add scene',
+    addCopy: 'Copy this scene',
+    addBlank: 'Empty scene',
+    full: (max: number) => `Up to ${max} scenes`,
+    added: (name: string) => `Added "${name}"`,
+    more: (name: string) => `Options for "${name}"`,
+    dragHint: 'Drag to reorder',
+    rename: 'Rename',
+    renameTitle: 'Rename scene',
+    name: 'Scene name',
+    namePlaceholder: 'e.g. Morning talks',
+    save: 'Save',
+    delete: 'Delete scene',
+    deleteTitle: (name: string) => `Delete "${name}"?`,
+    deleteMessage: (n: number) =>
+      n
+        ? `Its ${n} ${n === 1 ? 'item goes' : 'items go'} with it. This can't be undone.`
+        : "This can't be undone.",
+    deleteOk: 'Delete',
+    deleted: (name: string) => `Deleted "${name}"`,
+    cancel: 'Cancel',
+    applyAll: 'Apply to all scenes',
+    applyAllHint:
+      'Make these items the same as here in every other scene, adding them where missing',
+    applied: (n: number) => `Applied to ${n} other ${n === 1 ? 'scene' : 'scenes'}`,
+    importTitle: (n: number) => `This file has ${n} scenes`,
+    importMessage: "Replacing deletes all the scenes here. This can't be undone.",
+    importReplace: 'Replace all scenes',
+    importAdd: 'Add as scenes',
+    imported: (n: number) => `Imported ${n} ${n === 1 ? 'scene' : 'scenes'}`,
+    importedSome: (n: number, max: number) => `Imported ${n} scenes (up to ${max})`,
+    removedByOthers: (name: string) => `"${name}" was deleted by someone else`,
   },
 
   sel: {

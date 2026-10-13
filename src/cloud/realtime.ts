@@ -10,13 +10,15 @@ import type { CameraState, LiveMove, WalkerState } from '@/venue/VenueEditor'
  * - presence: who has the project open, and whose view they follow. Supabase closes the channel
  *   of a client that updates its presence more than 5 times in 30 seconds, so only what rarely
  *   changes goes here, and updates are held back to stay under that (PRESENCE_BUDGET);
+ * - presence also says which scene each is in: what's below shows only between people in the
+ *   same scene;
  * - broadcast, from people who can edit: 'move' (items being dragged, with the pointer dragging
  *   them), 'cursor' (their pointer), 'select' (what they have selected, which locks it for the
  *   others), 'camera' (their view, while someone follows them), 'walk' (where they are while
  *   walking through the venue, shown as a figure in their colour), 'objects' (ids they saved or
- *   deleted: only the ids, as rows can hold large poster images);
- * - from the database: 'project' (name, settings or sharing), 'access' (someone's access),
- *   'deleted' (the project).
+ *   deleted, each as its scene and id (refOf): only those, as rows can hold large poster images);
+ * - from the database: 'project' (name, settings or sharing), 'scenes' (one added, renamed, moved
+ *   or removed), 'access' (someone's access), 'deleted' (the project).
  */
 
 /** What each signed-in person with the project open shows the others, in presence */
@@ -27,6 +29,8 @@ export interface PeerState {
   role: Role
   /** The tab whose view they're following */
   follow: string | null
+  /** The scene they're in (null from an app from before scenes) */
+  scene: string | null
 }
 
 /** One open tab (a person may have several) */
@@ -40,7 +44,8 @@ export type Selection = [string, number][]
 export interface ChannelEvents {
   /** Everyone else online, whenever that changes */
   peers: (peers: Peer[]) => void
-  move: (moves: LiveMove[]) => void
+  /** Items a tab (`key`, absent from an app from before scenes) is dragging */
+  move: (moves: LiveMove[], key?: string) => void
   /** A tab's pointer in the venue; null when it left the stage */
   cursor: (key: string, point: Vec3 | null) => void
   select: (key: string, sel: Selection) => void
@@ -49,6 +54,7 @@ export interface ChannelEvents {
   walk: (key: string, walker: WalkerState | null) => void
   objects: (change: ObjectsChange) => void
   project: () => void
+  scenes: () => void
   access: () => void
   deleted: () => void
   /** Connected; `again` after the connection dropped (anything may have been missed meanwhile) */
@@ -57,7 +63,7 @@ export interface ChannelEvents {
   dropped: () => void
 }
 
-/** Ids saved (upserted) or deleted, in one message */
+/** Items saved (upserted) or deleted, each as its scene and id (refOf), in one message */
 export interface ObjectsChange {
   changed?: string[]
   deleted?: string[]
@@ -160,13 +166,14 @@ export function joinProject(
             avatar: last.avatar,
             role: last.role,
             follow: last.follow ?? null,
+            scene: last.scene ?? null,
           })
       }
       on.peers(peers)
     })
   ch.on('broadcast', { event: 'move' }, ({ payload }) => {
     const { m, k, p } = payload as { m: LiveMove[]; k?: string; p?: Vec3 }
-    on.move(m)
+    on.move(m, k)
     if (k && p) on.cursor(k, p)
   })
     .on('broadcast', { event: 'cursor' }, ({ payload }) => {
@@ -187,6 +194,7 @@ export function joinProject(
     })
     .on('broadcast', { event: 'objects' }, ({ payload }) => on.objects(payload as ObjectsChange))
     .on('broadcast', { event: 'project' }, () => on.project())
+    .on('broadcast', { event: 'scenes' }, () => on.scenes())
     .on('broadcast', { event: 'access' }, () => on.access())
     .on('broadcast', { event: 'deleted' }, () => on.deleted())
     .subscribe((status, err) => {
@@ -217,7 +225,7 @@ export function joinProject(
       state = s
       if (joined) presence.push(s)
     },
-    move: (m, p) => void send('move', p ? { m, k: key, p } : { m }),
+    move: (m, p) => void send('move', p ? { m, k: key, p } : { m, k: key }),
     cursor: (p) => void send('cursor', { k: key, p }),
     select: (s) => void send('select', { k: key, s }),
     camera: (c) => void send('camera', { k: key, c }),

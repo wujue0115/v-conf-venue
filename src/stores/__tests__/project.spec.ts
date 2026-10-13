@@ -13,6 +13,8 @@ const api = vi.hoisted(() => ({
   renameProject: vi.fn<Api['renameProject']>(),
   checkAccess: vi.fn<Api['checkAccess']>(),
   loadShared: vi.fn<Api['loadShared']>(),
+  loadScenes: vi.fn<Api['loadScenes']>(),
+  loadItems: vi.fn<Api['loadItems']>(),
 }))
 vi.mock('@/cloud/projects', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/cloud/projects')>()),
@@ -41,6 +43,11 @@ const B = '00000000-0000-4000-8000-00000000000b'
 const C = '00000000-0000-4000-8000-00000000000c'
 const OWNER = 'owner-id'
 const item = (id: string, x: number): LayoutItem => ({ id, t: 'sign', x, z: 0, r: 0 })
+/** The project's one scene, and an item in it as saves name it */
+const S = '00000000-0000-4000-8000-000000000051'
+const one = (items: LayoutItem[]) => [{ id: S, name: 'Main', items }]
+const ref = (id: string) => `${S}/${id}`
+const inS = (i: LayoutItem) => ({ scene: S, item: i })
 
 /** Open a project holding A and B (as its owner, unless given another role), and report it back as the editor does */
 async function openProject(role: Role = 'owner') {
@@ -54,7 +61,7 @@ async function openProject(role: Role = 'owner') {
       requested: null,
       sharing: null,
     },
-    items: [item(A, 1), item(B, 2)],
+    scenes: one([item(A, 1), item(B, 2)]),
     settings: { pricing: { priceMode: 1, slots: 2 }, floors: FLOORS },
   })
   const project = useProjectStore()
@@ -106,7 +113,7 @@ describe('project store', () => {
         requested: null,
         sharing: null,
       },
-      items: [onStage, item(B, 2)],
+      scenes: one([onStage, item(B, 2)]),
       settings: { pricing: { priceMode: 1, slots: 2 } },
     })
     const project = useProjectStore()
@@ -118,7 +125,7 @@ describe('project store', () => {
     await vi.runAllTimersAsync()
     expect(api.saveChanges).toHaveBeenCalledTimes(1)
     const [, changes] = api.saveChanges.mock.calls[0]!
-    expect(changes.upserts.map((i: LayoutItem) => i.id)).toEqual([A])
+    expect(changes.upserts.map((u) => u.item.id)).toEqual([A])
     expect(changes.settings?.floors).toBe(FLOORS)
     // done: nothing more to save until something changes
     await vi.runAllTimersAsync()
@@ -135,8 +142,8 @@ describe('project store', () => {
     expect(api.saveChanges).toHaveBeenCalledTimes(1)
     const [id, changes] = api.saveChanges.mock.calls[0]!
     expect(id).toBe('p1')
-    expect(changes.upserts.map((i: LayoutItem) => i.id)).toEqual([A, C])
-    expect(changes.deletes).toEqual([B])
+    expect(changes.upserts.map((u) => u.item.id)).toEqual([A, C])
+    expect(changes.deletes).toEqual([ref(B)])
     expect(changes.settings).toBeUndefined()
     expect(project.status).toBe('saved')
   })
@@ -153,7 +160,7 @@ describe('project store', () => {
     await project.flush()
     expect(told).toHaveBeenCalledExactlyOnceWith(
       'p1',
-      { changed: [A, C], deleted: [B] },
+      { changed: [ref(A), ref(C)], deleted: [ref(B)] },
       '2026-10-01T00:01:00Z',
     )
     // settings alone: no items to tell of
@@ -183,7 +190,7 @@ describe('project store', () => {
     await project.flush()
     expect(api.saveChanges).toHaveBeenCalledTimes(2)
     const [, retry] = api.saveChanges.mock.calls[1]!
-    expect(retry.upserts.map((i: LayoutItem) => i.id)).toEqual([A])
+    expect(retry.upserts.map((u) => u.item.id)).toEqual([A])
     expect(project.status).toBe('saved')
   })
 
@@ -297,7 +304,7 @@ describe('project store', () => {
       const { project } = await failOnce()
       const draft = JSON.parse(localStorage.getItem(DRAFT)!)
       expect(draft.base).toBe('2026-10-01T00:00:00Z')
-      expect(draft.items.map((i: LayoutItem) => [i.id, i.x])).toEqual([
+      expect(draft.scenes[0].items.map((i: LayoutItem) => [i.id, i.x])).toEqual([
         [A, 5],
         [B, 2],
       ])
@@ -362,7 +369,7 @@ describe('project store', () => {
     it('is offered back when the cloud version is still the one it was made on', async () => {
       keep('2026-10-01T00:00:00Z')
       const { project } = await openProject()
-      expect(project.draft?.items.map((i) => i.x)).toEqual([8])
+      expect(project.draft?.scenes[0]!.items.map((i) => i.x)).toEqual([8])
       expect(project.draftConflict).toBe(false)
     })
 
@@ -384,7 +391,8 @@ describe('project store', () => {
   describe('other people’s saved changes', () => {
     /** What the editor does with them: takes them in and reports the layout back at once */
     const editorFor =
-      (planner: ReturnType<typeof usePlannerStore>) => (up: LayoutItem[], del: string[]) => {
+      (planner: ReturnType<typeof usePlannerStore>) =>
+      (_scene: string, up: LayoutItem[], del: string[]) => {
         const byId = new Map(planner.items.map((i) => [i.id!, i]))
         for (const id of del) byId.delete(id)
         for (const i of up) byId.set(i.id!, i)
@@ -394,7 +402,7 @@ describe('project store', () => {
 
     it('are taken in, and never saved back', async () => {
       const { project, planner } = await openProject('editor')
-      project.takeRemote([item(A, 7), item(C, 1)], [B], editorFor(planner))
+      project.takeRemote([item(A, 7), item(C, 1)].map(inS), [ref(B)], editorFor(planner))
       expect(xs(planner.items)).toEqual([
         [A, 7],
         [C, 1],
@@ -409,7 +417,7 @@ describe('project store', () => {
       const { project, planner } = await openProject('editor')
       planner.items = [item(A, 5), item(B, 2)]
       await nextTick()
-      project.takeRemote([item(A, 7), item(B, 9)], [], editorFor(planner))
+      project.takeRemote([item(A, 7), item(B, 9)].map(inS), [], editorFor(planner))
       expect(xs(planner.items)).toEqual([
         [A, 5],
         [B, 9],
@@ -418,7 +426,7 @@ describe('project store', () => {
       await vi.runAllTimersAsync()
       expect(api.saveChanges).toHaveBeenCalledTimes(1)
       const [, changes] = api.saveChanges.mock.calls[0]!
-      expect(xs(changes.upserts)).toEqual([[A, 5]])
+      expect(xs(changes.upserts.map((u) => u.item))).toEqual([[A, 5]])
       expect(changes.deletes).toEqual([])
     })
 
@@ -427,15 +435,115 @@ describe('project store', () => {
       // C added here and not saved yet
       planner.items = [...planner.items, item(C, 3)]
       await nextTick()
-      project.takeRemote([item(A, 1)], [], editorFor(planner), { full: true })
+      project.takeRemote([item(A, 1)].map(inS), [], editorFor(planner), { full: true })
       expect(xs(planner.items)).toEqual([
         [A, 1],
         [C, 3],
       ])
       await vi.runAllTimersAsync()
       const [, changes] = api.saveChanges.mock.calls[0]!
-      expect(xs(changes.upserts)).toEqual([[C, 3]])
+      expect(xs(changes.upserts.map((u) => u.item))).toEqual([[C, 3]])
       expect(changes.deletes).toEqual([])
+    })
+  })
+
+  describe('scenes', () => {
+    const S2 = '00000000-0000-4000-8000-000000000052'
+    /** Open a project with a second scene holding A where the first has it at 1 */
+    async function openTwo() {
+      useAuthStore().user = { id: OWNER } as never
+      api.loadProject.mockResolvedValue({
+        meta: {
+          id: 'p1',
+          name: 'Test',
+          updated_at: '2026-10-01T00:00:00Z',
+          role: 'owner',
+          requested: null,
+          sharing: null,
+        },
+        scenes: [
+          { id: S, name: 'Morning', items: [item(A, 1)] },
+          { id: S2, name: '', items: [item(A, 4)] },
+        ],
+        settings: { floors: FLOORS },
+      })
+      const project = useProjectStore()
+      const planner = usePlannerStore()
+      await project.open('p1')
+      planner.items = [...planner.items]
+      await nextTick()
+      return { project, planner }
+    }
+
+    it('opens on the first, names an unnamed one by its place, and saves nothing', async () => {
+      const { planner } = await openTwo()
+      expect(planner.scenes.map((x) => x.name)).toEqual(['Morning', 'Scene 2'])
+      planner.setScene(S2)
+      // the editor's report of the scene it took, written its own way
+      planner.items = planner.items.map((i) => ({ ...i, y: 0 }))
+      await nextTick()
+      await vi.runAllTimersAsync()
+      expect(api.saveChanges).not.toHaveBeenCalled()
+    })
+
+    it('saves an item by its scene, and the same item in another scene apart', async () => {
+      const { planner } = await openTwo()
+      planner.setScene(S2)
+      planner.items = [...planner.items]
+      planner.items = [item(A, 9)]
+      await nextTick()
+      await vi.runAllTimersAsync()
+      const [, changes] = api.saveChanges.mock.calls[0]!
+      expect(changes.upserts).toEqual([{ scene: S2, item: item(A, 9) }])
+      expect(changes.scenes).toBeUndefined()
+    })
+
+    it('saves a scene added, renamed or removed, with every scene in order', async () => {
+      const { planner } = await openTwo()
+      const added = planner.addScene({ copy: true })!
+      await nextTick()
+      await vi.runAllTimersAsync()
+      let [, changes] = api.saveChanges.mock.calls[0]!
+      expect(changes.scenes?.map((x) => x.id)).toEqual([S, added.id, S2])
+      expect(changes.upserts).toEqual([{ scene: added.id, item: item(A, 1) }])
+      planner.deleteScene(S2)
+      await nextTick()
+      await vi.runAllTimersAsync()
+      ;[, changes] = api.saveChanges.mock.calls[1]!
+      expect(changes.scenes?.map((x) => x.id)).toEqual([S, added.id])
+      expect(changes.removedScenes).toEqual([S2])
+      expect(changes.deletes).toEqual([`${S2}/${A}`])
+    })
+
+    it('takes other people’s changes to a scene not shown straight into it', async () => {
+      const { project, planner } = await openTwo()
+      const told: string[] = []
+      project.takeRemote([{ scene: S2, item: item(A, 6) }], [], (scene) => told.push(scene))
+      expect(told).toEqual([S2])
+      expect(planner.items.map((i) => i.x)).toEqual([1])
+      expect(planner.scenes[1]!.items.map((i) => i.x)).toEqual([6])
+      await nextTick()
+      await vi.runAllTimersAsync()
+      expect(api.saveChanges).not.toHaveBeenCalled()
+    })
+
+    it('reads the scenes again: a new one with its items, one gone giving way', async () => {
+      const { project, planner } = await openTwo()
+      planner.setScene(S2)
+      planner.items = [...planner.items]
+      const S3 = '00000000-0000-4000-8000-000000000053'
+      api.loadScenes.mockResolvedValue([
+        { id: S3, name: 'Lunch' },
+        { id: S, name: 'Morning' },
+      ])
+      api.loadItems.mockResolvedValue([{ scene: S3, item: item(B, 2) }])
+      await project.refreshScenes()
+      expect(planner.scenes.map((x) => x.name)).toEqual(['Lunch', 'Morning'])
+      expect(planner.scenes[0]!.items.map((i) => i.id)).toEqual([B])
+      expect(planner.sceneId).toBe(S)
+      await nextTick()
+      await vi.runAllTimersAsync()
+      expect(api.saveChanges).not.toHaveBeenCalled()
     })
   })
 
@@ -486,7 +594,7 @@ describe('project store', () => {
           requested: null,
           sharing: null,
         },
-        items: [item(A, 1)],
+        scenes: one([item(A, 1)]),
         settings: {},
       },
     })
@@ -525,7 +633,7 @@ describe('project store', () => {
         requested: null,
         sharing: null,
       },
-      items: [item(A, 1)],
+      scenes: one([item(A, 1)]),
       settings: {},
     }
     beforeEach(() => {

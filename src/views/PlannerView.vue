@@ -1,7 +1,13 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, shallowRef, watch, watchEffect } from 'vue'
 import { storeToRefs } from 'pinia'
-import { onBeforeRouteLeave, onBeforeRouteUpdate, RouterLink, useRouter } from 'vue-router'
+import {
+  onBeforeRouteLeave,
+  onBeforeRouteUpdate,
+  RouterLink,
+  useRoute,
+  useRouter,
+} from 'vue-router'
 import SignInButtons from '@/components/auth/SignInButtons.vue'
 import PlannerSidebar from '@/components/planner/PlannerSidebar.vue'
 import StageToast from '@/components/planner/StageToast.vue'
@@ -13,6 +19,7 @@ import { t } from '@/i18n'
 import { useAuthStore } from '@/stores/auth'
 import { usePlannerStore } from '@/stores/planner'
 import { useProjectStore } from '@/stores/project'
+import { isUuid } from '@/venue/layout'
 
 /**
  * The layout kept in this browser, or a cloud project by its link: its id (`projectId`), with
@@ -27,6 +34,7 @@ const store = usePlannerStore()
 const project = useProjectStore()
 const auth = useAuthStore()
 const router = useRouter()
+const route = useRoute()
 const { sidebarCollapsed } = storeToRefs(store)
 
 if (!cloud.value) store.openLocal()
@@ -59,7 +67,7 @@ watch(
     void router.replace({
       name: 'project',
       params: { projectId: m.id },
-      query: token ? { share: token } : {},
+      query: { ...(token ? { share: token } : {}), ...sceneQuery() },
     })
   },
 )
@@ -68,6 +76,29 @@ const ready = computed(
   () =>
     !cloud.value ||
     (!!project.meta && !project.loading && !project.loadError && !project.shareDenied),
+)
+
+// The address also says which scene is shown (?scene=), while there's more than one: a link
+// opens on it, and picking another scene changes it (in place, not as a step back)
+const sceneQuery = () => (store.scenes.length > 1 ? { scene: store.sceneId } : {})
+function pickFromAddress() {
+  const q = route.query.scene
+  if (isUuid(q)) store.setScene(q.toLowerCase())
+}
+watch(() => route.query.scene, pickFromAddress, { immediate: true })
+// a project's scenes, as it opens
+watch(() => store.projectId, pickFromAddress)
+watch(
+  [() => store.sceneId, () => store.scenes.length, ready],
+  () => {
+    // a project's address waits for the project, not the layout shown while it loads
+    if (!ready.value || (cloud.value && store.projectId !== project.meta?.id)) return
+    const { scene: _scene, ...rest } = route.query
+    const query = { ...rest, ...sceneQuery() }
+    if (route.query.scene === query.scene) return
+    void router.replace({ query })
+  },
+  { immediate: true },
 )
 const needsSignIn = computed(
   () =>

@@ -686,6 +686,8 @@ export class VenueEditor {
   private redoStack: string[] = []
   /** The redo steps a new change just cleared, kept in case that change is dropped (dropUndo) */
   private redoCleared: string[] = []
+  /** The undo and redo steps of the scenes not shown, by scene id (see showScene) */
+  private histories = new Map<string, { undo: string[]; redo: string[] }>()
   /** A laptop's lid is being dragged open or shut with the slider (its undo step is taken) */
   private lidLive = false
   private drag: {
@@ -915,6 +917,53 @@ export class VenueEditor {
     this.placed.clear()
     items.forEach((i) => this.add(i))
     this.commit()
+  }
+
+  /**
+   * Show another scene's layout in place of scene `from`'s, each scene keeping its own undo and
+   * redo steps
+   */
+  showScene(from: string, to: string, items: readonly LayoutItem[]) {
+    this.histories.set(from, { undo: this.undoStack, redo: this.redoStack })
+    const h = this.histories.get(to)
+    this.histories.delete(to)
+    this.undoStack = h?.undo ?? []
+    this.redoStack = h?.redo ?? []
+    this.redoCleared = []
+    this.load(items)
+    this.reportHistory()
+  }
+
+  /** A scene was removed: its undo and redo steps go with it */
+  forgetScene(id: string) {
+    this.histories.delete(id)
+  }
+
+  /**
+   * These items were put alike in other scenes (by id): their undo and redo steps take them on,
+   * as they do other people's changes, so undoing there leaves them standing
+   */
+  rebaseScenes(ids: readonly string[], items: readonly LayoutItem[]) {
+    for (const id of ids) this.rebaseScene(id, items, [])
+  }
+
+  /**
+   * Changes to a scene not shown (other people's, or put there from another scene): its undo
+   * and redo steps take them on, so undoing there leaves them standing
+   */
+  rebaseScene(id: string, upserts: readonly LayoutItem[], gone: readonly string[]) {
+    const h = this.histories.get(id)
+    if (!h) return
+    const keyed = new Map(
+      upserts.map((i) => [i.id!, i.img ? { ...i, img: this.imgKey(i.img) } : i] as const),
+    )
+    const fix = (step: string) => rebaseStep(step, keyed, new Set(gone))
+    this.histories.set(id, { undo: h.undo.map(fix), redo: h.redo.map(fix) })
+  }
+
+  /** The items selected, as the layout has them */
+  selectedItems(): LayoutItem[] {
+    return this.selection.map((o) => this.itemOf(o))
   }
 
   /** Remove everything but the zones locked against editing and what stands in them */

@@ -8,6 +8,7 @@ import SelectionBar from './SelectionBar.vue'
 import StageHelp from './StageHelp.vue'
 import StageHistory from './StageHistory.vue'
 import PlaceHint from './PlaceHint.vue'
+import SceneBar from './SceneBar.vue'
 import StageToast from './StageToast.vue'
 import StageToolbar from './StageToolbar.vue'
 import VenueLabels from './VenueLabels.vue'
@@ -52,6 +53,7 @@ onMounted(() => {
   // other people's changes, drags and selections in a shared cloud project
   link = {
     applyRemote: (up, del) => ed.applyRemote(up, del),
+    rebaseScene: (scene, up, del) => ed.rebaseScene(scene, up, del),
     applyLive: (m) => ed.applyLive(m),
     setLocks: (l) => ed.setLocks(l),
     setCursors: (c) => ed.setCursors(c),
@@ -71,6 +73,18 @@ onBeforeUnmount(() => {
   store.pathDrawing = false
   store.walk = null
 })
+
+// Another scene picked: its layout in place of the last one's, each with its own undo steps
+watch(
+  () => store.sceneId,
+  (to, from) => {
+    const ed = editor.value
+    if (!to || !from || !ed) return
+    ed.showScene(from, to, store.items)
+    // it was shown as it was removed: its steps go with it
+    if (!store.scenes.some((s) => s.id === from)) ed.forgetScene(from)
+  },
+)
 
 // Push view toggles from the store into the scene
 watch([editor, () => store.editing], ([ed, on]) => ed?.setEditable(on), { immediate: true })
@@ -123,6 +137,7 @@ watch(
     <SelectionBar />
     <WalkControls />
     <StageHistory v-if="!phone" />
+    <SceneBar />
     <!-- walking, the stick and the hint take the bottom -->
     <MobileDock v-if="phone && !store.walk" />
     <StageHelp />

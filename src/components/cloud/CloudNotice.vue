@@ -10,7 +10,7 @@ import { usePalettesStore } from '@/stores/palettes'
 import { usePlannerStore } from '@/stores/planner'
 import { useProjectStore } from '@/stores/project'
 import { downloadJSON, stamp } from '@/venue/download'
-import { clampSlots, exportLayout, type LayoutItem } from '@/venue/layout'
+import { clampSlots, exportLayout, sceneId, type Scene } from '@/venue/layout'
 import type { ProjectSettings } from '@/cloud/projects'
 
 /**
@@ -51,28 +51,39 @@ const canKeepAsNew = computed(
       project.failure === 'denied'),
 )
 
-function exportFile(items: readonly LayoutItem[], settings: ProjectSettings) {
+function exportFile(scenes: readonly Scene[], settings: ProjectSettings) {
   const pricing = {
     priceMode: settings.pricing?.priceMode ?? 0,
     slots: clampSlots(settings.pricing?.slots ?? 1),
   }
   downloadJSON(
     `${project.meta?.name ?? 'v-conf-taiwan-venue'}-${stamp()}.json`,
-    exportLayout(items, { pricing, palettes: settings.palettes }),
+    exportLayout(scenes[0]?.items ?? [], { pricing, palettes: settings.palettes, scenes }),
   )
 }
 
 const exportCurrent = () =>
-  exportFile(planner.items, {
+  exportFile(planner.scenes, {
     pricing: { priceMode: planner.priceMode, slots: planner.slots },
     palettes: palettes.palettes,
   })
 
+/** A draft's scenes, one kept before there were scenes being the project's first */
+const draftScenes = (list: readonly Scene[]) =>
+  list.map((s) =>
+    s.id
+      ? s
+      : { ...s, id: planner.scenes[0]?.id ?? sceneId(), name: planner.scenes[0]?.name ?? '' },
+  )
+
 function restore() {
   const d = project.draft
   if (!d) return
-  // one undoable step; it then saves like any other change
-  editor.value?.load(d.items, { record: true })
+  const scenes = draftScenes(d.scenes)
+  const shown = scenes.find((s) => s.id === planner.sceneId)
+  planner.showScenes(scenes, planner.sceneId)
+  // the scene shown, one undoable step; it all then saves like any other change
+  if (shown) editor.value?.load(shown.items, { record: true })
   if (d.settings.pricing?.priceMode !== undefined) planner.priceMode = d.settings.pricing.priceMode
   if (d.settings.pricing?.slots !== undefined) planner.setSlots(d.settings.pricing.slots)
   palettes.importPalettes(d.settings)
@@ -90,7 +101,7 @@ async function saveAsNew() {
     const id = await createProject(
       auth.user.id,
       name,
-      d?.items ?? planner.items,
+      d ? draftScenes(d.scenes).map((s) => (s.id ? s : { ...s, id: sceneId() })) : planner.scenes,
       d?.settings ?? {
         pricing: { priceMode: planner.priceMode, slots: planner.slots },
         palettes: palettes.palettes,
@@ -173,7 +184,7 @@ async function saveAsNew() {
           class="btn"
           type="button"
           :disabled="busy"
-          @click="exportFile(project.draft.items, project.draft.settings)"
+          @click="exportFile(project.draft.scenes, project.draft.settings)"
         >
           {{ t().cloud.notice.exportJson }}
         </button>

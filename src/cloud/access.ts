@@ -158,17 +158,21 @@ export async function listSharedWithMe(userId: string): Promise<SharedSummary[]>
   const rows = check(
     await db()
       .from('projects')
-      .select('id, name, updated_at, project_objects(count), project_access!inner(role)')
+      .select(
+        'id, name, updated_at, project_objects(count), project_scenes(count), project_access!inner(role)',
+      )
       .neq('owner_id', userId)
       .not('project_access.role', 'is', null)
       .order('updated_at', { ascending: false }),
-  ) as (Omit<ProjectSummary, 'count'> & {
+  ) as (Omit<ProjectSummary, 'count' | 'scenes'> & {
     project_objects: { count: number }[]
+    project_scenes: { count: number }[]
     project_access: { role: Grant }[]
   })[]
-  return rows.map(({ project_objects, project_access, ...p }) => ({
+  return rows.map(({ project_objects, project_scenes, project_access, ...p }) => ({
     ...p,
     count: project_objects[0]?.count ?? 0,
+    scenes: project_scenes[0]?.count ?? 0,
     role: project_access[0]?.role ?? 'viewer',
   }))
 }

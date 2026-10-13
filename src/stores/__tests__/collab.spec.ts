@@ -25,6 +25,7 @@ vi.mock('@/cloud/projects', async (importOriginal) => ({
 import { useAuthStore } from '../auth'
 import { useCloudStore } from '../cloud'
 import { colorOf, holders, useCollabStore } from '../collab'
+import { usePlannerStore } from '../planner'
 import { useProjectStore } from '../project'
 
 const peer = (key: string, sel: [string, number][], role: Peer['role'] = 'editor'): Holder => ({
@@ -34,6 +35,7 @@ const peer = (key: string, sel: [string, number][], role: Peer['role'] = 'editor
   avatar: '',
   role,
   follow: null,
+  scene: null,
   sel,
 })
 
@@ -171,6 +173,7 @@ describe('the project’s channel', () => {
     avatar: '',
     role: 'viewer',
     follow: null,
+    scene: null,
   }
 
   it('sends nothing with nobody else there to see it', async () => {
@@ -352,6 +355,7 @@ describe('the project’s channel', () => {
       const shown: unknown[][] = []
       collab.attach({
         applyRemote: () => {},
+        rebaseScene: () => {},
         applyLive: () => {},
         setLocks: () => {},
         setCursors: () => {},
@@ -371,6 +375,35 @@ describe('the project’s channel', () => {
       on?.walk('k2', null)
       await nextTick()
       expect(shown[shown.length - 1]).toEqual([])
+    })
+
+    it('shows only those in the scene shown here, and holds only their selections', async () => {
+      const { collab, on } = await joined()
+      const shown: unknown[][] = []
+      collab.attach({
+        applyRemote: () => {},
+        rebaseScene: () => {},
+        applyLive: () => {},
+        setLocks: () => {},
+        setCursors: () => {},
+        follow: () => {},
+        cameraState: () => ({ p: [0, 0, 0], t: [0, 0, 0] }),
+        setWalkers: (w) => shown.push([...w]),
+        setWalkerColor: () => {},
+      })
+      const planner = usePlannerStore()
+      const here = planner.sceneId
+      const bob: Peer = { ...alice, key: 'k2', user: 'bob', name: 'Bob', role: 'editor' }
+      collab.peers = [{ ...bob, scene: 'elsewhere' }]
+      on?.walk('k2', at(2))
+      on?.select('k2', [['A', 1]])
+      await nextTick()
+      expect(shown[shown.length - 1]).toEqual([])
+      expect(collab.locks.size).toBe(0)
+      collab.peers = [{ ...bob, scene: here }]
+      await nextTick()
+      expect(shown[shown.length - 1]).toHaveLength(1)
+      expect([...collab.locks.keys()]).toEqual(['A'])
     })
   })
 

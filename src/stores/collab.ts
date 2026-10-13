@@ -27,7 +27,10 @@ import type {
 
 /** What the editor on the stage does for the channel (VenueStage attaches it) */
 export interface EditorLink {
+  /** Other people's saved changes to the scene shown */
   applyRemote(upserts: LayoutItem[], deletes: string[]): void
+  /** …and to another scene, for its undo steps */
+  rebaseScene(scene: string, upserts: LayoutItem[], deletes: string[]): void
   applyLive(moves: readonly LiveMove[]): void
   setLocks(locks: ReadonlyMap<string, Lock>): void
   setCursors(cursors: readonly RemoteCursor[]): void
@@ -111,7 +114,8 @@ export function holders(
 /**
  * Working on the open cloud project together: who else has it open, what they have selected
  * (locked here), items they're dragging, where their pointers are, and their saved changes
- * coming in; following someone's view, as in Figma. One channel per project, joined while it's
+ * coming in; following someone's view, as in Figma. Selections, drags, pointers and walkers
+ * show only between people in the same scene; following someone takes this tab to theirs. One channel per project, joined while it's
  * open by someone signed in and app_settings has realtime on. Nothing is sent with nobody else
  * there to see it.
  */
@@ -139,6 +143,9 @@ export const useCollabStore = defineStore('collab', () => {
 
   let channel: ProjectChannel | null = null
   let editor: EditorLink | null = null
+  /** In the scene shown here (someone on an app from before scenes counts as in it) */
+  const inScene = (p: Peer) => !p.scene || p.scene === planner.sceneId
+
   /** This tab's selection: each id and when it was picked */
   const mine = shallowRef<ReadonlyMap<string, number>>(new Map())
   /** What each other tab has selected (word comes by broadcast) */
@@ -146,7 +153,7 @@ export const useCollabStore = defineStore('collab', () => {
 
   const locks = computed(() => {
     const held = holders(
-      peers.value.map((p) => ({ ...p, sel: selections.value.get(p.key) ?? [] })),
+      peers.value.filter(inScene).map((p) => ({ ...p, sel: selections.value.get(p.key) ?? [] })),
       { key, sel: mine.value },
     )
     const out = new Map<string, Lock>()
@@ -238,8 +245,11 @@ export const useCollabStore = defineStore('collab', () => {
       avatar: auth.avatar,
       role: project.meta?.role ?? 'viewer',
       follow: following.value,
+      scene: planner.sceneId || null,
     })
   }
+  // another scene: the others see this tab there (presence is held back when sent too often)
+  watch(() => planner.sceneId, track)
 
   // ─── This tab's selection, by broadcast ────────────────────────────────────
 
@@ -305,6 +315,14 @@ export const useCollabStore = defineStore('collab', () => {
     if (k === following.value) editor?.follow(cam)
   }
 
+  // following someone into another scene: this tab goes there too
+  watch(
+    () => followed.value?.scene,
+    (scene) => {
+      if (scene && scene !== planner.sceneId) planner.setScene(scene)
+    },
+  )
+
   watch(followed, (p, was) => {
     // they left, or closed that tab
     if (!following.value || p) return
@@ -322,7 +340,7 @@ export const useCollabStore = defineStore('collab', () => {
     const out: RemoteCursor[] = []
     for (const p of peers.value) {
       const point = points.value.get(p.key)
-      if (point)
+      if (point && inScene(p))
         out.push({ key: p.key, name: p.name || t().collab.someone, color: colorOf(p.user), point })
     }
     return out
@@ -366,7 +384,7 @@ export const useCollabStore = defineStore('collab', () => {
     const out: RemoteWalker[] = []
     for (const p of peers.value) {
       const w = walking.value.get(p.key)
-      if (w && (p.role === 'owner' || p.role === 'editor'))
+      if (w && inScene(p) && (p.role === 'owner' || p.role === 'editor'))
         out.push({ ...w, key: p.key, name: p.name || t().collab.someone, color: colorOf(p.user) })
     }
     return out
@@ -444,7 +462,10 @@ export const useCollabStore = defineStore('collab', () => {
 
   /** The project the channel is for (a save may finish after another project opened) */
   let channelProject: string | null = null
-  /** Ids saved lately, and when, and whether deleted: for someone who comes in (see RECENT_SAVE) */
+  /*
+   * Saved changes go by ref (an item's scene and id, see refOf), as ObjectsChange has them
+   */
+  /** Refs saved lately, and when, and whether deleted: for someone who comes in (see RECENT_SAVE) */
   const recent = new Map<string, { at: number; gone: boolean }>()
   /** Saved while the connection was down: sent once it's back. Whether each was deleted */
   const unsent = new Map<string, boolean>()
@@ -533,7 +554,7 @@ export const useCollabStore = defineStore('collab', () => {
         for (const id of [...ids, ...gone]) versions.delete(id)
         for (const [id, at] of seen) versions.set(id, { at: Date.parse(at), upTo: false })
       }
-      project.takeRemote(rows, gone, (up, del) => editor?.applyRemote(up, del))
+      project.takeRemote(rows, gone, toEditor)
     } catch (e) {
       console.error('[realtime] fetching changed items failed', e)
       if (project.meta?.id !== m.id) return
@@ -545,10 +566,18 @@ export const useCollabStore = defineStore('collab', () => {
     }
   }
 
-  /** After the connection was down: every item afresh */
+  /** Changes taken in: the scene shown's through the editor, the others' for their undo steps */
+  function toEditor(scene: string, up: LayoutItem[], del: string[]) {
+    if (scene === planner.sceneId) editor?.applyRemote(up, del)
+    else editor?.rebaseScene(scene, up, del)
+  }
+
+  /** After the connection was down: the scenes and every item afresh */
   async function resync() {
     const m = project.meta
     if (!m || !editor) return
+    await project.refreshScenes()
+    if (project.meta?.id !== m.id) return
     try {
       const seen = new Map<string, string>()
       const rows = await loadItems(m.id, null, auth.user ? null : project.via(), seen)
@@ -558,7 +587,7 @@ export const useCollabStore = defineStore('collab', () => {
         for (const [id, at] of seen) versions.set(id, { at: Date.parse(at), upTo: false })
         baselined = true
       }
-      project.takeRemote(rows, [], (up, del) => editor?.applyRemote(up, del), { full: true })
+      project.takeRemote(rows, [], toEditor, { full: true })
     } catch (e) {
       // a guest's link that no longer opens it: the page says so
       if (e instanceof CloudError && e.code === 'gone') return void project.reload()
@@ -661,13 +690,18 @@ export const useCollabStore = defineStore('collab', () => {
         { key, present: !!user },
         {
           peers: onPeers,
-          move: (m) => editor?.applyLive(m),
+          move: (m, k) => {
+            // a drag in another scene isn't shown here
+            const p = k ? peers.value.find((x) => x.key === k) : null
+            if (!p || inScene(p)) editor?.applyLive(m)
+          },
           cursor: onCursor,
           select: onSelect,
           camera: onCamera,
           walk: onWalk,
           objects: onObjects,
           project: () => void project.refreshMeta(),
+          scenes: () => void project.refreshScenes(),
           access: onAccess,
           deleted: () => void project.reload(),
           joined: (again) => {

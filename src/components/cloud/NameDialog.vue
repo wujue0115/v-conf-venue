@@ -4,8 +4,8 @@ import { NAME_MAX } from '@/cloud/projects'
 import { t } from '@/i18n'
 
 /**
- * Asks for a project's name: to save the layout to the cloud, start a new project, or rename
- * one. `open(initial, done)` shows it; on confirm it waits on `done(name)`, closing once that
+ * Asks for a name: a project's, to save the layout to the cloud, start a new project, or rename
+ * one (or another's, given its `label`, `placeholder` and `maxlength`). `open(initial, done)` shows it; on confirm it waits on `done(name)`, closing once that
  * succeeds and staying open (to try again) when it throws.
  */
 
@@ -13,6 +13,9 @@ defineProps<{
   title: string
   hint?: string
   confirm: string
+  label?: string
+  placeholder?: string
+  maxlength?: number
 }>()
 
 const dialog = useTemplateRef('dialog')
@@ -60,12 +63,12 @@ defineExpose({ open })
       <h3>{{ title }}</h3>
       <p v-if="hint" class="hint">{{ hint }}</p>
       <label class="field">
-        <span>{{ t().cloud.name }}</span>
+        <span>{{ label ?? t().cloud.name }}</span>
         <input
           ref="input"
           v-model="name"
-          :maxlength="NAME_MAX"
-          :placeholder="t().cloud.namePlaceholder"
+          :maxlength="maxlength ?? NAME_MAX"
+          :placeholder="placeholder ?? t().cloud.namePlaceholder"
           :disabled="busy"
           required
         />

@@ -133,7 +133,9 @@ export const clampPeople = (n: unknown) =>
 export const isHexColor = (s: unknown): s is string =>
   typeof s === 'string' && /^#[0-9a-f]{6}$/i.test(s)
 
-/** The layout kept in this browser, on today's floors (see floors.ts) */
+/** The scenes kept in this browser, each a layout on today's floors (see floors.ts) */
+export const SCENES_KEY = 'vueconf26-nccu-scenes-v6'
+/** …and the one layout kept before there were scenes: read once into the first scene, then cleared */
 export const STORAGE_KEY = 'vueconf26-nccu-layout-v5'
 /** …and as it was kept before, on floors 1: read once, moved on to today's, then cleared */
 const STORAGE_KEY_FLOORS1 = 'vueconf26-nccu-layout-v4'
@@ -312,18 +314,27 @@ export interface Pricing {
 
 /**
  * The exported file: the items, the floors they stand on, and (when given) the pricing the
- * total was worked out with and the colour rows people pick from
+ * total was worked out with and the colour rows people pick from. Given more than one scene,
+ * it holds them all (`scenes`) in place of `items`.
  */
 export function exportLayout(
   items: readonly LayoutItem[],
-  { pricing, palettes }: { pricing?: Pricing; palettes?: Record<string, readonly string[]> } = {},
+  {
+    pricing,
+    palettes,
+    scenes,
+  }: {
+    pricing?: Pricing
+    palettes?: Record<string, readonly string[]>
+    scenes?: readonly Scene[]
+  } = {},
 ) {
   return JSON.stringify(
     {
       venue: 'NCCU-CPBAE-A2F',
       event: 'VueConf Taiwan 2026',
       floors: FLOORS,
-      items,
+      ...(scenes && scenes.length > 1 ? { scenes } : { items }),
       ...(pricing ? { pricing } : {}),
       ...(palettes ? { palettes } : {}),
     },
@@ -387,6 +398,76 @@ export function readLayoutFile(file: unknown): LayoutItem[] {
   return toCurrentFloors(parseLayout(file), floors)
 }
 
+/**
+ * The scenes in a layout file that holds more than one (`scenes`), on today's floors; null for
+ * a file of one layout (`items`, or a bare list). Unusable scenes are dropped, past SCENE_MAX
+ * too; none left is an invalid file.
+ */
+export function readScenesFile(file: unknown): Scene[] | null {
+  const list = (file as { scenes?: unknown } | null)?.scenes
+  if (Array.isArray(file) || list === undefined) return null
+  const floors = floorsOf((file as { floors?: unknown }).floors)
+  const scenes = parseScenes(list, floors)
+  if (!scenes.length) throw new Error('Invalid layout')
+  return scenes
+}
+
+/** A layout of its own, one of a project's scenes (e.g. a session of the day); picked by its id */
+export interface Scene {
+  id: string
+  name: string
+  items: LayoutItem[]
+}
+
+/** The most scenes a project holds, and the longest name one keeps */
+export const SCENE_MAX = 20
+export const SCENE_NAME_MAX = 40
+
+export const cleanSceneName = (s: unknown) =>
+  typeof s === 'string' ? [...s.trim()].slice(0, SCENE_NAME_MAX).join('') : ''
+
+/** A new scene's id */
+export const sceneId = () => crypto.randomUUID()
+
+/**
+ * Scenes as read from a file or storage, on `floors`: each with an id (a new one when its own
+ * is missing or seen before), a name (or `Scene n` for want of one) and its items
+ */
+function parseScenes(list: unknown, floors: number): Scene[] {
+  if (!Array.isArray(list)) return []
+  const ids = new Set<string>()
+  return list.slice(0, SCENE_MAX).flatMap((s, k): Scene[] => {
+    if (!s || typeof s !== 'object' || !Array.isArray((s as { items?: unknown }).items)) return []
+    const raw = (s as { id?: unknown }).id
+    const id = isUuid(raw) && !ids.has(raw.toLowerCase()) ? raw.toLowerCase() : sceneId()
+    ids.add(id)
+    const name = cleanSceneName((s as { name?: unknown }).name) || `Scene ${k + 1}`
+    return [{ id, name, items: toCurrentFloors(parseLayout(s), floors) }]
+  })
+}
+
+/**
+ * The scenes kept in this browser; from before there were scenes, its one layout as the first
+ * (named `name`); null when there's nothing kept
+ */
+export function loadSavedScenes(name: string): Scene[] | null {
+  const saved = readJSON(SCENES_KEY) as { scenes?: unknown } | null
+  const scenes = parseScenes(saved?.scenes, FLOORS)
+  if (scenes.length) return scenes
+  const before = loadSavedLayout()
+  return before ? [{ id: sceneId(), name, items: before }] : null
+}
+/** Returns false when the browser refused to store them (e.g. large poster images over quota) */
+export function saveScenes(scenes: readonly Scene[]) {
+  const ok = writeJSON(SCENES_KEY, { scenes })
+  // kept now as scenes: the layouts from before aren't needed (and would hold the quota)
+  if (ok) {
+    removeKey(STORAGE_KEY)
+    removeKey(STORAGE_KEY_FLOORS1)
+  }
+  return ok
+}
+
 export function loadSavedLayout(): LayoutItem[] | null {
   const saved = readJSON(STORAGE_KEY)
   if (Array.isArray(saved)) return parseLayout(saved)
@@ -399,6 +480,26 @@ export function saveLayout(items: readonly LayoutItem[]) {
   // kept now on today's floors: the copy from before isn't needed (and would hold the quota)
   if (ok) removeKey(STORAGE_KEY_FLOORS1)
   return ok
+}
+
+/**
+ * What the scenes cost to rent together: the same furniture serves every scene, so each kind is
+ * rented as many times as the scene using most of it needs (its billed items)
+ */
+export function rentAcrossScenes(
+  scenes: readonly { items: readonly LayoutItem[] }[],
+  priceMode: PriceMode,
+  slots: number,
+) {
+  const most = new Map<FurnitureType, number>()
+  for (const { items } of scenes) {
+    const n = new Map<FurnitureType, number>()
+    for (const i of items) if (priceOf(i.t) && !i.unbilled) n.set(i.t, (n.get(i.t) ?? 0) + 1)
+    for (const [t, k] of n) most.set(t, Math.max(most.get(t) ?? 0, k))
+  }
+  let total = 0
+  for (const [t, k] of most) total += priceOf(t)![priceMode] * k * slots
+  return total
 }
 
 export function loadPricing(): { priceMode: PriceMode; slots: number } {

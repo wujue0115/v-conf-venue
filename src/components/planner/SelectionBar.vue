@@ -241,6 +241,16 @@ watch(def, (d) => {
 })
 
 const rotate = (deg: number) => editor.value?.rotate(deg)
+
+/** Put what's selected, as it is here, in every other scene (added where a scene lacks it) */
+function applyToAllScenes() {
+  const ed = editor.value
+  if (!ed) return
+  const list = ed.selectedItems()
+  const ids = store.applyToScenes(list)
+  ed.rebaseScenes(ids, list)
+  store.notify(t().scenes.applied(ids.length))
+}
 const generate = () =>
   editor.value?.arrayFromSelected({
     cols: cols.value,
@@ -352,6 +362,15 @@ const generate = () =>
         <button class="btn" :title="t().sel.cw90" @click="rotate(-90)">⟳ 90°</button>
         <button class="btn" :title="t().sel.turn180" @click="rotate(180)">180°</button>
       </div>
+      <!-- the same items, as they are here, in every other scene -->
+      <template v-if="store.scenes.length > 1">
+        <span class="lbl">{{ t().scenes.label }}</span>
+        <div class="ctl">
+          <button class="btn" :title="t().scenes.applyAllHint" @click="applyToAllScenes">
+            {{ t().scenes.applyAll }}
+          </button>
+        </div>
+      </template>
     </div>
   </div>
 
@@ -840,6 +859,15 @@ const generate = () =>
           <span class="hint">{{ t().sel.beltHint(BELT_MAX) }}</span>
           <button v-if="sel.cutBelts" class="btn restore" @click="editor?.restoreBelts()">
             {{ t().sel.restoreBelts(sel.cutBelts) }}
+          </button>
+        </div>
+      </template>
+      <!-- the same items, as they are here, in every other scene -->
+      <template v-if="store.scenes.length > 1">
+        <span class="lbl">{{ t().scenes.label }}</span>
+        <div class="ctl">
+          <button class="btn" :title="t().scenes.applyAllHint" @click="applyToAllScenes">
+            {{ t().scenes.applyAll }}
           </button>
         </div>
       </template>

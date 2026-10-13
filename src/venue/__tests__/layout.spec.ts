@@ -7,8 +7,13 @@ import {
   readPricing,
   formatNT,
   parseLayout,
+  readLayoutFile,
+  readScenesFile,
+  rentAcrossScenes,
+  SCENE_MAX,
   summarizeCost,
   type LayoutItem,
+  type Scene,
 } from '../layout'
 import { footprintOf } from '../furniture'
 import { inZone } from '../zone'
@@ -609,5 +614,57 @@ describe('pricing in the exported file', () => {
     expect(readPricing({ items: [] })).toEqual({})
     expect(readPricing({ pricing: { priceMode: 2, slots: 40 } })).toEqual({ slots: 9 })
     expect(readPricing({ pricing: { priceMode: 0, slots: 'x' } })).toEqual({ priceMode: 0 })
+  })
+})
+
+describe('scenes in the exported file', () => {
+  const A = '00000000-0000-4000-8000-00000000000a'
+  const B = '00000000-0000-4000-8000-00000000000b'
+  const sign = (id: string): LayoutItem => ({ id, t: 'sign', x: 1, y: 0, z: 1, r: 0 })
+  const scenes: Scene[] = [
+    { id: A, name: '上午', items: [sign(A)] },
+    { id: B, name: '下午', items: [sign(A), sign(B)] },
+  ]
+
+  it('holds every scene when there are several, and comes back as it was', () => {
+    const file = JSON.parse(exportLayout(scenes[0]!.items, { scenes }))
+    expect(file.items).toBeUndefined()
+    expect(readScenesFile(file)).toEqual(scenes)
+  })
+
+  it('is a file of one layout, as before scenes, with only one', () => {
+    const file = JSON.parse(exportLayout(scenes[0]!.items, { scenes: scenes.slice(0, 1) }))
+    expect(file.scenes).toBeUndefined()
+    expect(readScenesFile(file)).toBeNull()
+    expect(readLayoutFile(file)).toEqual([sign(A)])
+  })
+
+  it('gives scenes without a usable id or name ones of their own, up to SCENE_MAX', () => {
+    const many = Array.from({ length: SCENE_MAX + 3 }, () => ({ id: A, name: '', items: [] }))
+    const read = readScenesFile({ scenes: [...many, { name: 'no items' }] })!
+    expect(read).toHaveLength(SCENE_MAX)
+    expect(new Set(read.map((s) => s.id)).size).toBe(SCENE_MAX)
+    expect(read[0]!.id).toBe(A)
+    expect(read[1]!.name).toBe('Scene 2')
+    expect(() => readScenesFile({ scenes: [{ name: 'no items' }] })).toThrow()
+  })
+})
+
+describe('rentAcrossScenes', () => {
+  const table = (unbilled = false): LayoutItem => ({ t: 'table2', x: 0, z: 0, r: 0, unbilled })
+  const sofa: LayoutItem = { t: 'whiteSofa', x: 0, z: 0, r: 0 }
+
+  it('rents each kind as many times as the scene using most of it needs', () => {
+    const one = summarizeCost([table(), table(), sofa], 1, 2).total
+    const total = rentAcrossScenes(
+      [{ items: [table(), table(), sofa] }, { items: [table(), sofa, sofa] }],
+      1,
+      2,
+    )
+    expect(total).toBe(one + summarizeCost([sofa], 1, 2).total)
+  })
+
+  it('leaves out what is not billed', () => {
+    expect(rentAcrossScenes([{ items: [table(true)] }, { items: [] }], 0, 1)).toBe(0)
   })
 })

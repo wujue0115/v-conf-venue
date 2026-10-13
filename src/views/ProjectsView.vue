@@ -19,7 +19,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useCloudStore } from '@/stores/cloud'
 import { toastDuration } from '@/stores/planner'
 import { downloadJSON, stamp } from '@/venue/download'
-import { exportLayout } from '@/venue/layout'
+import { exportLayout, sceneId } from '@/venue/layout'
 
 /**
  * My projects: the signed-in person's cloud projects, the layout kept in this browser, and the
@@ -106,7 +106,12 @@ function newProject() {
   const today = new Date().toLocaleDateString(t().lang)
   nameDialog.value?.open(t().cloud.defaultName(today), async (name) => {
     try {
-      const id = await createProject(auth.user!.id, name, [], {})
+      const id = await createProject(
+        auth.user!.id,
+        name,
+        [{ id: sceneId(), name: '', items: [] }],
+        {},
+      )
       void openProject(id)
     } catch (e) {
       notify(cloudMessage(e))
@@ -152,16 +157,22 @@ const duplicate = (p: ProjectSummary) =>
     await refresh()
   })
 
+/** What a project holds: its items, and its scenes when there's more than one */
+const counts = (p: ProjectSummary) =>
+  p.scenes > 1
+    ? `${t().cloud.sceneCount(p.scenes)} · ${t().cloud.count(p.count)}`
+    : t().cloud.count(p.count)
+
 const exportJson = (p: ProjectSummary) =>
   run(p, async () => {
-    const { items, settings } = await loadProject(p.id)
+    const { scenes, settings } = await loadProject(p.id)
     const pricing = {
       priceMode: settings.pricing?.priceMode ?? 0,
       slots: settings.pricing?.slots ?? 1,
     }
     downloadJSON(
       `${p.name}-${stamp()}.json`,
-      exportLayout(items, { pricing, palettes: settings.palettes }),
+      exportLayout(scenes[0]?.items ?? [], { pricing, palettes: settings.palettes, scenes }),
     )
   })
 
@@ -274,10 +285,7 @@ onBeforeUnmount(() => {
               </div>
               <div class="info">
                 <b>{{ p.name }}</b>
-                <span
-                  >{{ t().cloud.count(p.count) }} ·
-                  {{ t().cloud.updated(timeAgo(p.updated_at)) }}</span
-                >
+                <span>{{ counts(p) }} · {{ t().cloud.updated(timeAgo(p.updated_at)) }}</span>
               </div>
             </button>
             <div class="more-wrap">
@@ -363,7 +371,7 @@ onBeforeUnmount(() => {
               <div class="info">
                 <b>{{ p.name }}</b>
                 <span
-                  >{{ t().share.people.roles[p.role] }} · {{ t().cloud.count(p.count) }} ·
+                  >{{ t().share.people.roles[p.role] }} · {{ counts(p) }} ·
                   {{ t().cloud.updated(timeAgo(p.updated_at)) }}</span
                 >
               </div>

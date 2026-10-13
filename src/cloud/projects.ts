@@ -1,11 +1,31 @@
 import { supabase } from '@/lib/supabase'
-import { parseLayout, type LayoutItem, type Pricing } from '@/venue/layout'
+import { parseLayout, type LayoutItem, type Pricing, type Scene } from '@/venue/layout'
 
 /*
  * Cloud projects in Supabase: `projects` (name, owner, the layout file's other parts in
- * `settings`) and `project_objects` (one row per placed item, its id the item's). Row level
- * security decides who may read and write; these just make the calls.
+ * `settings`), `project_scenes` (its scenes, in order) and `project_objects` (one row per placed
+ * item in a scene, its id the item's: an item copied into another scene keeps its id there).
+ * Row level security decides who may read and write; these just make the calls.
  */
+
+/** An item, and the scene it's in */
+export interface SceneItem {
+  scene: string
+  item: LayoutItem
+}
+
+/** An item in a scene as one string: what saves are worked out, sent and compared by */
+export const refOf = (scene: string, id: string) => `${scene}/${id}`
+export function splitRef(ref: string) {
+  const k = ref.indexOf('/')
+  return { scene: ref.slice(0, k), id: ref.slice(k + 1) }
+}
+
+/** A scene's row: its name ('' for none) and its place among the project's scenes */
+export interface SceneRow {
+  id: string
+  name: string
+}
 
 /** The layout file's parts besides its items */
 export interface ProjectSettings {
@@ -45,7 +65,8 @@ export interface ProjectMeta {
 
 export interface LoadedProject {
   meta: ProjectMeta
-  items: LayoutItem[]
+  /** In order; every project has one at least, once 20261014100000_scenes.sql has run */
+  scenes: Scene[]
   settings: ProjectSettings
 }
 
@@ -54,8 +75,9 @@ export interface ProjectSummary {
   id: string
   name: string
   updated_at: string
-  /** How many items are placed */
+  /** How many items are placed, in all its scenes, and how many scenes it has */
   count: number
+  scenes: number
 }
 
 /** Why a call failed, for the message shown */
@@ -132,10 +154,10 @@ export function check<T>(r: { data: T; error: ApiError; status: number }): T {
   return r.data
 }
 
-/** One item as its row's `type` and `data` (everything but its id and type) */
-function toRow(projectId: string, item: LayoutItem) {
+/** One item as its row's `type` and `data` (everything but its id and type), in its scene */
+function toRow(projectId: string, { scene, item }: SceneItem) {
   const { id, t, ...data } = item
-  return { project_id: projectId, id: id!, type: t, data }
+  return { project_id: projectId, scene_id: scene, id: id!, type: t, data }
 }
 
 /**
@@ -152,7 +174,7 @@ export function rowKey(item: LayoutItem) {
  * Upsert rows a batch at a time, each batch under ~1 MB (poster images make rows large), so no
  * request grows past what the API accepts
  */
-async function upsertItems(projectId: string, items: readonly LayoutItem[]) {
+async function upsertItems(projectId: string, items: readonly SceneItem[]) {
   const LIMIT = 1_000_000
   let batch: ReturnType<typeof toRow>[] = []
   let size = 0
@@ -177,11 +199,18 @@ export async function listMyProjects(ownerId: string): Promise<ProjectSummary[]>
   const rows = check(
     await db()
       .from('projects')
-      .select('id, name, updated_at, project_objects(count)')
+      .select('id, name, updated_at, project_objects(count), project_scenes(count)')
       .eq('owner_id', ownerId)
       .order('updated_at', { ascending: false }),
-  ) as (Omit<ProjectSummary, 'count'> & { project_objects: { count: number }[] })[]
-  return rows.map(({ project_objects, ...p }) => ({ ...p, count: project_objects[0]?.count ?? 0 }))
+  ) as (Omit<ProjectSummary, 'count' | 'scenes'> & {
+    project_objects: { count: number }[]
+    project_scenes: { count: number }[]
+  })[]
+  return rows.map(({ project_objects, project_scenes, ...p }) => ({
+    ...p,
+    count: project_objects[0]?.count ?? 0,
+    scenes: project_scenes[0]?.count ?? 0,
+  }))
 }
 
 /** Before creating one: whether the cloud takes new projects, and this person is under the limit */
@@ -203,11 +232,15 @@ async function checkCanCreate(ownerId: string) {
   if ((r.count ?? 0) >= v.maxProjectsPerUser) throw new CloudError('limit')
 }
 
-/** A new project holding these items; returns its id */
+/** Its scenes as rows, each with its place in the order */
+const sceneRows = (projectId: string, scenes: readonly SceneRow[]) =>
+  scenes.map((s, sort) => ({ project_id: projectId, id: s.id, name: s.name, sort }))
+
+/** A new project holding these scenes (one at least); returns its id */
 export async function createProject(
   ownerId: string,
   name: string,
-  items: readonly LayoutItem[],
+  scenes: readonly Scene[],
   settings: ProjectSettings,
 ): Promise<string> {
   await checkCanCreate(ownerId)
@@ -219,7 +252,17 @@ export async function createProject(
       .single(),
   ) as { id: string }
   try {
-    await upsertItems(id, items)
+    check(await db().from('project_scenes').insert(sceneRows(id, scenes)))
+    await upsertItems(
+      id,
+      // an item never shown in the editor (a scene from a file, say) may have no id yet
+      scenes.flatMap((s) =>
+        s.items.map((item) => ({
+          scene: s.id,
+          item: item.id ? item : { ...item, id: crypto.randomUUID() },
+        })),
+      ),
+    )
   } catch (e) {
     // no half-saved project left behind
     await db().from('projects').delete().eq('id', id)
@@ -228,19 +271,54 @@ export async function createProject(
   return id
 }
 
-type ObjectRow = { id: string; type: string; data: Record<string, unknown>; updated_at?: string }
+type ObjectRow = {
+  id: string
+  scene_id: string
+  type: string
+  data: Record<string, unknown>
+  updated_at?: string
+}
 
 /** Rows of project_objects (or open_shared_project's objects) as layout items */
-export function itemsOf(rows: ObjectRow[]) {
+export function itemsOf(rows: readonly ObjectRow[]) {
   // through parseLayout like a file, so a bad row is dropped rather than breaking the scene
   return parseLayout(rows.map((r) => ({ ...r.data, id: r.id, t: r.type })))
+}
+
+/** Rows as items, each with its scene */
+function sceneItemsOf(rows: readonly ObjectRow[]): SceneItem[] {
+  const by = new Map<string, ObjectRow[]>()
+  for (const r of rows) by.set(r.scene_id, [...(by.get(r.scene_id) ?? []), r])
+  return [...by].flatMap(([scene, list]) => itemsOf(list).map((item) => ({ scene, item })))
+}
+
+/** Scene rows in order, each with its items from `rows` (items in no scene of these are left out) */
+export function scenesOf(scenes: readonly SceneRow[], rows: readonly ObjectRow[]): Scene[] {
+  const by = new Map<string, ObjectRow[]>(scenes.map((s) => [s.id, []]))
+  for (const r of rows) by.get(r.scene_id)?.push(r)
+  return scenes.map((s) => ({ id: s.id, name: s.name, items: itemsOf(by.get(s.id)!) }))
+}
+
+/** A project's scenes, in order, without their items */
+export async function loadScenes(projectId: string): Promise<SceneRow[]> {
+  return check(
+    await db()
+      .from('project_scenes')
+      .select('id, name')
+      .eq('project_id', projectId)
+      .order('sort')
+      .order('created_at'),
+  ) as SceneRow[]
 }
 
 /**
  * A project without its items, if the signed-in person (`userId`) may open it, with their role
  * on it. Without `userId` the role isn't looked up (it reads as viewer).
  */
-export async function loadMeta(id: string, userId?: string): Promise<Omit<LoadedProject, 'items'>> {
+export async function loadMeta(
+  id: string,
+  userId?: string,
+): Promise<Omit<LoadedProject, 'scenes'>> {
   const project = check(
     await db()
       .from('projects')
@@ -280,47 +358,50 @@ export async function loadMeta(id: string, userId?: string): Promise<Omit<Loaded
   }
 }
 
-/** A project and its items (see loadMeta) */
+/** A project, its scenes and their items (see loadMeta) */
 export async function loadProject(id: string, userId?: string): Promise<LoadedProject> {
-  const [meta, rows] = await Promise.all([
+  const [meta, scenes, rows] = await Promise.all([
     loadMeta(id, userId),
-    db().from('project_objects').select('id, type, data').eq('project_id', id),
+    loadScenes(id),
+    db().from('project_objects').select('id, scene_id, type, data').eq('project_id', id),
   ])
-  return { ...meta, items: itemsOf(check(rows) as ObjectRow[]) }
+  return { ...meta, scenes: scenesOf(scenes, check(rows) as ObjectRow[]) }
 }
 
 /**
- * Some of a project's items as they're saved now: through the share link (`token`) for a guest,
- * who can't read project_objects themselves. All of them with no `ids`. Without a token,
- * `versions` is given each row's updated_at, by id.
+ * Some of a project's items as they're saved now, by `refs` (refOf): through the share link
+ * (`token`) for a guest, who can't read project_objects themselves. All of them with no `refs`.
+ * Without a token, `versions` is given each row's updated_at, by ref.
  */
 export async function loadItems(
   projectId: string,
-  ids: readonly string[] | null,
+  refs: readonly string[] | null,
   token?: string | null,
   versions?: Map<string, string>,
-): Promise<LayoutItem[]> {
+): Promise<SceneItem[]> {
   const versioned = (rows: ObjectRow[]) => {
-    if (versions) for (const r of rows) if (r.updated_at) versions.set(r.id, r.updated_at)
+    if (versions)
+      for (const r of rows) if (r.updated_at) versions.set(refOf(r.scene_id, r.id), r.updated_at)
     return rows
   }
-  if (!ids) {
+  const COLUMNS = 'id, scene_id, type, data, updated_at'
+  if (!refs) {
     if (token) {
       const r = await loadShared(token)
       if (r.status !== 'ok') throw new CloudError('gone')
-      return r.project.items
+      return r.project.scenes.flatMap((s) => s.items.map((item) => ({ scene: s.id, item })))
     }
-    return itemsOf(
+    return sceneItemsOf(
       versioned(
         check(
-          await db()
-            .from('project_objects')
-            .select('id, type, data, updated_at')
-            .eq('project_id', projectId),
+          await db().from('project_objects').select(COLUMNS).eq('project_id', projectId),
         ) as ObjectRow[],
       ),
     )
   }
+  // by id (in whichever scenes), then just the ones asked for
+  const want = new Set(refs)
+  const ids = [...new Set(refs.map((r) => splitRef(r).id))]
   const rows: ObjectRow[] = []
   // a batch at a time, so the request's address stays short
   for (let i = 0; i < ids.length; i += 100) {
@@ -328,18 +409,16 @@ export async function loadItems(
     rows.push(
       ...((token
         ? check(await db().rpc('shared_objects', { p_token: token, p_ids: batch }))
-        : versioned(
-            check(
-              await db()
-                .from('project_objects')
-                .select('id, type, data, updated_at')
-                .eq('project_id', projectId)
-                .in('id', batch),
-            ) as ObjectRow[],
+        : check(
+            await db()
+              .from('project_objects')
+              .select(COLUMNS)
+              .eq('project_id', projectId)
+              .in('id', batch),
           )) as ObjectRow[]),
     )
   }
-  return itemsOf(rows)
+  return sceneItemsOf(versioned(rows.filter((r) => want.has(refOf(r.scene_id, r.id)))))
 }
 
 /** When the project was last changed in any way (its items, name, settings or sharing) */
@@ -350,12 +429,15 @@ export async function loadUpdatedAt(projectId: string): Promise<string | null> {
   return row?.updated_at ?? null
 }
 
-/** Each of a project's items' updated_at, by id: small, without the items themselves */
+/** Each of a project's items' updated_at, by ref: small, without the items themselves */
 export async function loadVersions(projectId: string): Promise<Map<string, string>> {
   const rows = check(
-    await db().from('project_objects').select('id, updated_at').eq('project_id', projectId),
-  ) as { id: string; updated_at: string }[]
-  return new Map(rows.map((r) => [r.id, r.updated_at]))
+    await db()
+      .from('project_objects')
+      .select('id, scene_id, updated_at')
+      .eq('project_id', projectId),
+  ) as { id: string; scene_id: string; updated_at: string }[]
+  return new Map(rows.map((r) => [refOf(r.scene_id, r.id), r.updated_at]))
 }
 
 /**
@@ -388,7 +470,8 @@ export async function loadShared(token: string): Promise<SharedResult> {
           updated_at: string
           settings: ProjectSettings | null
         }
-        objects: { id: string; type: string; data: Record<string, unknown> }[]
+        scenes: SceneRow[]
+        objects: ObjectRow[]
       }
   if (r.status !== 'ok') return r
   const { id, name, updated_at, settings, share_enabled, view_access, edit_access } = r.project
@@ -406,7 +489,7 @@ export async function loadShared(token: string): Promise<SharedResult> {
             ? { share_token: token, share_enabled, view_access, edit_access }
             : null,
       },
-      items: itemsOf(r.objects),
+      scenes: scenesOf(r.scenes, r.objects),
       settings: settings ?? {},
     },
   }
@@ -464,25 +547,46 @@ export async function updateSharing(id: string, patch: Partial<Sharing>): Promis
 }
 
 /**
- * Write what changed: these items upserted, these ids removed, and the settings if given.
- * Returns the project's updated_at afterwards, as the database has it.
+ * Write what changed: the scenes (every one, in order) when they changed, and those removed;
+ * these items upserted, these refs removed; and the settings if given. Scenes go first, so the
+ * items have theirs to go in. Returns the project's updated_at afterwards, as the database has it.
  */
 export async function saveChanges(
   projectId: string,
   changes: {
-    upserts: readonly LayoutItem[]
+    scenes?: readonly SceneRow[]
+    removedScenes?: readonly string[]
+    upserts: readonly SceneItem[]
     deletes: readonly string[]
     settings?: ProjectSettings
   },
 ): Promise<string> {
+  if (changes.scenes?.length)
+    check(await db().from('project_scenes').upsert(sceneRows(projectId, changes.scenes)))
   await upsertItems(projectId, changes.upserts)
-  if (changes.deletes.length)
+  // a removed scene's items go with it
+  const removed = new Set(changes.removedScenes)
+  const byScene = new Map<string, string[]>()
+  for (const ref of changes.deletes) {
+    const { scene, id } = splitRef(ref)
+    if (!removed.has(scene)) byScene.set(scene, [...(byScene.get(scene) ?? []), id])
+  }
+  for (const [scene, ids] of byScene)
     check(
       await db()
         .from('project_objects')
         .delete()
         .eq('project_id', projectId)
-        .in('id', [...changes.deletes]),
+        .eq('scene_id', scene)
+        .in('id', ids),
+    )
+  if (removed.size)
+    check(
+      await db()
+        .from('project_scenes')
+        .delete()
+        .eq('project_id', projectId)
+        .in('id', [...removed]),
     )
   // through a function, since editors may change these but not the projects row itself
   if (changes.settings)
@@ -513,8 +617,8 @@ export async function deleteProject(id: string) {
   check(await db().from('projects').delete().eq('id', id))
 }
 
-/** A copy of a project under a new name; returns the copy's id */
+/** A copy of a project under a new name, its scenes and all; returns the copy's id */
 export async function duplicateProject(ownerId: string, id: string, name: string) {
-  const { items, settings } = await loadProject(id)
-  return createProject(ownerId, name, items, settings)
+  const { scenes, settings } = await loadProject(id)
+  return createProject(ownerId, name, scenes, settings)
 }

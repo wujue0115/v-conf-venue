@@ -12,7 +12,7 @@ import { nameOf, t } from '@/i18n'
 
 const store = usePlannerStore()
 const editor = useVenueEditor()
-const { items, cost, priceMode, slots, fixedSeats } = storeToRefs(store)
+const { items, cost, rentTotal, scenes, priceMode, slots, fixedSeats } = storeToRefs(store)
 
 /** Kinds (by type) and groups (by `g:` + name) whose list of items is open */
 const open = reactive<Record<string, boolean>>({})
@@ -239,12 +239,18 @@ function onSlotsInput(e: Event) {
     </div>
   </div>
 
+  <!-- with more than one scene: the one shown, and every scene's furniture rented together -->
   <div class="sumbox">
-    <div>
-      <span>{{ t().summary.total }}</span
+    <div v-if="scenes.length > 1" class="scene">
+      <span>{{ t().summary.sceneTotal }}</span
       ><b>{{ formatNT(cost.total) }}</b>
     </div>
+    <div>
+      <span>{{ t().summary.total }}</span
+      ><b>{{ formatNT(rentTotal) }}</b>
+    </div>
     <i>{{ note }}</i>
+    <i v-if="scenes.length > 1" class="more">{{ t().summary.allScenesNote(scenes.length) }}</i>
   </div>
 </template>
 
@@ -400,6 +406,13 @@ function onSlotsInput(e: Event) {
   font-variant-numeric: tabular-nums;
   color: var(--ink);
 }
+.sumbox .scene {
+  margin-bottom: 6px;
+}
+.sumbox .scene b {
+  font-size: 14px;
+  color: var(--muted);
+}
 .sumbox i {
   display: block;
   margin-top: 6px;
@@ -408,5 +421,10 @@ function onSlotsInput(e: Event) {
   font-style: normal;
   font-size: 11px;
   color: var(--yel-ink);
+}
+.sumbox i.more {
+  margin-top: 2px;
+  padding-top: 0;
+  border-top: 0;
 }
 </style>

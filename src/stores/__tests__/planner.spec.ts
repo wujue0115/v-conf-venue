@@ -2,7 +2,14 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
 import { usePlannerStore } from '../planner'
-import { PRICE_KEY, STORAGE_KEY } from '@/venue/layout'
+import { t } from '@/i18n'
+import { PRICE_KEY, SCENES_KEY, SCENE_MAX, STORAGE_KEY, type LayoutItem } from '@/venue/layout'
+
+const A = '00000000-0000-4000-8000-00000000000a'
+const B = '00000000-0000-4000-8000-00000000000b'
+/** A scene's name as it's given when new */
+const nth = (n: number) => t().scenes.defaultName(n)
+const sign = (id: string, x = 1): LayoutItem => ({ id, t: 'sign', x, y: 0, z: 1, r: 0 })
 
 describe('planner store', () => {
   beforeEach(() => {
@@ -29,8 +36,126 @@ describe('planner store', () => {
     store.items = [{ t: 'table2', x: 0, z: 0, r: 0 }]
     store.setSlots(20)
     await nextTick()
-    expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!)).toHaveLength(1)
+    const kept = JSON.parse(localStorage.getItem(SCENES_KEY)!)
+    expect(kept.scenes).toHaveLength(1)
+    expect(kept.scenes[0].items).toHaveLength(1)
     expect(JSON.parse(localStorage.getItem(PRICE_KEY)!)).toEqual({ priceMode: 0, slots: 9 })
+  })
+
+  describe('scenes', () => {
+    it('moves the layout kept before scenes into the first scene, and forgets the old copy', async () => {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify([sign(A)]))
+      const store = usePlannerStore()
+      expect(store.scenes).toHaveLength(1)
+      expect(store.scenes[0]!.name).toBe(nth(1))
+      expect(store.items.map((i) => i.id)).toEqual([A])
+      store.items = [sign(A, 2)]
+      await nextTick()
+      expect(localStorage.getItem(STORAGE_KEY)).toBeNull()
+      setActivePinia(createPinia())
+      expect(usePlannerStore().items[0]!.x).toBe(2)
+    })
+
+    it('adds a copy after the scene shown, keeping its items’ ids, and shows it', () => {
+      const store = usePlannerStore()
+      store.items = [sign(A)]
+      const first = store.sceneId
+      const s = store.addScene({ copy: true })!
+      expect(s.name).toBe(nth(2))
+      expect(store.sceneId).toBe(s.id)
+      expect(store.items.map((i) => i.id)).toEqual([A])
+      store.setScene(first)
+      store.addScene({ copy: false })
+      expect(store.scenes.map((x) => x.name)).toEqual([nth(1), nth(3), nth(2)])
+      expect(store.items).toEqual([])
+    })
+
+    it('keeps each scene’s layout apart', async () => {
+      const store = usePlannerStore()
+      store.items = [sign(A)]
+      const first = store.sceneId
+      store.addScene({ copy: false })
+      store.items = [sign(B)]
+      await nextTick()
+      store.setScene(first)
+      expect(store.items.map((i) => i.id)).toEqual([A])
+      expect(store.scenes[1]!.items.map((i) => i.id)).toEqual([B])
+    })
+
+    it('stops at SCENE_MAX', () => {
+      const store = usePlannerStore()
+      for (let k = 1; k < SCENE_MAX; k++) expect(store.addScene({ copy: false })).not.toBeNull()
+      expect(store.addScene({ copy: false })).toBeNull()
+      expect(store.scenes).toHaveLength(SCENE_MAX)
+    })
+
+    it('deletes a scene, never the last, showing its neighbour when it was shown', () => {
+      const store = usePlannerStore()
+      const first = store.sceneId
+      store.deleteScene(first)
+      expect(store.scenes).toHaveLength(1)
+      const second = store.addScene({ copy: false })!.id
+      store.addScene({ copy: false })
+      store.setScene(second)
+      store.deleteScene(second)
+      expect(store.scenes.map((s) => s.name)).toEqual([nth(1), nth(3)])
+      expect(store.scene?.name).toBe(nth(3))
+    })
+
+    it('renames and reorders scenes', () => {
+      const store = usePlannerStore()
+      store.addScene({ copy: false })
+      store.addScene({ copy: false })
+      store.renameScene(store.sceneId, '  午餐  ')
+      store.renameScene(store.sceneId, '   ')
+      expect(store.scene?.name).toBe('午餐')
+      store.moveScene(2, 0)
+      expect(store.scenes.map((s) => s.name)).toEqual(['午餐', nth(1), nth(2)])
+    })
+
+    it('applies items to every other scene: in place of theirs, or added', () => {
+      const store = usePlannerStore()
+      store.items = [sign(A)]
+      const first = store.sceneId
+      store.addScene({ copy: true })
+      store.addScene({ copy: false })
+      store.setScene(first)
+      const changed = store.applyToScenes([sign(A, 7)])
+      expect(changed).toHaveLength(2)
+      expect(store.scenes.map((s) => s.items.map((i) => [i.id, i.x]))).toEqual([
+        [[A, 1]],
+        [[A, 7]],
+        [[A, 7]],
+      ])
+    })
+
+    it('imports a file’s scenes in place of all of them, or after them', () => {
+      const store = usePlannerStore()
+      const file = [
+        { id: A, name: '上午', items: [sign(A)] },
+        { id: B, name: '下午', items: [sign(B)] },
+      ]
+      expect(store.importScenes(file, { replace: false })).toBe(2)
+      expect(store.scenes.map((s) => s.name)).toEqual([nth(1), '上午', '下午'])
+      expect(store.scene?.name).toBe('上午')
+      expect(store.importScenes(file, { replace: true })).toBe(2)
+      expect(store.scenes.map((s) => s.name)).toEqual(['上午', '下午'])
+      // ids of their own, so a file taken in twice doesn't clash
+      expect(store.scenes.map((s) => s.id)).not.toContain(A)
+    })
+
+    it('rents each kind as many times as the scene using most of it needs', () => {
+      const store = usePlannerStore()
+      const table = (x: number): LayoutItem => ({ t: 'table2', x, z: 0, r: 0 })
+      store.items = [table(0), table(1)]
+      expect(store.rentTotal).toBe(store.cost.total)
+      store.addScene({ copy: false })
+      store.items = [table(0), table(1), table(2)]
+      const three = store.cost.total
+      store.addScene({ copy: false })
+      store.items = [table(0)]
+      expect(store.rentTotal).toBe(three)
+    })
   })
 
   it('remembers whether the sidebar is collapsed', async () => {

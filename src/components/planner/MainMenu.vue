@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, shallowRef, useTemplateRef, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import ConfirmDialog from './ConfirmDialog.vue'
 import ExportImageDialog from './ExportImageDialog.vue'
 import AccountSection from '@/components/auth/AccountSection.vue'
 import NameDialog from '@/components/cloud/NameDialog.vue'
@@ -16,7 +17,13 @@ import { usePalettesStore } from '@/stores/palettes'
 import { usePlannerStore } from '@/stores/planner'
 import { downloadJSON, stamp } from '@/venue/download'
 import { FLOORS } from '@/venue/floors'
-import { exportLayout, readLayoutFile, readPricing } from '@/venue/layout'
+import {
+  SCENE_MAX,
+  exportLayout,
+  readLayoutFile,
+  readPricing,
+  readScenesFile,
+} from '@/venue/layout'
 
 /**
  * ☰ at the top left: the layout file (open, save, export an image, clear),
@@ -43,6 +50,7 @@ const editor = useVenueEditor()
 const open = shallowRef(false)
 const root = useTemplateRef('root')
 const fileInput = useTemplateRef('file')
+const confirmDialog = useTemplateRef('confirmDialog')
 const router = useRouter()
 
 function openFile() {
@@ -54,19 +62,37 @@ async function onFile(e: Event) {
   const input = e.target as HTMLInputElement
   const f = input.files?.[0]
   if (!f) return
+  input.value = ''
+  let file: unknown
+  let scenes: ReturnType<typeof readScenesFile>
   try {
-    const file: unknown = JSON.parse(await f.text())
-    editor.value?.load(readLayoutFile(file), { record: true })
-    // the pricing its total was worked out with, and its colour rows, come along too
-    const pricing = readPricing(file)
-    if (pricing.priceMode !== undefined) store.priceMode = pricing.priceMode
-    if (pricing.slots !== undefined) store.setSlots(pricing.slots)
-    palettes.importPalettes(file)
-    store.notify(t().menu.imported)
+    file = JSON.parse(await f.text())
+    scenes = readScenesFile(file)
+    // a file of one layout goes in place of the scene shown, as a step that can be undone
+    if (!scenes) editor.value?.load(readLayoutFile(file), { record: true })
   } catch {
     store.notify(t().menu.badFile)
+    return
   }
-  input.value = ''
+  if (scenes) {
+    // a file of several scenes: in place of all of them, or added to them
+    const how = await confirmDialog.value?.ask({
+      title: t().scenes.importTitle(scenes.length),
+      message: t().scenes.importMessage,
+      actions: [
+        { label: t().scenes.importReplace, value: 'replace', danger: true },
+        { label: t().scenes.importAdd, value: 'add' },
+      ],
+    })
+    if (!how) return
+    const n = store.importScenes(scenes, { replace: how === 'replace' })
+    store.notify(n < scenes.length ? t().scenes.importedSome(n, SCENE_MAX) : t().scenes.imported(n))
+  } else store.notify(t().menu.imported)
+  // the pricing its total was worked out with, and its colour rows, come along too
+  const pricing = readPricing(file)
+  if (pricing.priceMode !== undefined) store.priceMode = pricing.priceMode
+  if (pricing.slots !== undefined) store.setSlots(pricing.slots)
+  palettes.importPalettes(file)
 }
 
 function save() {
@@ -74,7 +100,7 @@ function save() {
   const pricing = { priceMode: store.priceMode, slots: store.slots }
   downloadJSON(
     `v-conf-taiwan-venue-${stamp()}.json`,
-    exportLayout(store.items, { pricing, palettes: palettes.palettes }),
+    exportLayout(store.items, { pricing, palettes: palettes.palettes, scenes: store.scenes }),
   )
 }
 
@@ -99,7 +125,7 @@ async function saveToCloud() {
   const today = new Date().toLocaleDateString(t().lang)
   saveDialog.value?.open(t().cloud.defaultName(today), async (name) => {
     try {
-      const id = await createProject(auth.user!.id, name, store.items, {
+      const id = await createProject(auth.user!.id, name, store.scenes, {
         pricing: { priceMode: store.priceMode, slots: store.slots },
         palettes: palettes.palettes,
         floors: FLOORS,
@@ -136,6 +162,14 @@ onMounted(() =>
 function go(to: string) {
   open.value = false
   void router.push(to)
+}
+
+/** The image's file name: with the scene's name, when there's more than one */
+const imageName = () => {
+  const scene = store.scenes.length > 1 ? store.scene?.name : ''
+  // kept to what file names may hold everywhere
+  const part = scene ? `-${scene.replace(/[\\/:*?"<>|\s]+/g, '-')}` : ''
+  return `v-conf-taiwan-venue${part}-${stamp()}`
 }
 
 /** 輸出圖片 opens its own window (preview, padding, download); the menu closes behind it */
@@ -391,7 +425,8 @@ onBeforeUnmount(unlisten)
       :hint="t().cloud.saveHint"
       :confirm="t().cloud.save"
     />
-    <ExportImageDialog ref="imageDialog" :name="() => `v-conf-taiwan-venue-${stamp()}`" />
+    <ExportImageDialog ref="imageDialog" :name="imageName" />
+    <ConfirmDialog ref="confirmDialog" />
   </div>
 </template>
 

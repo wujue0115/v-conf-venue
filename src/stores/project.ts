@@ -6,18 +6,24 @@ import {
   checkAccess,
   CloudError,
   isTransient,
+  loadItems,
   loadMeta,
   loadProject,
+  loadScenes,
   loadShared,
+  refOf,
   renameProject,
   rowKey,
   saveChanges,
+  splitRef,
   updateSharing,
   type CloudErrorCode,
   type Grant,
   type LoadedProject,
   type ProjectMeta,
   type ProjectSettings,
+  type SceneItem,
+  type SceneRow,
   type SharedResult,
   type Sharing,
 } from '@/cloud/projects'
@@ -27,7 +33,7 @@ import { useCloudStore } from '@/stores/cloud'
 import { usePalettesStore } from '@/stores/palettes'
 import { usePlannerStore } from '@/stores/planner'
 import { FLOORS, floorsOf, toCurrentFloors } from '@/venue/floors'
-import type { LayoutItem } from '@/venue/layout'
+import type { LayoutItem, Scene } from '@/venue/layout'
 import { t } from '@/i18n'
 
 type SavedHook = (projectId: string, change: ObjectsChange, updatedAt: string) => void
@@ -46,9 +52,10 @@ const logError = (what: string, e: unknown) =>
   console.error(`[cloud] ${what}`, e instanceof CloudError ? (e.detail ?? e) : e)
 
 /**
- * The cloud project open in the planner, saving itself: a moment after the layout, its pricing
- * or its colour rows change, it writes just what changed since the last save (the items added
- * or changed, the ids removed, the settings).
+ * The cloud project open in the planner, saving itself: a moment after its scenes, their
+ * layouts, its pricing or its colour rows change, it writes just what changed since the last
+ * save (the scenes when added, renamed, moved or removed; the items added or changed, those
+ * removed, each by its scene; the settings).
  *
  * When a save fails for a passing reason (offline, the server's trouble) it tries again: after 2
  * and 5 seconds, then every minute, and at once when the connection or the tab comes back. Past
@@ -97,17 +104,15 @@ export const useProjectStore = defineStore('project', () => {
   /** The project last tried by id that didn't let them in (to ask for access to) */
   let deniedId: string | null = null
 
-  /** Each item as last saved (rowKey), by id; null until the editor reports the opened layout */
+  /** Each item as last saved (rowKey), by ref (its scene and id); null with no project open */
   let saved: Map<string, string> | null = null
-  /** The layout as loaded, before the editor has reported it back */
-  let opened: LayoutItem[] | null = null
-  /** The layout right after taking in other people's changes: nothing of this person's to save */
-  let remote: LayoutItem[] | null = null
+  /** The scenes (ids and names, in order) as last saved */
+  let savedScenes: SceneRow[] = []
   /**
-   * Opened on older floors (see floors.ts): the items moved on to today's, to save with the
-   * project's floors, so it's done once. Null when there's nothing to save for it.
+   * The scene just picked, before the editor took it: each item's key then, by id. The editor's
+   * report of it (writing the items as it does) is what's saved already, for those unchanged.
    */
-  let movedOn: Set<string> | null = null
+  let picked: { scene: string; list: LayoutItem[]; keys: Map<string, string> } | null = null
   let savedSettings = ''
   let timer: ReturnType<typeof setTimeout> | undefined
   let saving: Promise<void> | null = null
@@ -155,17 +160,62 @@ export const useProjectStore = defineStore('project', () => {
     // its colour rows join the palettes like an imported file's do
     palettes.importPalettes(p.settings)
     const floors = floorsOf(p.settings.floors)
-    const items = toCurrentFloors(p.items, floors)
-    movedOn =
-      floors < FLOORS ? new Set(items.filter((i, k) => i !== p.items[k]).map((i) => i.id!)) : null
-    opened = items
-    saved = null
-    planner.openProject(p.meta.id, items, p.settings.pricing, { readOnly: !canEdit.value })
+    const scenes = p.scenes.map((s) => ({ ...s, items: toCurrentFloors(s.items, floors) }))
+    planner.openProject(p.meta.id, scenes, p.settings.pricing, { readOnly: !canEdit.value })
+    // what the project holds already, but the items moved on to today's floors as it opened (to
+    // save with its floors, so that's done once)
+    saved = new Map()
+    p.scenes.forEach((s, k) =>
+      s.items.forEach((i, n) => {
+        if (i === scenes[k]!.items[n]) saved!.set(refOf(s.id, i.id!), rowKey(i))
+      }),
+    )
+    // a project without scenes yet (none saved since it was made) saves the one it opens with
+    savedScenes = p.scenes.length ? sceneRows() : []
+    pick()
     // on older floors, its settings save too (with today's), whatever else changes
-    savedSettings = movedOn ? '' : JSON.stringify(settings())
+    savedSettings = floors < FLOORS ? '' : JSON.stringify(settings())
     status.value = 'saved'
     resetFailure()
     draft.value = mayEdit.value ? loadDraft(p.meta.id) : null
+    if (floors < FLOORS) schedule()
+  }
+
+  /** The planner's scenes as saved: ids and names, in order */
+  const sceneRows = (): SceneRow[] => planner.scenes.map((s) => ({ id: s.id, name: s.name }))
+
+  /** Note the scene shown as it is before the editor takes it (see `picked`) */
+  function pick() {
+    // the scene's own layout: its id changes before the planner's layout follows
+    const list = planner.scenes.find((s) => s.id === planner.sceneId)?.items ?? []
+    picked = {
+      scene: planner.sceneId,
+      list,
+      keys: new Map(list.map((i) => [i.id!, rowKey(i)])),
+    }
+  }
+
+  /**
+   * What differs from what's saved: each item now (by ref), those to write and remove, and the
+   * scenes when they changed (with those removed)
+   */
+  function changes() {
+    const now = new Map<string, string>()
+    const upserts: SceneItem[] = []
+    for (const s of planner.scenes)
+      for (const item of s.items) {
+        const ref = refOf(s.id, item.id!)
+        const k = rowKey(item)
+        now.set(ref, k)
+        if (saved?.get(ref) !== k) upserts.push({ scene: s.id, item })
+      }
+    const deletes = [...(saved?.keys() ?? [])].filter((k) => !now.has(k))
+    const rows = sceneRows()
+    const scenesChanged = JSON.stringify(rows) !== JSON.stringify(savedScenes)
+    const removedScenes = savedScenes
+      .map((r) => r.id)
+      .filter((id) => !rows.some((r) => r.id === id))
+    return { now, upserts, deletes, rows, scenesChanged, removedScenes }
   }
 
   /** Open a project by its id (My projects) */
@@ -259,9 +309,8 @@ export const useProjectStore = defineStore('project', () => {
     meta.value = null
     token = null
     saved = null
-    opened = null
-    remote = null
-    movedOn = null
+    savedScenes = []
+    picked = null
     draft.value = null
     shareDenied.value = null
     resetFailure()
@@ -356,28 +405,41 @@ export const useProjectStore = defineStore('project', () => {
     const id = meta.value?.id
     // the planner's layout must be this project's, never the browser's own or another's
     if (!id || !saved || !canEdit.value || planner.projectId !== id) return
-    const now = new Map(planner.items.map((i) => [i.id!, rowKey(i)]))
-    const upserts = planner.items.filter((i) => saved!.get(i.id!) !== now.get(i.id!))
-    const deletes = [...saved.keys()].filter((k) => !now.has(k))
+    const c = changes()
     const s = settings()
     const sJson = JSON.stringify(s)
     const settingsChanged = sJson !== savedSettings
-    if (!upserts.length && !deletes.length && !settingsChanged) return
+    if (!c.upserts.length && !c.deletes.length && !c.scenesChanged && !settingsChanged) return
     const updatedAt = await saveChanges(id, {
-      upserts,
-      deletes,
+      scenes: c.scenesChanged ? c.rows : undefined,
+      removedScenes: c.scenesChanged ? c.removedScenes : undefined,
+      upserts: c.upserts,
+      deletes: c.deletes,
       settings: settingsChanged ? s : undefined,
     })
     // only once all of it went through: a failed save is worked out again from the same start
-    saved = now
+    saved = c.now
+    savedScenes = c.rows
     savedSettings = sJson
     if (meta.value?.id === id) meta.value = { ...meta.value, updated_at: updatedAt }
-    if (upserts.length || deletes.length) {
+    if (c.upserts.length || c.deletes.length) {
       const change: ObjectsChange = {}
-      if (upserts.length) change.changed = upserts.map((i) => i.id!)
-      if (deletes.length) change.deleted = deletes
+      if (c.upserts.length) change.changed = c.upserts.map((u) => refOf(u.scene, u.item.id!))
+      if (c.deletes.length) change.deleted = c.deletes
       for (const fn of savedHooks) fn(id, change, updatedAt)
     }
+  }
+
+  /** Whether anything differs from what's saved */
+  function dirty() {
+    if (!saved) return false
+    const c = changes()
+    return (
+      !!c.upserts.length ||
+      !!c.deletes.length ||
+      c.scenesChanged ||
+      JSON.stringify(settings()) !== savedSettings
+    )
   }
 
   /** Keep the unsaved layout in this browser, made on the cloud version last saved or opened */
@@ -387,7 +449,7 @@ export const useProjectStore = defineStore('project', () => {
     kept.value = saveDraft(m.id, {
       base: m.updated_at,
       at: new Date().toISOString(),
-      items: planner.items,
+      scenes: planner.scenes,
       settings: settings(),
     })
   }
@@ -428,42 +490,114 @@ export const useProjectStore = defineStore('project', () => {
   const via = () => openedToken
 
   /**
-   * Take in other people's saved changes: `rows` as they're saved now, `deleted` ids gone (with
+   * Take in other people's saved changes: `rows` as they're saved now, `deleted` refs gone (with
    * `full`, `rows` is every item, and any other saved item counts as gone). Items with changes
-   * of this person's still to save are left as they are: theirs is saved over it. `apply` puts
-   * the rest into the editor, which reports the layout back at once.
+   * of this person's still to save are left as they are: theirs is saved over it. The scene
+   * shown takes the rest through `apply` (the editor, which reports the layout back at once);
+   * the others take them straight into their layouts, `apply` told too (for their undo steps).
    */
   function takeRemote(
-    rows: readonly LayoutItem[],
+    rows: readonly SceneItem[],
     deleted: readonly string[],
-    apply: (upserts: LayoutItem[], deletes: string[]) => void,
+    apply: (scene: string, upserts: LayoutItem[], deletes: string[]) => void,
     { full = false } = {},
   ) {
     const id = meta.value?.id
     if (!id || !saved || planner.projectId !== id) return
     const was = saved
-    const now = new Map(planner.items.map((i) => [i.id!, rowKey(i)]))
+    const now = changes().now
     // changed here and not saved yet (added, changed or removed)
     const mine = (k: string) => now.get(k) !== was.get(k)
-    const upserts = rows.filter((r) => !mine(r.id!) && now.get(r.id!) !== rowKey(r))
+    const upserts = rows.filter((r) => {
+      const k = refOf(r.scene, r.item.id!)
+      return !mine(k) && now.get(k) !== rowKey(r.item)
+    })
     const gone = new Set(deleted)
     if (full) {
-      const there = new Set(rows.map((r) => r.id!))
+      const there = new Set(rows.map((r) => refOf(r.scene, r.item.id!)))
       for (const k of was.keys()) if (!there.has(k)) gone.add(k)
     }
     // removed on both sides: nothing left to save
     for (const k of gone) if (!now.has(k)) was.delete(k)
     const deletes = [...gone].filter((k) => now.has(k) && !mine(k))
     if (!upserts.length && !deletes.length) return
-    apply(upserts, deletes)
-    remote = planner.items
-    const after = new Map(planner.items.map((i) => [i.id!, rowKey(i)]))
-    // what the editor took in is saved already (an item it was busy dragging, it kept)
+    const byScene = new Map<string, { up: LayoutItem[]; del: string[] }>()
+    const of = (scene: string) => {
+      let b = byScene.get(scene)
+      if (!b) byScene.set(scene, (b = { up: [], del: [] }))
+      return b
+    }
+    for (const r of upserts) of(r.scene).up.push(r.item)
+    for (const k of deletes) {
+      const { scene, id: item } = splitRef(k)
+      of(scene).del.push(item)
+    }
+    for (const [scene, { up, del }] of byScene) {
+      if (scene !== planner.sceneId) planner.patchScene(scene, up, del)
+      apply(scene, up, del)
+    }
+    const after = changes().now
+    // what was taken in is saved already (an item the editor was busy dragging, it kept)
     for (const r of upserts) {
-      const k = after.get(r.id!)
-      if (k !== undefined && k !== now.get(r.id!)) was.set(r.id!, k)
+      const k = refOf(r.scene, r.item.id!)
+      const a = after.get(k)
+      if (a !== undefined && a !== now.get(k)) was.set(k, a)
     }
     for (const k of deletes) if (!after.has(k)) was.delete(k)
+  }
+
+  /**
+   * Read the scenes again after word that someone added, renamed, moved or removed one: those
+   * new here come with their items, those gone go (the one shown giving way to its neighbour).
+   * Changes of this person's to the scenes still to save stand: theirs is saved over it.
+   */
+  async function refreshScenes() {
+    const m = meta.value
+    if (!m || !saved) return
+    let rows: SceneRow[]
+    let fetched: Scene[] | null = null
+    try {
+      if (auth.user) rows = await loadScenes(m.id)
+      else {
+        // a guest reads them through the link, items and all
+        const r = openedToken ? await loadShared(openedToken) : null
+        if (r?.status !== 'ok') return reload()
+        fetched = r.project.scenes
+        rows = fetched.map((s) => ({ id: s.id, name: s.name }))
+      }
+    } catch (e) {
+      logError('reading the scenes again failed', e)
+      return
+    }
+    if (meta.value?.id !== m.id || !saved) return
+    // this person's own changes to them wait to be saved over it
+    if (changes().scenesChanged) return
+    const here = new Set(planner.scenes.map((s) => s.id))
+    const newIds = rows.map((r) => r.id).filter((id) => !here.has(id))
+    let added: Scene[] = []
+    if (newIds.length) {
+      try {
+        const items = fetched
+          ? fetched.flatMap((s) => s.items.map((item) => ({ scene: s.id, item })))
+          : await loadItems(m.id, null)
+        if (meta.value?.id !== m.id || !saved) return
+        added = newIds.map((id) => ({
+          id,
+          name: rows.find((r) => r.id === id)!.name,
+          items: items.filter((x) => x.scene === id).map((x) => x.item),
+        }))
+      } catch (e) {
+        logError('reading the new scenes failed', e)
+        return
+      }
+    }
+    const gone = planner.takeScenes(rows, added)
+    // what came is saved already; what went, gone from the cloud too
+    const ids = new Set(rows.map((r) => r.id))
+    for (const k of [...saved.keys()]) if (!ids.has(splitRef(k).scene)) saved.delete(k)
+    for (const s of added) for (const i of s.items) saved.set(refOf(s.id, i.id!), rowKey(i))
+    savedScenes = sceneRows()
+    if (gone) planner.notify(t().scenes.removedByOthers(gone))
   }
 
   /** Open it again from scratch (it was deleted, or this person's access to it ended) */
@@ -482,7 +616,7 @@ export const useProjectStore = defineStore('project', () => {
   async function refreshMeta() {
     const m = meta.value
     if (!m) return
-    let fresh: Omit<LoadedProject, 'items'>
+    let fresh: Omit<LoadedProject, 'scenes'>
     try {
       if (auth.user) fresh = await loadMeta(m.id, auth.user.id)
       else {
@@ -526,25 +660,36 @@ export const useProjectStore = defineStore('project', () => {
     meta.value = { ...meta.value, name: name.trim() }
   }
 
+  // A scene picked: noted as it is, for the editor's report of it (see `picked`)
+  watch(
+    () => planner.sceneId,
+    () => {
+      if (meta.value && saved && planner.projectId === meta.value.id) pick()
+    },
+    { flush: 'sync' },
+  )
+  // The editor's report of the scene it just took, writing its items as it does: those unchanged
+  // since they were saved are what's saved already
   watch(
     () => planner.items,
     (list) => {
-      if (!meta.value || planner.projectId !== meta.value.id) return
-      // the editor's first report is the layout as opened (as the editor writes it): what the
-      // project holds already
-      if (list === opened) return
-      if (!saved) {
-        saved = new Map(list.map((i) => [i.id!, rowKey(i)]))
-        // moved on to today's floors as it opened: those items aren't saved as they are yet
-        if (movedOn) {
-          for (const id of movedOn) if (saved.has(id)) saved.set(id, '')
-          movedOn = null
-          schedule()
-        }
-        return
+      const p = picked
+      if (!p || !saved || p.scene !== planner.sceneId || list === p.list) return
+      picked = null
+      for (const i of list) {
+        const ref = refOf(p.scene, i.id!)
+        const was = p.keys.get(i.id!)
+        if (was !== undefined && saved.get(ref) === was) saved.set(ref, rowKey(i))
       }
-      if (list === remote) return
-      schedule()
+    },
+    { flush: 'sync' },
+  )
+  // Any change to the scenes or their layouts: saved a moment later, when there's something new
+  watch(
+    () => planner.scenes,
+    () => {
+      if (!meta.value || planner.projectId !== meta.value.id) return
+      if (dirty()) schedule()
     },
   )
   watch([() => planner.priceMode, () => planner.slots, () => palettes.palettes], () => {
@@ -611,6 +756,7 @@ export const useProjectStore = defineStore('project', () => {
     requestAccess,
     via,
     takeRemote,
+    refreshScenes,
     onSaved,
     reload,
     refreshMeta,
