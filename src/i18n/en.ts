@@ -3,7 +3,6 @@ import type { Messages } from './zh'
 const en: Messages = {
   lang: 'en',
   docTitle: 'v-conf Taiwan 2026 · NCCU CPBAE Building A 2F Venue Planner',
-  heading: 'NCCU CPBAE · Building A 2F · Venue Planner',
   sidebar: { title: 'Furniture', open: 'Show the furniture', close: 'Hide the furniture' },
   language: 'Language',
   theme: { label: 'Theme', system: 'Match system', light: 'Light', dark: 'Dark' },

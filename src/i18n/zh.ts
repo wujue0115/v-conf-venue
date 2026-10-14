@@ -8,7 +8,6 @@ import type { FurnitureType } from '@/venue/furniture'
 const zh = {
   lang: 'zh-Hant-TW',
   docTitle: 'v-conf Taiwan 2026 · 政大公企 A 棟 2F 場地規劃',
-  heading: '政大公企 · A 棟 2F · 場地規劃',
   /** The furniture panel on the right */
   sidebar: { title: '家具', open: '打開家具面板', close: '收起家具面板' },
   language: '語言',

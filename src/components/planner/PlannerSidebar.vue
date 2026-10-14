@@ -12,7 +12,7 @@ const store = usePlannerStore()
 <template>
   <aside class="side" :aria-label="t().sidebar.title">
     <div class="hd">
-      <h1>{{ t().heading }}</h1>
+      <h1>{{ t().sidebar.title }}</h1>
       <button
         class="close"
         type="button"
