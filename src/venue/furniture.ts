@@ -323,12 +323,14 @@ const woodLectern: Builder = (g) => {
   mesh(B(0.52, 0.62, 0.01), FM.panel, g, 0, 0.56, 0.305, { e: EF })
 }
 
-// Open-back view of the oak podium: two shelves inside
+// Open-back view of the oak podium, open toward the presenter (−z): the top sunk 15 cm between
+// its sides and back, which run on up past it (the audience's side and both ends), and under
+// it a shelf a little nearer than that, over one tall space
 const woodTeacher: Builder = (g) => {
-  mesh(B(0.8, 0.04, 0.6), FM.oak, g, 0, 1.03, 0, { e: EF })
-  mesh(B(0.8, 1.01, 0.03), FM.oak, g, 0, 0.505, 0.285, { e: EF })
-  for (const x of [-0.385, 0.385]) mesh(B(0.03, 1.01, 0.6), FM.oak, g, x, 0.505, 0, { e: EF })
-  for (const y of [0.04, 0.55, 0.82]) mesh(B(0.74, 0.03, 0.57), FM.oak, g, 0, y, 0.005, { e: EF })
+  mesh(B(0.8, 1.05, 0.03), FM.oak, g, 0, 0.525, 0.285, { e: EF })
+  for (const x of [-0.385, 0.385]) mesh(B(0.03, 1.05, 0.6), FM.oak, g, x, 0.525, 0, { e: EF })
+  for (const y of [0.015, 0.755, 0.885])
+    mesh(B(0.74, 0.03, 0.57), FM.oak, g, 0, y, -0.015, { e: EF })
 }
 
 // W620 × D650 × H1100 — charcoal cabinet with silver trim, sloped top, open shelves at the back, on casters
@@ -369,16 +371,22 @@ export const SEATED_TAG_Y = 1.2
 
 /**
  * Table tops things can be set on, in the table's own frame: the top's height and its size
- * (w along x, d along z). Round tops are given their bounding square and marked `round`.
+ * (w along x, d along z). Round tops are given their bounding square and marked `round`;
+ * `standing` ones are worked at on foot.
  */
-export const TABLES: Partial<Record<string, { y: number; w: number; d: number; round?: boolean }>> =
-  {
-    foldTable: { y: 0.75, w: 0.8, d: 0.8 },
-    table3: { y: 0.71, w: 1.8, d: 0.45 },
-    table2: { y: 0.71, w: 1.2, d: 0.45 },
-    teaWhite: { y: 0.6, w: 0.5, d: 0.5, round: true },
-    teaWood: { y: 0.535, w: 0.5, d: 0.5, round: true },
-  }
+export const TABLES: Partial<
+  Record<string, { y: number; w: number; d: number; round?: boolean; standing?: boolean }>
+> = {
+  foldTable: { y: 0.75, w: 0.8, d: 0.8 },
+  table3: { y: 0.71, w: 1.8, d: 0.45 },
+  table2: { y: 0.71, w: 1.2, d: 0.45 },
+  teaWhite: { y: 0.6, w: 0.5, d: 0.5, round: true },
+  teaWood: { y: 0.535, w: 0.5, d: 0.5, round: true },
+  // between its three boards; worked at standing, so no seat turns to it
+  woodTeacher: { y: 0.9, w: 0.74, d: 0.54, standing: true },
+  // the stage's own lectern (architecture.ts), built the same way
+  stageLectern: { y: 0.95, w: 0.74, d: 0.54, standing: true },
+}
 
 /**
  * Where someone sits on each kind of seat, in the seat's own frame: the height of the

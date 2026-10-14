@@ -62,6 +62,8 @@ export interface Architecture {
   /** Put down the cushions of these A2 seats (indices into `seats`), the rest folded up */
   openSeats: (open: ReadonlySet<number>) => void
   ground: THREE.Mesh
+  /** The building's own table tops things can be set on (each typed, see TABLES) */
+  tops: THREE.Object3D[]
 }
 
 const WALLS: Seg[] = [
@@ -1212,7 +1214,18 @@ export function buildArchitecture(scene: THREE.Scene): Architecture {
 
   // the venue's own furniture: its wooden lectern on the stage's south side and a white stand
   // on the floor below, facing the hall
-  mesh(B(0.6, 1.1, 0.8), M.wood, arch, 31.35, STAGE_H + 0.55, 41.25, { e: EF })
+  // Built as the 木作講師桌, open toward the presenter (up the stage, +x): its top sunk 15 cm
+  // between its sides and back, which run on up past it, and under it a shelf a little nearer
+  // than that, over one tall space. In its own frame the audience's side is +z.
+  const lectern = new THREE.Group()
+  lectern.position.set(31.35, STAGE_H, 41.25)
+  lectern.rotation.y = -Math.PI / 2
+  lectern.userData.type = 'stageLectern'
+  arch.add(lectern)
+  mesh(B(0.8, 1.1, 0.03), M.wood, lectern, 0, 0.55, 0.285, { e: EF })
+  for (const x of [-0.385, 0.385]) mesh(B(0.03, 1.1, 0.6), M.wood, lectern, x, 0.55, 0, { e: EF })
+  for (const y of [0.015, 0.805, 0.935])
+    mesh(B(0.74, 0.03, 0.57), M.wood, lectern, 0, y, -0.015, { e: EF })
   mesh(B(0.6, 1, 0.8), PODIUM, arch, 29.2, 0.5, 42.4, { e: EF })
 
   // A2's side walls, solid from the corridor's and the outer wall's face to the hall's, as
@@ -1410,7 +1423,7 @@ export function buildArchitecture(scene: THREE.Scene): Architecture {
     m.polygonOffsetFactor = 1
     m.polygonOffsetUnits = 1
   })
-  return { arch, wallsG, zonesG, walk, fixedSeats, seats, openSeats, ground }
+  return { arch, wallsG, zonesG, walk, fixedSeats, seats, openSeats, ground, tops: [lectern] }
 }
 
 /**

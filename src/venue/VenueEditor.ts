@@ -3260,9 +3260,9 @@ export class VenueEditor {
     const { x, z } = o.position
     let aim: THREE.Vector3 | null = null
     let bestD = TABLE_REACH
-    for (const t of this.placed.children) {
+    for (const t of this.tables()) {
       const top = tableOf(t)
-      if (!top || !t.visible || t === o) continue
+      if (!top || top.standing || !t.visible || t === o) continue
       t.updateMatrixWorld()
       const l = t.worldToLocal(new THREE.Vector3(x, t.position.y, z))
       const edge = new THREE.Vector3(
@@ -3465,11 +3465,16 @@ export class VenueEditor {
       .map(rider)
   }
 
+  /** Everything with a table top: what's placed, and the building's own (the stage's lectern) */
+  private tables() {
+    return [...this.placed.children, ...this.archi.tops]
+  }
+
   /** The table top point under the current ray (the nearest along it), where a tray can stand */
   private tableSpotOnRay() {
     let best: THREE.Vector3 | null = null
     let bestD = Infinity
-    for (const t of this.placed.children) {
+    for (const t of this.tables()) {
       const top = tableOf(t)
       if (!top || !t.visible) continue
       t.updateMatrixWorld()
@@ -3502,7 +3507,7 @@ export class VenueEditor {
 
   /** The height of the table top at (x, z), or null when there is none */
   private tableTopAt(x: number, z: number) {
-    for (const t of this.placed.children) {
+    for (const t of this.tables()) {
       const top = tableOf(t)
       if (!top || !t.visible) continue
       t.updateMatrixWorld()
@@ -3579,7 +3584,7 @@ export class VenueEditor {
     }
     let best: THREE.Vector3 | null = null
     let bestD = Infinity
-    for (const t of this.placed.children) {
+    for (const t of this.tables()) {
       const top = tableOf(t)
       if (!top || !t.visible) continue
       t.updateMatrixWorld()
