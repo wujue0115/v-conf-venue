@@ -154,6 +154,28 @@ export function check<T>(r: { data: T; error: ApiError; status: number }): T {
   return r.data
 }
 
+/** The most rows the API returns to one request (Supabase's default max rows) */
+const PAGE = 1000
+
+/**
+ * Every row a query matches, a page at a time: past the API's max rows the rest are left out
+ * without an error, and a project's items across its scenes run past that. `page` asks for rows
+ * `from`–`to` of the query, in an order that holds from one page to the next.
+ */
+export async function allRows<T>(
+  page: (
+    from: number,
+    to: number,
+  ) => PromiseLike<{ data: T[] | null; error: ApiError; status: number }>,
+): Promise<T[]> {
+  const rows: T[] = []
+  for (;;) {
+    const batch = check(await page(rows.length, rows.length + PAGE - 1)) ?? []
+    rows.push(...batch)
+    if (batch.length < PAGE) return rows
+  }
+}
+
 /** One item as its row's `type` and `data` (everything but its id and type), in its scene */
 function toRow(projectId: string, { scene, item }: SceneItem) {
   const { id, t, ...data } = item
@@ -366,9 +388,17 @@ export async function loadProject(id: string, userId?: string): Promise<LoadedPr
   const [meta, scenes, rows] = await Promise.all([
     loadMeta(id, userId),
     loadScenes(id),
-    db().from('project_objects').select('id, scene_id, type, data').eq('project_id', id),
+    allRows<ObjectRow>((from, to) =>
+      db()
+        .from('project_objects')
+        .select('id, scene_id, type, data')
+        .eq('project_id', id)
+        .order('scene_id')
+        .order('id')
+        .range(from, to),
+    ),
   ])
-  return { ...meta, scenes: scenesOf(scenes, check(rows) as ObjectRow[]) }
+  return { ...meta, scenes: scenesOf(scenes, rows) }
 }
 
 /**
@@ -396,9 +426,15 @@ export async function loadItems(
     }
     return sceneItemsOf(
       versioned(
-        check(
-          await db().from('project_objects').select(COLUMNS).eq('project_id', projectId),
-        ) as ObjectRow[],
+        await allRows<ObjectRow>((from, to) =>
+          db()
+            .from('project_objects')
+            .select(COLUMNS)
+            .eq('project_id', projectId)
+            .order('scene_id')
+            .order('id')
+            .range(from, to),
+        ),
       ),
     )
   }
@@ -412,12 +448,16 @@ export async function loadItems(
     rows.push(
       ...((token
         ? check(await db().rpc('shared_objects', { p_token: token, p_ids: batch }))
-        : check(
-            await db()
+        : // an id is in as many scenes as it was copied into, so even 100 of them can run past a page
+          await allRows<ObjectRow>((from, to) =>
+            db()
               .from('project_objects')
               .select(COLUMNS)
               .eq('project_id', projectId)
-              .in('id', batch),
+              .in('id', batch)
+              .order('scene_id')
+              .order('id')
+              .range(from, to),
           )) as ObjectRow[]),
     )
   }
@@ -434,12 +474,15 @@ export async function loadUpdatedAt(projectId: string): Promise<string | null> {
 
 /** Each of a project's items' updated_at, by ref: small, without the items themselves */
 export async function loadVersions(projectId: string): Promise<Map<string, string>> {
-  const rows = check(
-    await db()
+  const rows = await allRows<{ id: string; scene_id: string; updated_at: string }>((from, to) =>
+    db()
       .from('project_objects')
       .select('id, scene_id, updated_at')
-      .eq('project_id', projectId),
-  ) as { id: string; scene_id: string; updated_at: string }[]
+      .eq('project_id', projectId)
+      .order('scene_id')
+      .order('id')
+      .range(from, to),
+  )
   return new Map(rows.map((r) => [refOf(r.scene_id, r.id), r.updated_at]))
 }
 
