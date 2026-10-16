@@ -151,14 +151,16 @@ const WALLS: Seg[] = [
   [23.35, 23.2, 23.35, 29.75],
   [22.45, 23.2, 22.45, 26.3],
   [22.45, 23.2, 23.35, 23.2],
-  // A2's north lobby rooms: the entrance, the accessible toilet room, a service room
+  // A2's north lobby rooms: the entrance, the accessible toilet room, and east of it the way
+  // on from the corridor past 茶水間 to the backstage's back door, open to the corridor and
+  // walled off from the toilet room
   // the entrance's double doors from the landing, 1.7 wide (the walls' ends padded by half
   // their thickness)
   [28.4, 25.3, 28.4, 26.205],
   [28.4, 28.165, 28.4, 29.75],
-  [28.4, 25.3, 36.9, 25.3],
+  [28.4, 25.3, 35.2, 25.3],
   [31.6, 25.3, 31.6, 29.75],
-  [35.2, 25.3, 35.2, 28.9],
+  [35.2, 25.3, 35.2, 29.75],
   [33.05, 25.98, 35.2, 25.98],
   [33.05, 25.98, 33.05, 28.2],
   [33.05, 28.2, 35.2, 28.2],
