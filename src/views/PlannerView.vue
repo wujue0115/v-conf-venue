@@ -55,31 +55,14 @@ watch(
   { immediate: true },
 )
 
-// The address is the project's link: its id, with the share token while sharing is on (as its
-// owner sets it; anyone else keeps the token they came with), so copying it passes it on
-watch(
-  () => project.meta,
-  (m) => {
-    if (!m || !cloud.value) return
-    const s = m.sharing
-    const token = s ? (s.share_enabled ? s.share_token : undefined) : props.shareToken
-    if (props.projectId === m.id && props.shareToken === token) return
-    void router.replace({
-      name: 'project',
-      params: { projectId: m.id },
-      query: { ...(token ? { share: token } : {}), ...sceneQuery() },
-    })
-  },
-)
-
 const ready = computed(
   () =>
     !cloud.value ||
     (!!project.meta && !project.loading && !project.loadError && !project.shareDenied),
 )
 
-// The address also says which scene is shown (?scene=), while there's more than one: a link
-// opens on it, and picking another scene changes it (in place, not as a step back)
+// The address says which scene is shown (?scene=), while there's more than one: a link opens on
+// it, and picking another scene changes it (in place, not as a step back)
 const sceneQuery = () => (store.scenes.length > 1 ? { scene: store.sceneId } : {})
 function pickFromAddress() {
   const q = route.query.scene
@@ -88,15 +71,30 @@ function pickFromAddress() {
 watch(() => route.query.scene, pickFromAddress, { immediate: true })
 // a project's scenes, as it opens
 watch(() => store.projectId, pickFromAddress)
+
+// A project's address is its link: its id, with the share token while sharing is on (as its
+// owner sets it; anyone else keeps the token they came with), so copying it passes it on. Set
+// in one replace with the scene: a second one, made as a project opens, would cancel the first
+// and leave the address without its share token.
 watch(
-  [() => store.sceneId, () => store.scenes.length, ready],
+  [() => project.meta, () => store.sceneId, () => store.scenes.length, ready],
   () => {
     // a project's address waits for the project, not the layout shown while it loads
-    if (!ready.value || (cloud.value && store.projectId !== project.meta?.id)) return
-    const { scene: _scene, ...rest } = route.query
-    const query = { ...rest, ...sceneQuery() }
-    if (route.query.scene === query.scene) return
-    void router.replace({ query })
+    if (!ready.value) return
+    const m = cloud.value ? project.meta : null
+    if (cloud.value && (!m || store.projectId !== m.id)) return
+    const rest = { ...route.query }
+    delete rest.scene
+    delete rest.share
+    const s = m?.sharing
+    const token = s ? (s.share_enabled ? s.share_token : undefined) : m && props.shareToken
+    const query = { ...rest, ...(token ? { share: token } : {}), ...sceneQuery() }
+    const same =
+      (!m || (route.name === 'project' && route.params.projectId === m.id)) &&
+      route.query.share === query.share &&
+      route.query.scene === query.scene
+    if (same) return
+    void router.replace(m ? { name: 'project', params: { projectId: m.id }, query } : { query })
   },
   { immediate: true },
 )
